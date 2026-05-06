@@ -4,7 +4,7 @@
 
 ## Why every response carries `nextActions`
 
-x402b is more than a single round-trip. After commit, the buyer can redeem, raise a dispute, complete the exchange, and so on — across multiple round-trips potentially over hours or weeks. A long-lived protocol where the server unilaterally decides "what's next" risks two failure modes:
+x402B is more than a single round-trip. After commit, the buyer can redeem, raise a dispute, complete the exchange, and so on — across multiple round-trips potentially over hours or weeks. A long-lived protocol where the server unilaterally decides "what's next" risks two failure modes:
 
 1. **Censorship:** if the server refuses to forward a buyer's redeem or dispute, the buyer is stuck.
 2. **Stale clients:** SDKs hard-code the state machine and break when the protocol grows.
@@ -53,13 +53,13 @@ Every server response (the initial 402, the 200 after commit, the 200 after rede
     {
       "id": "boson-completeExchange",
       "channels": ["server", "facilitator", "onchain", "mcp"],
-      "endpoints": { "server": "https://seller.example/x402b/complete" },
+      "endpoints": { "server": "https://seller.example/x402B/complete" },
       "deadline": "2026-05-11T00:00:00Z"  // optional, absolute
     },
     {
       "id": "boson-raiseDispute",
       "channels": ["server", "facilitator", "onchain", "mcp", "xmtp"],
-      "endpoints": { "server": "https://seller.example/x402b/dispute/raise" },
+      "endpoints": { "server": "https://seller.example/x402B/dispute/raise" },
       "deadline": "2026-05-11T00:00:00Z"
     }
   ],
@@ -105,7 +105,7 @@ A **channel** is a transport for invoking an action. The standard registry:
 | Channel | What it means | Invocation shape |
 |---|---|---|
 | `server` | The seller's HTTP server exposes a convenience endpoint that wraps the on-chain call (and may notify the seller for context). | `POST <endpoints.server>` with action-specific body. |
-| `facilitator` | A third-party facilitator that submits on-chain on the buyer's behalf (gas-paying meta-tx). | `POST <facilitator>/x402b/<action>` per the facilitator's API (see [boson-impl-07-facilitator.md](./boson-impl-07-facilitator.md)). |
+| `facilitator` | A third-party facilitator that submits on-chain on the buyer's behalf (gas-paying meta-tx). | `POST <facilitator>/x402B/<action>` per the facilitator's API (see [boson-impl-07-facilitator.md](./boson-impl-07-facilitator.md)). |
 | `onchain` | Direct on-chain submission. The buyer signs and submits the raw tx themselves. | `<facet>.<method>(...)` per `onchainHints`. |
 | `mcp` | The buyer's agent calls a Boson MCP tool (e.g. `bosonprotocol/agentic-commerce`). | MCP tool invocation; identifier in `fallback.mcp`. |
 | `xmtp` | Out-of-band: the buyer messages the seller's XMTP inbox; the seller can act on behalf of the buyer for some actions, or simply acknowledge. | XMTP message to `fallback.xmtp` with structured payload. |

@@ -10,7 +10,7 @@ Boson exchanges separate payment (commit) from delivery (redeem). Some offers de
 - **Buyer type** — human (UI/widget acceptable) vs AI agent (machine-readable channel only).
 - **Seller policy** — what the seller wants to collect, and how.
 
-Rather than fork that complexity into per-seller bespoke flows, x402b standardizes a `FulfillmentChannel` interface. The 402 advertises which channels the seller supports; the buyer picks one and attaches channel-specific data alongside the payment payload (or out-of-band, depending on channel).
+Rather than fork that complexity into per-seller bespoke flows, x402B standardizes a `FulfillmentChannel` interface. The 402 advertises which channels the seller supports; the buyer picks one and attaches channel-specific data alongside the payment payload (or out-of-band, depending on channel).
 
 ## Server side — advertising
 

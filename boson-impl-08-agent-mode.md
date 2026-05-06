@@ -1,12 +1,12 @@
 # 08 — Agent Mode
 
-> **Status:** stub (v0.1, 2026-05-04). Bridges x402b to AI-agent commerce via MCP.
+> **Status:** stub (v0.1, 2026-05-04). Bridges x402B to AI-agent commerce via MCP.
 
 ## Goals
 
-`@bosonprotocol/x402-agent` lets an AI agent — running locally with MCP tools — consume the x402b protocol. It:
+`@bosonprotocol/x402-agent` lets an AI agent — running locally with MCP tools — consume the x402B protocol. It:
 
-1. Translates x402b PaymentRequirements into a structured tool-call surface for the agent (e.g. `pay_and_commit`, `redeem`, `complete`, `raise_dispute`).
+1. Translates x402B PaymentRequirements into a structured tool-call surface for the agent (e.g. `pay_and_commit`, `redeem`, `complete`, `raise_dispute`).
 2. Bridges to `bosonprotocol/agentic-commerce` MCP for the on-chain calls — so the agent's preferred channel for any action can be `mcp` instead of the seller's HTTP server.
 3. Provides default policies for agent buyers: prefer atomic commit-and-redeem (commit + redeem in one tx), prefer machine-readable fulfillment channels, set spending limits, auto-complete after redeem.
 4. Provides default policies for agent sellers: auto-publish FullOffer signing, auto-handle redeem callbacks, auto-monitor disputes.

@@ -4,7 +4,7 @@
 
 ## Goals
 
-`@bosonprotocol/x402-server` is the framework-agnostic resource server for x402b. It:
+`@bosonprotocol/x402-server` is the framework-agnostic resource server for x402B. It:
 
 1. Builds 402 PaymentRequirements with FullOffer + sellerSig + fulfillment channel options + initial nextActions.
 2. Validates incoming `X-PAYMENT` payloads (per [boson-impl-01-escrow-scheme.md](./boson-impl-01-escrow-scheme.md) §5).
@@ -41,11 +41,11 @@ app.get("/datafeed", expressMiddleware(requireEscrow));
 
 ## Endpoints exposed (optional convenience)
 
-- `POST /x402b/commit` — accepts `X-PAYMENT` with `action=boson-createOfferAndCommit`, relays the meta-tx + token-auth to the facilitator (or directly to `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`), returns 200.
-- `POST /x402b/commit-and-redeem` — same, with `action=boson-createOfferCommitAndRedeem` (atomic on-chain redeem; the actual delivery may be sync or async per `fulfillment.option`).
-- `POST /x402b/redeem` — server-side wrapper for `redeemVoucher`.
-- `POST /x402b/complete` — wrapper for `completeExchange`.
-- `POST /x402b/dispute/raise|resolve|escalate|retract` — wrappers for the dispute primitives.
+- `POST /x402B/commit` — accepts `X-PAYMENT` with `action=boson-createOfferAndCommit`, relays the meta-tx + token-auth to the facilitator (or directly to `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`), returns 200.
+- `POST /x402B/commit-and-redeem` — same, with `action=boson-createOfferCommitAndRedeem` (atomic on-chain redeem; the actual delivery may be sync or async per `fulfillment.option`).
+- `POST /x402B/redeem` — server-side wrapper for `redeemVoucher`.
+- `POST /x402B/complete` — wrapper for `completeExchange`.
+- `POST /x402B/dispute/raise|resolve|escalate|retract` — wrappers for the dispute primitives.
 
 Each endpoint is opt-in and configurable. The server MUST advertise the endpoint URL in the `nextActions[].endpoints.server` only if it actually implements the wrapper; otherwise it lists `["facilitator", "onchain", "mcp"]` only.
 

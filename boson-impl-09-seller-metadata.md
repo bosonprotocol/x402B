@@ -4,7 +4,7 @@
 
 ## Goals
 
-When the buyer falls off the seller's HTTP server (server down, server censoring, server slow), the buyer needs to reach the seller through some other channel. The seller publishes alternate channels in their on-chain seller metadata (already supported by `@bosonprotocol/metadata`); x402b reads them and surfaces them as `nextActions.fallback`.
+When the buyer falls off the seller's HTTP server (server down, server censoring, server slow), the buyer needs to reach the seller through some other channel. The seller publishes alternate channels in their on-chain seller metadata (already supported by `@bosonprotocol/metadata`); x402B reads them and surfaces them as `nextActions.fallback`.
 
 ## Schema additions to SELLER metadata
 
@@ -14,10 +14,10 @@ When the buyer falls off the seller's HTTP server (server down, server censoring
   "type": "SELLER",
   // ... existing fields ...
   "channels": {
-    "x402b": {
+    "x402B": {
       "endpoints": {
-        "base":         "https://seller.example/x402b",        // discoverable root, all server-side endpoints under here
-        "openapi":      "https://seller.example/x402b/openapi.json"  // optional
+        "base":         "https://seller.example/x402B",        // discoverable root, all server-side endpoints under here
+        "openapi":      "https://seller.example/x402B/openapi.json"  // optional
       },
       "xmtp":          "0xSellerXMTPInbox...",                  // for xmtp channel
       "mcp": {
@@ -43,7 +43,7 @@ The 402 echoes the relevant subset (per current state) for convenience; the cano
 
 ## Sections to write
 
-- Versioning: `channels.x402b.version` for forward compatibility.
+- Versioning: `channels.x402B.version` for forward compatibility.
 - Per-action overrides (a seller may advertise `boson-raiseDispute` over xmtp but `boson-completeExchange` only on-chain).
 - Public-key publication for webhook fulfillment channel.
 - Migration story for existing sellers on `@bosonprotocol/metadata` v1 — additive only, old fields untouched.
