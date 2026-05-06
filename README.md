@@ -44,7 +44,7 @@ All packages publish under `@bosonprotocol/`.
 | 00 | [00-overview.md](https://github.com/bosonprotocol/x402-escrow-schema/blob/main/00-overview.md) | detailed |
 | 01 | [01-escrow-scheme.md](https://github.com/bosonprotocol/x402-escrow-schema/blob/main/01-escrow-scheme.md) | detailed — wire format source of truth |
 | 02 | [02-flows.md](https://github.com/bosonprotocol/x402-escrow-schema/blob/main/02-flows.md) | detailed — sequence diagrams |
-| 03 | [03-fulfillment-channels.md](https://github.com/bosonprotocol/x402-escrow-schema/blob/main/03-fulfillment-channels.md) | detailed — fulfilment data channels |
+| 03 | [03-fulfillment-channels.md](https://github.com/bosonprotocol/x402-escrow-schema/blob/main/03-fulfillment-channels.md) | detailed — fulfillment data channels |
 | 04 | [04-state-machine-and-next-actions.md](https://github.com/bosonprotocol/x402-escrow-schema/blob/main/04-state-machine-and-next-actions.md) | detailed — self-describing responses |
 | 05 | [05-server-sdk.md](./stubs/05-server-sdk.md) | stub |
 | 06 | [06-client-sdk.md](./stubs/06-client-sdk.md) | stub |
