@@ -10,18 +10,20 @@ The SDK is designed so that **existing x402 servers and clients can adopt it as 
 
 ## Package map
 
+The logical package roles below are implementation-agnostic. Reference implementations MAY use any package names — `x402-escrow-*` is used here as a namespace convention, not a requirement.
+
 All packages publish under `@bosonprotocol/`.
 
-| Package | Purpose |
+| Logical package | Purpose |
 |---|---|
-| `x402-core` | `escrow` scheme JSON schemas + TypeScript types; EIP-712 builders for FullOffer (protocol domain), the protocol meta-tx envelope, and the four BPIP-12 token-auth strategies (ERC-3009 ReceiveWithAuthorization, EIP-2612 Permit, Permit2, plain approve); exchange state machine model. |
-| `x402-evm` | EVM-specific implementation. Calldata builders for `ExchangeCommitFacet.createOfferAndCommit` (deferred), `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (atomic on-chain redeem), and the `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization` envelope that carries them. Wraps `@bosonprotocol/core-sdk`. |
-| `x402-server` | Framework-agnostic resource server. 402 builder, FullOffer signer wrapper, delivery negotiator, `nextActions` emitter, post-redeem endpoint set. Adapter sub-packages: `x402-server-express`, `x402-server-hono`, `x402-server-next`. |
-| `x402-client` | Framework-agnostic client. Interceptor that parses the 402, picks a delivery option and a token-auth strategy, signs the meta-tx + token authorization(s), retries, then drives post-redeem actions through whichever channel is preferred. Adapters: `x402-client-axios`, `x402-client-fetch`. |
-| `x402-facilitator` | Reference verify + settle service for the `escrow` scheme. Submits via `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`. |
-| `x402-delivery` | Pluggable `DeliveryTransport` interface + atomic / email / XMTP / webhook / IPFS-pointer implementations. |
-| `x402-actions` | Exchange state machine + channel registry. Powers the `nextActions` envelope on every server response and the post-redeem endpoint set. |
-| `x402-agent` | Thin glue layer for AI-agent clients. Bridges to `bosonprotocol/agentic-commerce` MCP and lets agents pick channel (server / facilitator / on-chain / MCP) per action. |
+| `x402-core` | `escrow` scheme JSON schemas + TypeScript types; EIP-712 helpers for OfferCommitment, meta-tx envelope, and the four EVM token-auth strategies (ERC-3009, EIP-2612 Permit, Permit2, plain approve); exchange state machine model. |
+| `x402-evm` | EVM-specific calldata builders for the commit-only and commit-and-release actions, and the meta-tx envelope that carries them. |
+| `x402-server` | Framework-agnostic resource server. 402 builder, OfferCommitment signer (called per-request for dynamic pricing), fulfillment negotiator, `nextActions` emitter, post-commit endpoint set. Adapter sub-packages for popular frameworks. |
+| `x402-client` | Framework-agnostic client. Interceptor that parses the 402, picks a fulfillment option and a token-auth strategy, signs the meta-tx + token authorization, retries, then drives post-commit actions through whichever channel is preferred. |
+| `x402-facilitator` | Reference verify + settle service. Submits the buyer's meta-tx to the escrow contract and pays gas. Stateless w.r.t. funds — never custodies tokens. |
+| `x402-fulfillment` | Pluggable `FulfillmentChannel` interface + inline / email / XMTP / webhook / IPFS-pointer implementations. |
+| `x402-actions` | Exchange state machine + channel registry. Powers the `nextActions` envelope on every server response. Implementation-specific action tables plug in here. |
+| `x402-agent` | Thin glue layer for AI-agent clients. Bridges to MCP tooling and lets agents pick channel (server / facilitator / on-chain / MCP) per action. |
 
 ---
 
@@ -31,7 +33,7 @@ All packages publish under `@bosonprotocol/`.
 - `@bosonprotocol/metadata` — offer metadata schemas.
 - `@bosonprotocol/common` — EIP-712 hashing helpers.
 - `bosonprotocol/agentic-commerce` — MCP exposing on-chain Boson actions, used by `x402-agent`.
-- The Boson Redemption Widget backend hook — for human buyers of physical goods, surfaced as one of the delivery transports.
+- The Boson Redemption Widget backend hook — for human buyers of physical goods, surfaced as one of the fulfilment channels.
 
 ---
 
@@ -54,7 +56,7 @@ All packages publish under `@bosonprotocol/`.
 
 ## Relation to x402-escrow-schema
 
-This repo implements the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema) specification. The generic spec defines the wire format, delivery transport interface, state machine, and `nextActions` envelope. x402b provides:
+This repo implements the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema) specification. The generic spec defines the wire format, fulfilment channel interface, state machine, and `nextActions` envelope. x402b provides:
 
 - The Boson-specific `OfferCommitment` (`BosonTypes.FullOffer`, BPIP-10)
 - The meta-tx entry-point (`MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`, BPIP-12)

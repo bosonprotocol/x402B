@@ -6,7 +6,7 @@
 
 `@bosonprotocol/x402-server` is the framework-agnostic resource server for x402b. It:
 
-1. Builds 402 PaymentRequirements with FullOffer + sellerSig + delivery options + initial nextActions.
+1. Builds 402 PaymentRequirements with FullOffer + sellerSig + fulfilment options + initial nextActions.
 2. Validates incoming `X-PAYMENT` payloads (per [01-escrow-scheme.md](./01-escrow-scheme.md) §5).
 3. Forwards to a facilitator (or settles directly) and waits for confirmation.
 4. Verifies the resulting on-chain exchange state.
@@ -27,7 +27,7 @@ const server = createX402bServer({
   diamond:    "0xDiamond...",
   signer:     sellerAssistant,           // signs FullOffer
   facilitator: { url: "https://facilitator.boson.example" },
-  delivery:   [emailTransport(...), atomicTransport(...), xmtpTransport(...)],
+  fulfilment:   [emailTransport(...), atomicTransport(...), xmtpTransport(...)],
   fallback:   { xmtp: "0x...", mcp: "boson://seller/12345" },
 });
 
@@ -42,7 +42,7 @@ app.get("/datafeed", expressMiddleware(requireEscrow));
 ## Endpoints exposed (optional convenience)
 
 - `POST /x402b/commit` — accepts `X-PAYMENT` with `action=boson-createOfferAndCommit`, relays the meta-tx + token-auth to the facilitator (or directly to `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`), returns 200.
-- `POST /x402b/commit-and-redeem` — same, with `action=boson-createOfferCommitAndRedeem` (atomic on-chain redeem; the actual delivery may be sync or async per `delivery.option`).
+- `POST /x402b/commit-and-redeem` — same, with `action=boson-createOfferCommitAndRedeem` (atomic on-chain redeem; the actual delivery may be sync or async per `fulfilment.option`).
 - `POST /x402b/redeem` — server-side wrapper for `redeemVoucher`.
 - `POST /x402b/complete` — wrapper for `completeExchange`.
 - `POST /x402b/dispute/raise|resolve|escalate|retract` — wrappers for the dispute primitives.

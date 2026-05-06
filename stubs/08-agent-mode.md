@@ -8,7 +8,7 @@
 
 1. Translates x402b PaymentRequirements into a structured tool-call surface for the agent (e.g. `pay_and_commit`, `redeem`, `complete`, `raise_dispute`).
 2. Bridges to `bosonprotocol/agentic-commerce` MCP for the on-chain calls — so the agent's preferred channel for any action can be `mcp` instead of the seller's HTTP server.
-3. Provides default policies for agent buyers: prefer atomic commit-and-redeem (commit + redeem in one tx), prefer machine-readable delivery transports, set spending limits, auto-complete after redeem.
+3. Provides default policies for agent buyers: prefer atomic commit-and-redeem (commit + redeem in one tx), prefer machine-readable fulfilment channels, set spending limits, auto-complete after redeem.
 4. Provides default policies for agent sellers: auto-publish FullOffer signing, auto-handle redeem callbacks, auto-monitor disputes.
 
 ## Sketch — agent buyer
@@ -22,7 +22,7 @@ const buyer = createAgentBuyer({
   policy: {
     maxAmount: "5000000",
     preferredChannels: ["mcp", "onchain", "facilitator", "server"],
-    preferredDelivery: ["atomic-http", "xmtp", "email"],
+    preferredFulfilmentChannels: ["atomic-http", "xmtp", "email"],
     autoCompleteAfterRedeem: true,
   },
 });
@@ -41,7 +41,7 @@ const seller = createAgentSeller({
   wallet: sellerAssistant,
   mcp:    bosonAgenticCommerceMcp,
   catalog: dynamicCatalog,    // generates FullOffer per request
-  delivery: [/* transports */],
+  fulfilment: [/* channels */],
 });
 
 await seller.serve({ port: 8080 });
