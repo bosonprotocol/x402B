@@ -40,7 +40,7 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
 
       "tokenAuthStrategies": ["none", "erc3009", "permit", "permit2"], // BPIP-12 strategies the protocol will accept for this token
 
-      "delivery": {                                            // see 03-delivery-transports.md
+      "delivery": {                                            // see boson-impl-03-delivery-transports.md
         "required": true,
         "options": [
           { "id": "atomic-http", "schema": null },
@@ -50,7 +50,7 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
         ]
       },
 
-      "actions": {                                             // see 04-state-machine-and-next-actions.md
+      "actions": {                                             // see boson-impl-04-state-machine-and-next-actions.md
         "next": [
           {
             "id": "boson-createOfferAndCommit",                  // -> ExchangeCommitFacet.createOfferAndCommit

@@ -66,10 +66,10 @@ All packages publish under `@bosonprotocol/`.
 ## What we reuse (do not rebuild)
 
 - `@bosonprotocol/core-sdk` — contract calls, subgraph reads, meta-tx helpers, dispute helpers.
-- `@bosonprotocol/metadata` — offer metadata schemas (extend with seller channel registry, see [09](./09-seller-metadata.md)).
+- `@bosonprotocol/metadata` — offer metadata schemas (extend with seller channel registry, see [09](./boson-impl-09-seller-metadata.md)).
 - `@bosonprotocol/common` — EIP-712 hashing helpers (FullOffer hash matches PR #1105).
 - `bosonprotocol/agentic-commerce` — MCP exposing on-chain Boson actions, used by `x402-agent`.
-- The Boson Redemption Widget backend hook — for human buyers of physical goods, surfaced as one of the delivery transports ([03](./03-delivery-transports.md)).
+- The Boson Redemption Widget backend hook — for human buyers of physical goods, surfaced as one of the delivery transports ([03](./boson-impl-03-delivery-transports.md)).
 
 ## What we are explicitly *not* doing
 
@@ -81,13 +81,13 @@ All packages publish under `@bosonprotocol/`.
 
 | # | File | Status |
 |---|---|---|
-| 00 | [overview.md](./00-overview.md) | detailed (this file) |
-| 01 | [escrow-scheme.md](./01-escrow-scheme.md) | detailed |
-| 02 | [flows.md](./02-flows.md) | detailed |
-| 03 | [delivery-transports.md](./03-delivery-transports.md) | detailed |
-| 04 | [state-machine-and-next-actions.md](./04-state-machine-and-next-actions.md) | detailed |
-| 05 | [server-sdk.md](./05-server-sdk.md) | stub |
-| 06 | [client-sdk.md](./06-client-sdk.md) | stub |
-| 07 | [facilitator.md](./07-facilitator.md) | stub |
-| 08 | [agent-mode.md](./08-agent-mode.md) | stub |
-| 09 | [seller-metadata.md](./09-seller-metadata.md) | stub |
+| 00 | [overview.md](./boson-impl-00-overview.md) | detailed (this file) |
+| 01 | [escrow-scheme.md](./boson-impl-01-escrow-scheme.md) | detailed |
+| 02 | [flows.md](./boson-impl-02-flows.md) | detailed |
+| 03 | [delivery-transports.md](./boson-impl-03-delivery-transports.md) | detailed |
+| 04 | [state-machine-and-next-actions.md](./boson-impl-04-state-machine-and-next-actions.md) | detailed |
+| 05 | [server-sdk.md](./boson-impl-05-server-sdk.md) | stub |
+| 06 | [client-sdk.md](./boson-impl-06-client-sdk.md) | stub |
+| 07 | [facilitator.md](./boson-impl-07-facilitator.md) | stub |
+| 08 | [agent-mode.md](./boson-impl-08-agent-mode.md) | stub |
+| 09 | [seller-metadata.md](./boson-impl-09-seller-metadata.md) | stub |

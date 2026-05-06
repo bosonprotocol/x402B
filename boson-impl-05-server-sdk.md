@@ -7,7 +7,7 @@
 `@bosonprotocol/x402-server` is the framework-agnostic resource server for x402b. It:
 
 1. Builds 402 PaymentRequirements with FullOffer + sellerSig + delivery options + initial nextActions.
-2. Validates incoming `X-PAYMENT` payloads (per [01-escrow-scheme.md](./01-escrow-scheme.md) §5).
+2. Validates incoming `X-PAYMENT` payloads (per [boson-impl-01-escrow-scheme.md](./boson-impl-01-escrow-scheme.md) §5).
 3. Forwards to a facilitator (or settles directly) and waits for confirmation.
 4. Verifies the resulting on-chain exchange state.
 5. Returns 200 + resource (or pointer) + `nextActions`.

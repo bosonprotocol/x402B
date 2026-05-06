@@ -134,4 +134,4 @@ const choice = await negotiateDelivery(requirements.delivery.options, {
 
 - **Multi-step deliveries** (a license + an email confirmation): for v1, sellers split into separate offers. Multi-transport per offer is a v2 feature.
 - **Data-at-rest encryption** for `email`/`webhook` storage on the server: out of scope; sellers handle per their stack.
-- **Transport advertising in seller metadata** (so a buyer can pre-filter sellers by accepted delivery transports): see [09-seller-metadata.md](./09-seller-metadata.md).
+- **Transport advertising in seller metadata** (so a buyer can pre-filter sellers by accepted delivery transports): see [boson-impl-09-seller-metadata.md](./boson-impl-09-seller-metadata.md).
