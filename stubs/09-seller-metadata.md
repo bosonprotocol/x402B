@@ -26,7 +26,7 @@ When the buyer falls off the seller's HTTP server (server down, server censoring
       },
       "fallbackOrder": ["server", "facilitator", "onchain", "mcp", "xmtp"],
       "preferredFacilitator": "https://facilitator.boson.example",
-      "supportedFulfilmentChannels": ["atomic-http", "email", "xmtp"]
+      "supportedFulfillmentChannels": ["atomic-http", "email", "xmtp"]
     }
   }
 }
@@ -37,7 +37,7 @@ When the buyer falls off the seller's HTTP server (server down, server censoring
 Two reasons:
 
 1. **Bootstrap:** if the buyer can't reach the server's 402, they still need a fallback. A buyer who knows only `sellerId` should be able to get to a working contact channel.
-2. **Discovery:** offer-discovery tools (Bazaar et al.) can pre-filter sellers by accepted channels and fulfilment channels before the buyer ever fires a GET.
+2. **Discovery:** offer-discovery tools (Bazaar et al.) can pre-filter sellers by accepted channels and fulfillment channels before the buyer ever fires a GET.
 
 The 402 echoes the relevant subset (per current state) for convenience; the canonical source is the seller's metadata.
 
@@ -45,6 +45,6 @@ The 402 echoes the relevant subset (per current state) for convenience; the cano
 
 - Versioning: `channels.x402b.version` for forward compatibility.
 - Per-action overrides (a seller may advertise `boson-raiseDispute` over xmtp but `boson-completeExchange` only on-chain).
-- Public-key publication for webhook fulfilment channel.
+- Public-key publication for webhook fulfillment channel.
 - Migration story for existing sellers on `@bosonprotocol/metadata` v1 — additive only, old fields untouched.
 - Validation in `@bosonprotocol/metadata` package.

@@ -33,7 +33,7 @@ All packages publish under `@bosonprotocol/`.
 - `@bosonprotocol/metadata` — offer metadata schemas.
 - `@bosonprotocol/common` — EIP-712 hashing helpers.
 - `bosonprotocol/agentic-commerce` — MCP exposing on-chain Boson actions, used by `x402-agent`.
-- The Boson Redemption Widget backend hook — for human buyers of physical goods, surfaced as one of the fulfilment channels.
+- The Boson Redemption Widget backend hook — for human buyers of physical goods, surfaced as one of the fulfillment channels.
 
 ---
 
@@ -56,7 +56,7 @@ All packages publish under `@bosonprotocol/`.
 
 ## Relation to x402-escrow-schema
 
-This repo implements the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema) specification. The generic spec defines the wire format, fulfilment channel interface, state machine, and `nextActions` envelope. x402b provides:
+This repo implements the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema) specification. The generic spec defines the wire format, fulfillment channel interface, state machine, and `nextActions` envelope. x402b provides:
 
 - The Boson-specific `OfferCommitment` (`BosonTypes.FullOffer`, BPIP-10)
 - The meta-tx entry-point (`MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`, BPIP-12)
