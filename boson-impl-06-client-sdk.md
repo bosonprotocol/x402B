@@ -7,8 +7,8 @@
 `@bosonprotocol/x402-client` is the framework-agnostic client. It:
 
 1. Intercepts 402 responses with `scheme: "escrow"`.
-2. Negotiates the delivery transport.
-3. Decides between `createOfferAndCommit` (commit now, redeem later) and `createOfferCommitAndRedeem` (commit and redeem in one tx, regardless of when the resource is delivered) based on the buyer's policy and what `actions.next[]` allows. This is independent of the chosen delivery transport.
+2. Negotiates the fulfillment channel.
+3. Decides between `createOfferAndCommit` (commit now, redeem later) and `createOfferCommitAndRedeem` (commit and redeem in one tx, regardless of when the resource is delivered) based on the buyer's policy and what `actions.next[]` allows. This is independent of the chosen fulfillment channel.
 4. Picks a token-authorization strategy from `tokenAuthStrategies` (one of `none`, `erc3009`, `permit`, `permit2` per [BPIP-12](https://github.com/zajck/BPIPs/blob/authorized-token-transfer-metaTx/content/BPIP-12.md)).
 5. Builds and signs the protocol meta-tx envelope (always) plus the token-transfer authorization for the chosen strategy (omitted for `none`).
 6. Retries the request with `X-PAYMENT`.
@@ -26,7 +26,7 @@ import { axiosInterceptor } from "@bosonprotocol/x402-client-axios";
 const client = createX402bClient({
   signer:                  buyerWallet,
   channelOrder:            ["server", "facilitator", "onchain", "mcp"],
-  delivery: {
+  fulfillment: {
     prefer: ["atomic-http", "xmtp", "email"],
     knownData: { xmtpAddress: buyerWallet.xmtp },
   },

@@ -76,7 +76,7 @@ Every server response (the initial 402, the 200 after commit, the 200 after rede
 }
 ```
 
-The envelope sits at the top level of the JSON response body. For the initial 402 it's nested inside the `accepts[i].actions` field (since there's no exchangeId yet) — see [01-escrow-scheme.md](./01-escrow-scheme.md) §2.
+The envelope sits at the top level of the JSON response body. For the initial 402 it's nested inside the `accepts[i].actions` field (since there's no exchangeId yet) — see [boson-impl-01-escrow-scheme.md](./boson-impl-01-escrow-scheme.md) §2.
 
 ## Action IDs
 
@@ -105,7 +105,7 @@ A **channel** is a transport for invoking an action. The standard registry:
 | Channel | What it means | Invocation shape |
 |---|---|---|
 | `server` | The seller's HTTP server exposes a convenience endpoint that wraps the on-chain call (and may notify the seller for context). | `POST <endpoints.server>` with action-specific body. |
-| `facilitator` | A third-party facilitator that submits on-chain on the buyer's behalf (gas-paying meta-tx). | `POST <facilitator>/x402b/<action>` per the facilitator's API (see [07-facilitator.md](./07-facilitator.md)). |
+| `facilitator` | A third-party facilitator that submits on-chain on the buyer's behalf (gas-paying meta-tx). | `POST <facilitator>/x402b/<action>` per the facilitator's API (see [boson-impl-07-facilitator.md](./boson-impl-07-facilitator.md)). |
 | `onchain` | Direct on-chain submission. The buyer signs and submits the raw tx themselves. | `<facet>.<method>(...)` per `onchainHints`. |
 | `mcp` | The buyer's agent calls a Boson MCP tool (e.g. `bosonprotocol/agentic-commerce`). | MCP tool invocation; identifier in `fallback.mcp`. |
 | `xmtp` | Out-of-band: the buyer messages the seller's XMTP inbox; the seller can act on behalf of the buyer for some actions, or simply acknowledge. | XMTP message to `fallback.xmtp` with structured payload. |
@@ -126,7 +126,7 @@ The protocol guarantees that for every non-terminal state, the buyer can advance
 | `boson-cancelVoucher` | onchain ✓ | — |
 | `boson-createOfferAndCommit` / `boson-createOfferCommitAndRedeem` | onchain ✓ (signing tx themselves) | — |
 
-The `server` channel is **always optional**. A server that withholds endpoints, returns garbage `nextActions`, or simply disappears does not strand the buyer. The client SDK falls through to `onchain` after a configurable timeout. See [02-flows.md](./02-flows.md) Flow D.
+The `server` channel is **always optional**. A server that withholds endpoints, returns garbage `nextActions`, or simply disappears does not strand the buyer. The client SDK falls through to `onchain` after a configurable timeout. See [boson-impl-02-flows.md](./boson-impl-02-flows.md) Flow D.
 
 ## Server-side derivation
 
