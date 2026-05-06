@@ -1,6 +1,6 @@
-# x402b
+# x402B
 
-x402b is the **Boson Protocol implementation** of the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema) — a non-custodial escrow payment scheme for x402 HTTP servers.
+x402B is the **Boson Protocol implementation** of the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema) — a non-custodial escrow payment scheme for x402 HTTP servers.
 
 It keeps x402's HTTP-native, gasless, single-round-trip UX and replaces the trusted-server payment model with **Boson Protocol escrow**. Funds enter a non-custodial Boson Diamond escrow at commit time; they release to the seller only after the buyer signals delivery (or the dispute window expires); a registered third-party dispute resolver can split funds and slash a seller bond if delivery fails.
 
@@ -37,7 +37,7 @@ All packages publish under `@bosonprotocol/`.
 
 ## Relation to x402-escrow-schema
 
-This repo implements the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema) specification. The generic spec defines the wire format, fulfillment channel interface, state machine, and `nextActions` envelope. x402b provides:
+This repo implements the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema) specification. The generic spec defines the wire format, fulfillment channel interface, state machine, and `nextActions` envelope. x402B provides:
 
 - The Boson-specific `OfferCommitment` (`BosonTypes.FullOffer`, BPIP-10)
 - The meta-tx entry-point (`MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`, BPIP-12)

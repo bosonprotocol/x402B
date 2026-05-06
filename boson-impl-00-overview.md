@@ -1,10 +1,10 @@
-# 00 — x402b Overview
+# 00 — x402B Overview
 
 > **Status:** detailed spec (v0.1, 2026-05-04).
 
-## What x402b is
+## What x402B is
 
-x402b is the Boson Protocol implementation of the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema). It keeps x402's HTTP-native, gasless, single-round-trip UX and replaces the trusted-server payment model with **Boson Protocol escrow**. Funds enter a non-custodial Boson Diamond escrow at commit time; they release to the seller only after the buyer signals delivery (or the dispute window expires); a registered third-party dispute resolver can split funds and slash a seller bond if delivery fails.
+x402B is the Boson Protocol implementation of the [`x402-escrow-schema`](https://github.com/bosonprotocol/x402-escrow-schema). It keeps x402's HTTP-native, gasless, single-round-trip UX and replaces the trusted-server payment model with **Boson Protocol escrow**. Funds enter a non-custodial Boson Diamond escrow at commit time; they release to the seller only after the buyer signals delivery (or the dispute window expires); a registered third-party dispute resolver can split funds and slash a seller bond if delivery fails.
 
 The SDK is designed so that **existing x402 servers and clients can adopt it as a drop-in addition**. Servers add a Boson scheme to their `accepts[]` array; clients that understand the `escrow` scheme handle it, and those that don't fail cleanly with a structured "unsupported scheme" error — never an accidental settle.
 
