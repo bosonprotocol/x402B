@@ -18,9 +18,9 @@ sequenceDiagram
 
     C->>S: GET /resource
     S->>S: Sign FullOffer off-chain (seller's key)
-    S-->>C: 402 PaymentRequirements<br/>(escrow scheme, FullOffer + sellerSig, tokenAuthStrategies, delivery options, nextActions)
+    S-->>C: 402 PaymentRequirements<br/>(escrow scheme, FullOffer + sellerSig, tokenAuthStrategies, fulfillment channel options, nextActions)
 
-    Note over C: Buyer chooses action="boson-createOfferAndCommit",<br/>tokenAuthStrategy (none / erc3009 / permit / permit2),<br/>delivery option
+    Note over C: Buyer chooses action="boson-createOfferAndCommit",<br/>tokenAuthStrategy (none / erc3009 / permit / permit2),<br/>fulfillment channel option
 
     C->>C: Sign meta-tx for createOfferAndCommit (protocol Diamond domain)
     C->>C: Sign token-transfer authorization (per BPIP-12 strategy)<br/>— skipped when tokenAuthStrategy="none"
@@ -37,7 +37,7 @@ sequenceDiagram
     S->>S: getExchanges(exchangeId) — verify state=COMMITTED, seller=self, amount=expected
     S-->>C: 200 OK<br/>X-PAYMENT-RESPONSE: { exchangeId, txHash }<br/>nextActions: [boson-redeem, boson-raiseDispute, boson-cancelVoucher]
 
-    Note over C: Buyer fulfills delivery details out-of-band (per delivery.option)<br/>or already attached them at commit (atomic-http / email / xmtp / webhook)
+    Note over C: Buyer fulfills delivery details out-of-band (per fulfillment.option)<br/>or already attached them at commit (atomic-http / email / xmtp / webhook)
 
     C->>D: redeemVoucher(exchangeId)<br/>(or via server, facilitator, MCP)
     D-->>C: state = REDEEMED
@@ -62,10 +62,10 @@ The buyer collapses the **commit** and **redeem** state transitions into a singl
 Use Flow B when the buyer wants to assert "consider this redeemed now" up front. Common cases:
 
 - Atomic delivery — the resource is returned in the same HTTP 200 response (e.g. a small JSON payload, a license key, a signed access token).
-- Asynchronous delivery — the resource takes time to produce (e.g. a generated report) but the buyer is happy to redeem on commit and receive the deliverable later through whichever delivery transport they negotiated. The post-200 dispute window is the buyer's protection if delivery never arrives.
+- Asynchronous delivery — the resource takes time to produce (e.g. a generated report) but the buyer is happy to redeem on commit and receive the deliverable later through whichever fulfillment channel they negotiated. The post-200 dispute window is the buyer's protection if delivery never arrives.
 - Pre-staged delivery — the resource is already available off-chain (IPFS, gated URL) and the redeem is just the on-chain proof.
 
-The mechanics are identical regardless of delivery timing — `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` from PR #1105 handles the on-chain side, and the chosen `delivery.option` handles the delivery side.
+The mechanics are identical regardless of delivery timing — `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` from PR #1105 handles the on-chain side, and the chosen `fulfillment.option` handles the delivery side.
 
 ```mermaid
 sequenceDiagram
@@ -78,7 +78,7 @@ sequenceDiagram
     C->>S: GET /resource
     S-->>C: 402 PaymentRequirements (action options include "boson-createOfferCommitAndRedeem")
 
-    Note over C: Buyer chooses action="boson-createOfferCommitAndRedeem"<br/>+ tokenAuthStrategy + delivery option (often "atomic-http")
+    Note over C: Buyer chooses action="boson-createOfferCommitAndRedeem"<br/>+ tokenAuthStrategy + fulfillment channel option (often "atomic-http")
 
     C->>C: Sign meta-tx for createOfferCommitAndRedeem (protocol Diamond domain)
     C->>C: Sign token-transfer authorization (per BPIP-12 strategy)<br/>— skipped when tokenAuthStrategy="none"
@@ -169,6 +169,6 @@ Order is set by `nextActions[i].channels[]` in the most recent server response (
 | Flow | Server-side verify | Client-side verify |
 |---|---|---|
 | A. Deferred redemption | `state === COMMITTED`, `seller === self`, `exchangeToken === asset`, `price === amount` | `txHash` mined, `voucherId` matches expected offerHash; voucher is ERC-721 and transferable |
-| B. Atomic commit-and-redeem | `state === REDEEMED`, all of the above | `OfferCreated + BuyerCommitted + VoucherRedeemed` events in one receipt. Delivery may still be asynchronous — the buyer tracks it via the chosen `delivery.option`. |
+| B. Atomic commit-and-redeem | `state === REDEEMED`, all of the above | `OfferCreated + BuyerCommitted + VoucherRedeemed` events in one receipt. Delivery may still be asynchronous — the buyer tracks it via the chosen `fulfillment.option`. |
 | C. Dispute | state transitions match invoked function | event log signatures match the action |
 | D. Fallback | n/a | each channel returns a structured success or moves to the next |

@@ -13,7 +13,7 @@ A first-class scheme `"escrow"` removes the hazard entirely:
 - Non-Boson facilitators see an unfamiliar scheme value and reject with a structured error. **Default behaviour is fail-safe.**
 - The buyer's headline signature is a Boson protocol meta-tx over `createOfferAndCommit` (deferred) or `createOfferCommitAndRedeem` (atomic) — bound to the protocol's EIP-712 domain, not reusable elsewhere.
 - The token-authorization signature, when present, is the buyer's regular ERC-3009 / EIP-2612 / Permit2 signature for *this exact spend* of *this exact token*; if a non-Boson party tried to settle it, they'd just get the spend they were authorized for — not an attack vector.
-- The wire format is free to carry Boson-shaped data (FullOffer, sellerSig, recipientId, delivery options, nextActions) at the top level rather than buried in a generic `info` blob.
+- The wire format is free to carry Boson-shaped data (FullOffer, sellerSig, recipientId, fulfillment channel options, nextActions) at the top level rather than buried in a generic `info` blob.
 
 Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet). Distribution is via the `@bosonprotocol/x402-*` packages. If the Foundation later wants to absorb it, it is a pure rename.
 
@@ -40,7 +40,7 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
 
       "tokenAuthStrategies": ["none", "erc3009", "permit", "permit2"], // BPIP-12 strategies the protocol will accept for this token
 
-      "delivery": {                                            // see boson-impl-03-delivery-transports.md
+      "fulfillment": {                                         // see boson-impl-03-fulfillment-channels.md
         "required": true,
         "options": [
           { "id": "atomic-http", "schema": null },
@@ -97,7 +97,7 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
 | `offer.sellerSig` | yes | EIP-712 sig over `FullOffer` under the protocol domain. Validated by the protocol's `verifyOffer` (`EIP712Lib.verify`) — supports ECDSA and ERC-1271. |
 | `offer.creator` | yes | The address whose key signed `sellerSig` (seller assistant). |
 | `tokenAuthStrategies` | yes | Subset of `["none", "erc3009", "permit", "permit2"]` ([BPIP-12](https://github.com/zajck/BPIPs/blob/authorized-token-transfer-metaTx/content/BPIP-12.md)). The token-transfer authorization strategies the protocol will accept for this asset. `none` requires the buyer to pre-approve the Diamond. |
-| `delivery` | optional | Absent or `{required: false}` if the resource is fully atomic. |
+| `fulfillment` | optional | Absent or `{required: false}` if the resource is fully atomic. |
 | `actions` | yes | Initial `nextActions` envelope. Always lists at least one of `boson-createOfferAndCommit` / `boson-createOfferCommitAndRedeem`. |
 
 #### Action-id namespacing
@@ -178,7 +178,7 @@ The header value is base64(JSON):
     // }
   },
 
-  "delivery": {
+  "fulfillment": {
     "option": "email",
     "data":   { "email": "buyer@example.com" }
   }
@@ -195,8 +195,8 @@ The header value is base64(JSON):
 | `payload.buyer` | yes | Buyer wallet (recovered from sigs by the protocol; included for routing). |
 | `payload.metaTx` | yes | Boson meta-tx envelope authorising execution of `<action>` on behalf of `buyer`. EIP-712 signed under the **protocol Diamond** domain (see §4.2). The single buyer signature for the action itself — independent of `tokenAuthStrategy`. |
 | `payload.tokenAuth` | iff `tokenAuthStrategy ≠ "none"` | Token-transfer authorization for *this exact spend* (see §4.3). The facilitator passes it through `executeMetaTransactionWithTokenTransferAuthorization` as a queued entry the protocol consumes during `transferFundsIn`. |
-| `delivery.option` | iff requirements `delivery.required = true` | Must be one of `delivery.options[].id`. |
-| `delivery.data` | per the option's schema | Validated against `delivery.options[i].schema`. |
+| `fulfillment.option` | iff requirements `fulfillment.required = true` | Must be one of `fulfillment.options[].id`. |
+| `fulfillment.data` | per the option's schema | Validated against `fulfillment.options[i].schema`. |
 
 ## 4. Signatures
 
@@ -259,7 +259,7 @@ For `permit`'s "diversion guard" (BPIP-12) — if current allowance already cove
 
 ### 4.4 No separate redeem signature
 
-For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomically inside the protocol call (`OrchestrationHandlerFacet2.createOfferCommitAndRedeem`, [PR #1105](https://github.com/bosonprotocol/boson-protocol-contracts/pull/1105)). The committer is `_msgSender()` of the meta-tx, so the meta-tx signature in §4.2 already authorises the redeem. **No additional buyer signature is needed for atomic on-chain redeem.** Note that this is independent of delivery timing — the resource itself may still be delivered later via the negotiated delivery transport.
+For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomically inside the protocol call (`OrchestrationHandlerFacet2.createOfferCommitAndRedeem`, [PR #1105](https://github.com/bosonprotocol/boson-protocol-contracts/pull/1105)). The committer is `_msgSender()` of the meta-tx, so the meta-tx signature in §4.2 already authorises the redeem. **No additional buyer signature is needed for atomic on-chain redeem.** Note that this is independent of delivery timing — the resource itself may still be delivered later via the negotiated fulfillment channel.
 
 ## 5. Validation rules (server side, before forwarding to the facilitator)
 
@@ -275,7 +275,7 @@ For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomica
 10. For `tokenAuthStrategy = "permit"`: `tokenAuth.data.value === requirements.amount`, `tokenAuth.data.spender === requirements.escrowAddress`, `tokenAuth.data.deadline − now ≤ requirements.maxTimeoutSeconds`.
 11. For `tokenAuthStrategy = "permit2"`: `tokenAuth.data.permitted.amount === requirements.amount`, `tokenAuth.data.permitted.token === requirements.asset`, `tokenAuth.data.spender === requirements.escrowAddress`, `tokenAuth.data.deadline − now ≤ requirements.maxTimeoutSeconds`.
 12. For `tokenAuthStrategy = "none"`: server SHOULD pre-flight `IERC20.allowance(buyer, diamond) ≥ amount` and reject early on insufficient allowance.
-13. If `requirements.delivery.required`, `payload.delivery.option ∈ requirements.delivery.options[].id` and `payload.delivery.data` validates against the chosen option's `schema`.
+13. If `requirements.fulfillment.required`, `payload.fulfillment.option ∈ requirements.fulfillment.options[].id` and `payload.fulfillment.data` validates against the chosen option's `schema`.
 
 A failure on any rule returns `400` with a structured `{ code, field, expected, got }` body. The server does **not** consult the facilitator until §1–§13 pass.
 
