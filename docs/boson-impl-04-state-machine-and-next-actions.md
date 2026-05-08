@@ -11,35 +11,52 @@ x402B is more than a single round-trip. After commit, the buyer can redeem, rais
 
 The fix: every server response carries a top-level `nextActions` envelope listing the legal transitions from the current exchange state and **every channel through which the buyer can invoke each transition** — server endpoint, facilitator, on-chain direct, MCP, XMTP, etc. The client picks any. If one channel fails, the client falls back to the next.
 
-## Exchange state machine (Boson protocol, v2.5+)
+## State machines (Boson protocol, v2.5+)
+
+The protocol uses **two separate state machines**, mirrored in `@bosonprotocol/x402-core/state-machine`:
+
+- **`ExchangeState`** — every exchange's lifecycle. Six values, sourced verbatim from `@bosonprotocol/core-sdk`'s subgraph schema: `COMMITTED`, `REDEEMED`, `COMPLETED`, `DISPUTED`, `CANCELLED`, `REVOKED`. Plus the synthetic `PRE_COMMIT` marker for the initial 402 (no exchange yet) and the subgraph-derived `EXPIRED` virtual state (a `COMMITTED` exchange whose voucher is past its `validUntil`).
+- **`DisputeState`** — only present once `raiseDispute` has been called. Six values, also from core-sdk: `RESOLVING`, `RESOLVED`, `ESCALATED`, `RETRACTED`, `DECIDED`, `REFUSED`. The exchange itself stays in `DISPUTED` for the duration; the dispute entity transitions independently.
+
+Buyer-facing client state is the composite `(exchange, dispute?)`. The SDK looks up legal actions from this composite key; see §"Action IDs" below.
+
+### Exchange state machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> COMMITTED: commitToOffer
-    COMMITTED --> REDEEMED: redeemVoucher
-    COMMITTED --> CANCELED: cancelVoucher (buyer)
-    COMMITTED --> REVOKED: revokeVoucher (seller)
+    [*] --> COMMITTED: createOfferAndCommit
+    [*] --> REDEEMED: createOfferCommitAndRedeem
+    COMMITTED --> REDEEMED: redeem
+    COMMITTED --> CANCELLED: cancelVoucher
+    COMMITTED --> REVOKED: revokeVoucher
     COMMITTED --> EXPIRED: voucher expiry
     REDEEMED --> COMPLETED: completeExchange or auto-timeout
     REDEEMED --> DISPUTED: raiseDispute
-    DISPUTED --> RESOLVED: resolveDispute (mutual)
-    DISPUTED --> ESCALATED: escalateDispute
-    DISPUTED --> RETRACTED: retractDispute or expireDispute
-    ESCALATED --> DECIDED: decideDispute (resolver)
-    ESCALATED --> REFUSED: refuseEscalatedDispute
-    ESCALATED --> EXPIRED_ESC: expireEscalatedDispute
     COMPLETED --> [*]
-    CANCELED --> [*]
+    CANCELLED --> [*]
     REVOKED --> [*]
     EXPIRED --> [*]
-    RESOLVED --> [*]
-    DECIDED --> [*]
-    REFUSED --> [*]
-    EXPIRED_ESC --> [*]
-    RETRACTED --> [*]
+    DISPUTED --> [*]: dispute settled (see Dispute state machine)
 ```
 
-For each *non-terminal* state, the SDK derives the legal next actions from this graph. The 402 itself targets the implicit "pre-commit" state and offers `createOfferAndCommit` / `createOfferCommitAndRedeem`.
+### Dispute state machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> RESOLVING: raiseDispute
+    RESOLVING --> RESOLVED: resolveDispute (mutual)
+    RESOLVING --> ESCALATED: escalateDispute
+    RESOLVING --> RETRACTED: retractDispute or expireDispute
+    ESCALATED --> DECIDED: decideDispute (resolver)
+    ESCALATED --> REFUSED: refuseEscalatedDispute
+    ESCALATED --> RETRACTED: expireEscalatedDispute
+    RESOLVED --> [*]
+    RETRACTED --> [*]
+    DECIDED --> [*]
+    REFUSED --> [*]
+```
+
+For each non-terminal `(exchange, dispute?)` pair, the SDK derives the legal next actions from these graphs. The 402 itself targets the synthetic `PRE_COMMIT` state and offers `createOfferAndCommit` / `createOfferCommitAndRedeem` (and, in a future release, `commitToConditionalOffer` / `commitToConditionalOfferAndRedeemVoucher`).
 
 ## `nextActions` envelope
 
@@ -48,7 +65,8 @@ Every server response (the initial 402, the 200 after commit, the 200 after rede
 ```jsonc
 "nextActions": {
   "exchangeId": "12345",                  // omitted on the initial 402
-  "state": "REDEEMED",                    // omitted on the initial 402
+  "state": "REDEEMED",                    // ExchangeState; omitted on the initial 402
+  "disputeState": "RESOLVING",            // DisputeState; present iff state === "DISPUTED"
   "next": [
     {
       "id": "boson-completeExchange",
@@ -67,8 +85,8 @@ Every server response (the initial 402, the 200 after commit, the 200 after rede
     "xmtp": "0xSellerXMTP...",
     "mcp":  "boson://seller/12345",
     "onchainHints": {
-      "diamond":   "0xDiamond...",
-      "facet":     "ExchangeHandlerFacet",  // varies per action
+      "escrow":           "0xEscrow...",
+      "facet":            "ExchangeHandlerFacet",  // varies per action
       "metaTxFacet":      "MetaTransactionsHandlerFacet",
       "metaTxEntrypoint": "executeMetaTransactionWithTokenTransferAuthorization"
     }
@@ -80,23 +98,37 @@ The envelope sits at the top level of the JSON response body. For the initial 40
 
 ## Action IDs
 
-Stable string identifiers, one per legal transition. All Boson-specific ids carry the `boson-` prefix so the `escrow` scheme can later host other escrow implementations (e.g. `coinbase-…`) without collision.
+Stable string identifiers, one per legal transition that either party (buyer or seller) can invoke. All Boson-specific ids carry the `boson-` prefix so the `escrow` scheme can later host other escrow implementations (e.g. `coinbase-…`) without collision.
 
-| Action ID | Boson primitive | Pre-state | Post-state |
-|---|---|---|---|
-| `boson-createOfferAndCommit` | `ExchangeCommitFacet.createOfferAndCommit` (deferred) | (none) | COMMITTED |
-| `boson-createOfferCommitAndRedeem` | `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (atomic on-chain redeem) | (none) | REDEEMED |
-| `boson-redeem` | `redeemVoucher` | COMMITTED | REDEEMED |
-| `boson-cancelVoucher` | `cancelVoucher` | COMMITTED | CANCELED |
-| `boson-revokeVoucher` | `revokeVoucher` | COMMITTED | REVOKED |
-| `boson-completeExchange` | `completeExchange` | REDEEMED | COMPLETED |
-| `boson-raiseDispute` | `raiseDispute` | REDEEMED | DISPUTED |
-| `boson-resolveDispute` | `resolveDispute` | DISPUTED | RESOLVED |
-| `boson-escalateDispute` | `escalateDispute` | DISPUTED | ESCALATED |
-| `boson-retractDispute` | `retractDispute` | DISPUTED | RETRACTED |
-| `boson-decideDispute` | `decideDispute` | ESCALATED | DECIDED |
+`Side` distinguishes who can invoke each action. `Pre` and `Post` are the `(exchange[, dispute])` state before/after the action — empty exchange means the synthetic `PRE_COMMIT` state, empty dispute means no dispute is active.
 
-The list lives in `@bosonprotocol/x402-actions` as a single source of truth. The state machine derives `next[]` from the action table; servers never hand-code transitions. Clients that don't recognise an action's prefix MUST skip it rather than try to dispatch.
+| Action ID | Boson primitive | Side | Pre | Post |
+|---|---|---|---|---|
+| `boson-createOfferAndCommit` | `ExchangeCommitFacet.createOfferAndCommit` (deferred) | client | `PRE_COMMIT` | `(COMMITTED)` |
+| `boson-createOfferCommitAndRedeem` | `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (atomic on-chain redeem) | client | `PRE_COMMIT` | `(REDEEMED)` |
+| `boson-redeem` | `redeemVoucher` | client | `(COMMITTED)` | `(REDEEMED)` |
+| `boson-cancelVoucher` | `cancelVoucher` | client | `(COMMITTED)` | `(CANCELLED)` |
+| `boson-revokeVoucher` | `revokeVoucher` | server | `(COMMITTED)` | `(REVOKED)` |
+| `boson-completeExchange` | `completeExchange` | client | `(REDEEMED)` | `(COMPLETED)` |
+| `boson-raiseDispute` | `raiseDispute` | client | `(REDEEMED)` | `(DISPUTED, RESOLVING)` |
+| `boson-resolveDispute` | `resolveDispute` | mutual | `(DISPUTED, RESOLVING)` | `(DISPUTED, RESOLVED)` |
+| `boson-escalateDispute` | `escalateDispute` | client | `(DISPUTED, RESOLVING)` | `(DISPUTED, ESCALATED)` |
+| `boson-retractDispute` | `retractDispute` | client | `(DISPUTED, RESOLVING)` | `(DISPUTED, RETRACTED)` |
+
+The action-id list and the two transition tables live in `@bosonprotocol/x402-core/state-machine` as a single source of truth. `@bosonprotocol/x402-actions` derives `next[]` from those tables at runtime; servers never hand-code transitions. Clients that don't recognise an action's prefix MUST skip it rather than try to dispatch.
+
+**Out of scope for `nextActions`:**
+
+- Dispute-resolver-only transitions (`decideDispute`, `refuseEscalatedDispute`) are protocol-level state changes but not buyer/seller-invokable, so they have no `boson-*` action id.
+- Time-based transitions (voucher expiry, dispute timeout, escalation timeout) require no signer and are also not exposed as actions.
+
+**Future additions** (tracked but not yet listed):
+
+- `boson-commitToOffer` — commits to an existing offer (no fresh offer creation). Adds `(COMMITTED)` as a post-state from `PRE_COMMIT` alongside `createOfferAndCommit`.
+- `boson-commitToConditionalOffer` — commits to an existing offer that gates entry on a token-holding condition. Same post-state as `commitToOffer`.
+- `boson-commitToConditionalOfferAndRedeemVoucher` — the atomic commit-and-redeem variant for conditional offers, parallel to `createOfferCommitAndRedeem`.
+
+These will land once the corresponding Boson Diamond facets stabilize.
 
 ## Channels
 
@@ -143,7 +175,7 @@ const nextActions = deriveNextActions(exchange, {
 });
 ```
 
-`deriveNextActions` reads exchange.state, looks up legal transitions, applies dispute window math (`deadline`), and stamps each entry with the configured channels.
+`deriveNextActions` reads the composite `(exchange.state, dispute?.state)` from the exchange, calls `clientLegalActions(...)` from `@bosonprotocol/x402-core/state-machine` to look up the buyer-invokable transitions, applies dispute-window math to compute each `deadline`, and stamps each entry with the configured channels. A parallel `serverLegalActions(...)` lookup gives the seller-side SDK the counterparty actions it can invoke (e.g. `revokeVoucher` while `(COMMITTED)`, `resolveDispute` while `(DISPUTED, RESOLVING)`).
 
 ## Client-side execution
 
@@ -167,5 +199,6 @@ The action-id table and channel registry are versioned with the SDK. New actions
 ## Open items
 
 - **Deadlines:** absolute ISO timestamps in `deadline` are computed from on-chain durations + commit timestamp. Clock skew tolerance: 30s.
-- **Multi-action atomicity:** for `resolveDispute`, both buyer and seller must sign. The envelope advertises the action; the helper coordinates the dual-signature collection out of band. Specced separately.
+- **Multi-action atomicity:** for `resolveDispute`, both buyer and seller must sign. The envelope advertises the action on both `client` and `server` sides; the helper coordinates the dual-signature collection out of band. Specced separately.
 - **Per-channel priority hints from the seller** (e.g. "prefer my MCP over my server"): considered, deferred to v2.
+- **Subgraph-derived virtual states:** `EXPIRED` and `NOT REDEEMABLE YET` are surfaced by `@bosonprotocol/core-sdk`'s `getExchangeState` helper but aren't on-chain enum values. The state machine model treats `EXPIRED` as a terminal exchange state; `NOT REDEEMABLE YET` is just a `COMMITTED` exchange before its `voucherRedeemableFrom` and offers no different transitions.
