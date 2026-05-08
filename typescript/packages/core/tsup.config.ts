@@ -3,7 +3,7 @@ import { defineConfig } from "tsup";
 // Dual CJS + ESM build with type declarations. Each public subpath of the
 // package gets its own entry so consumers resolving e.g.
 // `@bosonprotocol/x402-core/eip712` get a separate file per format.
-const entry = ["src/index.ts", "src/eip712/index.ts"];
+const entry = ["src/index.ts", "src/eip712/index.ts", "src/eip712/token-auth/index.ts"];
 
 export default defineConfig([
   {
