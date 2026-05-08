@@ -37,7 +37,7 @@ describe("erc3009 typed-data", () => {
     expect(td.primaryType).toBe("ReceiveWithAuthorization");
   });
 
-  it("reuses the field list from @x402/evm authorizationTypes", () => {
+  it("defines the canonical ERC-3009 ReceiveWithAuthorization field order and types", () => {
     const fields = ERC3009_TYPES.ReceiveWithAuthorization;
     expect(fields.map((f) => f.name)).toEqual([
       "from",

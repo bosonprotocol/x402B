@@ -49,7 +49,7 @@ describe("permit2 typed-data", () => {
     ]);
   });
 
-  it("reuses TokenPermissions from @x402/evm permit2WitnessTypes", () => {
+  it("uses the canonical Permit2 TokenPermissions shape", () => {
     expect(PERMIT2_TYPES.TokenPermissions.map((f) => f.name)).toEqual(["token", "amount"]);
     expect(PERMIT2_TYPES.TokenPermissions.map((f) => f.type)).toEqual(["address", "uint256"]);
   });

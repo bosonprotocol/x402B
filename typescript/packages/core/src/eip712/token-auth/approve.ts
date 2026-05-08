@@ -1,7 +1,7 @@
 // Helper for the `tokenAuthStrategy: "none"` flow (per
 // docs/boson-impl-01-escrow-scheme.md §4.3): the buyer must pre-approve
-// the Boson escrow contract to spend `value` of `token` via the standard
-// ERC-20 `approve(spender, value)` call.
+// the Boson escrow contract to spend `amount` of `token` via the standard
+// ERC-20 `approve(spender, amount)` call.
 //
 // No EIP-712 typed-data is signed for this strategy; the buyer instead
 // sends a regular ERC-20 transaction. This module just builds the calldata

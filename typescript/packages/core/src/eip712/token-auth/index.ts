@@ -2,11 +2,12 @@
 // Boson escrow accepts. See docs/boson-impl-01-escrow-scheme.md §4.3.
 //
 // Each strategy file holds a viem-compatible typed-data builder, a hash
-// helper, and a signer-recovery helper. Type definitions are reused from
-// `@x402/evm/exact/client` wherever the published package exposes them
-// (the ERC-3009 field list and the Permit2 `TokenPermissions` substruct);
-// the rest is hand-mirrored to match the canonical EIP-2612 Permit and
-// the no-witness Permit2 `PermitTransferFrom` shapes the protocol expects.
+// helper, and a signer-recovery helper. In this folder, the EIP-712
+// structs are hand-mirrored to match the canonical ERC-3009, EIP-2612
+// Permit, and no-witness Permit2 `PermitTransferFrom` shapes the protocol
+// expects. From `@x402/evm/exact/client`, we currently reuse only the
+// Permit2 helpers `createPermit2ApprovalTx` and
+// `getPermit2AllowanceReadParams`.
 
 export * from "./erc3009.js";
 export * from "./permit.js";
