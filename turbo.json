@@ -14,7 +14,7 @@
     },
     "lint": {
       "dependsOn": ["^lint"],
-      "inputs": ["src/**", "test/**", ".eslintrc*", "eslint.config.*", "package.json"],
+      "inputs": ["src/**", "test/**", "eslint.config.*", "package.json"],
       "outputs": []
     },
     "clean": {
