@@ -13,9 +13,9 @@ The fix: every server response carries a top-level `nextActions` envelope listin
 
 ## State machines (Boson protocol, v2.5+)
 
-The protocol uses **two separate state machines**, mirrored in `@bosonprotocol/x402-core/state-machine`:
+The protocol uses **two separate state machines**. Their canonical enum states are exposed via `@bosonprotocol/x402-core/state-machine`; this spec also describes a small number of buyer-facing **derived/virtual** states used for UX and action derivation:
 
-- **`ExchangeState`** — every exchange's lifecycle. Six values, sourced verbatim from `@bosonprotocol/core-sdk`'s subgraph schema: `COMMITTED`, `REDEEMED`, `COMPLETED`, `DISPUTED`, `CANCELLED`, `REVOKED`. Plus the synthetic `PRE_COMMIT` marker for the initial 402 (no exchange yet) and the subgraph-derived `EXPIRED` virtual state (a `COMMITTED` exchange whose voucher is past its `validUntil`).
+- **`ExchangeState`** — every exchange's lifecycle. Six values, sourced verbatim from `@bosonprotocol/core-sdk`'s subgraph schema: `COMMITTED`, `REDEEMED`, `COMPLETED`, `DISPUTED`, `CANCELLED`, `REVOKED`. The state-machine module also defines the synthetic `PRE_COMMIT` marker for the initial 402 (no exchange yet). This spec additionally refers to the subgraph-derived `EXPIRED` virtual state (a `COMMITTED` exchange whose voucher is past its `validUntil`), but `EXPIRED` is **not** currently represented as an exported enum/state in `@bosonprotocol/x402-core/state-machine`.
 - **`DisputeState`** — only present once `raiseDispute` has been called. Six values, also from core-sdk: `RESOLVING`, `RESOLVED`, `ESCALATED`, `RETRACTED`, `DECIDED`, `REFUSED`. The exchange itself stays in `DISPUTED` for the duration; the dispute entity transitions independently.
 
 Buyer-facing client state is the composite `(exchange, dispute?)`. The SDK looks up legal actions from this composite key; see §"Action IDs" below.
