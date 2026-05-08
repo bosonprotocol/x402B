@@ -10,6 +10,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Opt JS-action runtimes onto Node 24 ahead of GitHub's June 2026 forced
+# migration so checkout/setup-node/etc. don't print Node-20 deprecation
+# warnings on every run.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build-test-lint:
     name: build / test / lint (node ${{ matrix.node }})
