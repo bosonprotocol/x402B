@@ -1,9 +1,14 @@
 import { defineConfig } from "tsup";
 
-// Dual CJS + ESM build with type declarations. Each public subpath of the
-// package gets its own entry so consumers resolving e.g.
-// `@bosonprotocol/x402-core/eip712` get a separate file per format.
-const entry = ["src/index.ts", "src/eip712/index.ts"];
+// Dual CJS + ESM build with type declarations.
+//
+// `entry` globs every `index.ts` under `src/`, including the root
+// `src/index.ts`, so any subpath under `src/<subdir>/index.ts` builds as
+// `@bosonprotocol/x402-core/<subdir>` without further config changes. JSON
+// schemas under `src/**/schemas/*.json` are copied flat into
+// `dist/schemas/` by the `postbuild` step chained from package.json's
+// `build` script.
+const entry = ["src/**/index.ts"];
 
 export default defineConfig([
   {
