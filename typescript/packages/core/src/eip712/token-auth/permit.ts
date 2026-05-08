@@ -6,13 +6,9 @@
 //   Permit(address owner, address spender, uint256 value, uint256 nonce, uint256 deadline)
 // which is identical across every well-implemented EIP-2612 token.
 
-import {
-  hashTypedData,
-  recoverTypedDataAddress,
-  type Address,
-  type Hex,
-  type TypedDataDomain,
-} from "viem";
+import { hashTypedData, recoverTypedDataAddress, type Address, type Hex } from "viem";
+
+import type { TokenEip712Domain } from "./domain.js";
 
 export const PERMIT_TYPES = {
   Permit: [
@@ -37,15 +33,16 @@ export interface PermitMessage {
 
 export interface PermitTypedDataArgs {
   /**
-   * The token contract's own EIP-712 domain. EIP-2612 prescribes
-   * `{ name, version, chainId, verifyingContract: tokenAddress }`.
+   * The token contract's own EIP-712 domain. EIP-2612 requires
+   * `{ name, version, chainId, verifyingContract }` to produce the
+   * digest the token recovers on-chain — see {@link TokenEip712Domain}.
    */
-  domain: TypedDataDomain;
+  domain: TokenEip712Domain;
   message: PermitMessage;
 }
 
 export interface PermitTypedData {
-  domain: TypedDataDomain;
+  domain: TokenEip712Domain;
   types: typeof PERMIT_TYPES;
   primaryType: typeof PERMIT_PRIMARY_TYPE;
   message: PermitMessage;

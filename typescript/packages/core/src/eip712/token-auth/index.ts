@@ -9,6 +9,7 @@
 // Permit2 helpers `createPermit2ApprovalTx` and
 // `getPermit2AllowanceReadParams`.
 
+export * from "./domain.js";
 export * from "./erc3009.js";
 export * from "./permit.js";
 export * from "./permit2.js";

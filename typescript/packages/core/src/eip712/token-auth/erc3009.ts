@@ -11,13 +11,9 @@
 // `authorizationTypes.TransferWithAuthorization` but does NOT publicly export
 // it from `@x402/evm/exact/client`, so we hand-mirror the standard.
 
-import {
-  hashTypedData,
-  recoverTypedDataAddress,
-  type Address,
-  type Hex,
-  type TypedDataDomain,
-} from "viem";
+import { hashTypedData, recoverTypedDataAddress, type Address, type Hex } from "viem";
+
+import type { TokenEip712Domain } from "./domain.js";
 
 /** EIP-712 type definition, keyed under the Boson-side primary type. */
 export const ERC3009_TYPES = {
@@ -45,17 +41,16 @@ export interface Erc3009Message {
 
 export interface Erc3009TypedDataArgs {
   /**
-   * The token contract's own EIP-712 domain — typically
-   * `{ name, version, chainId, verifyingContract: tokenAddress }` where
-   * `name` and `version` come from the token's `EIP712Domain` (e.g.
-   * `{ name: "USD Coin", version: "2" }` for USDC).
+   * The token contract's own EIP-712 domain. ERC-3009 requires
+   * `{ name, version, chainId, verifyingContract }` to match what the
+   * token recovers on-chain — see {@link TokenEip712Domain}.
    */
-  domain: TypedDataDomain;
+  domain: TokenEip712Domain;
   message: Erc3009Message;
 }
 
 export interface Erc3009TypedData {
-  domain: TypedDataDomain;
+  domain: TokenEip712Domain;
   types: typeof ERC3009_TYPES;
   primaryType: typeof ERC3009_PRIMARY_TYPE;
   message: Erc3009Message;

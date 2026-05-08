@@ -38,7 +38,13 @@
       "types": "./dist/cjs/eip712/token-auth/index.d.ts",
       "import": "./dist/esm/eip712/token-auth/index.js",
       "require": "./dist/cjs/eip712/token-auth/index.js"
-    }
+    },
+    "./schemes/escrow": {
+      "types": "./dist/cjs/schemes/escrow/index.d.ts",
+      "import": "./dist/esm/schemes/escrow/index.js",
+      "require": "./dist/cjs/schemes/escrow/index.js"
+    },
+    "./schemas/*": "./dist/schemas/*"
   },
   "files": [
     "dist",
@@ -49,7 +55,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/postbuild.mjs",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint src --max-warnings 0",
     "clean": "rm -rf dist .turbo"
@@ -65,6 +71,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.17.10",
+    "ajv": "^8.17.1",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
