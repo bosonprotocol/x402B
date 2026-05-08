@@ -98,8 +98,13 @@ export interface BosonMetaTx {
   /** Decimal string. */
   nonce: string;
   functionName: string;
-  /** ABI-encoded function args as a `0x`-prefixed hex string. */
-  functionArgs: Hex;
+  /**
+   * ABI-encoded function-call data as a `0x`-prefixed hex string. Named
+   * `functionSignature` to match the on-chain `MetaTransactionsHandlerFacet`
+   * struct field — the value is the encoded calldata, not just the function
+   * selector.
+   */
+  functionSignature: Hex;
   sig: { v: number; r: Hex; s: Hex };
 }
 

@@ -35,7 +35,7 @@ const metaTxSchema = z
     from: addressSchema,
     nonce: decimalUintSchema,
     functionName: z.string().min(1),
-    functionArgs: hexBytesSchema,
+    functionSignature: hexBytesSchema,
     sig: sigSchema,
   })
   .strict();

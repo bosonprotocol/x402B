@@ -25,12 +25,12 @@
     "metaTx": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["from", "nonce", "functionName", "functionArgs", "sig"],
+      "required": ["from", "nonce", "functionName", "functionSignature", "sig"],
       "properties": {
         "from": { "$ref": "#/definitions/address" },
         "nonce": { "$ref": "#/definitions/decimalUint" },
         "functionName": { "type": "string", "minLength": 1 },
-        "functionArgs": { "$ref": "#/definitions/hexBytes" },
+        "functionSignature": { "$ref": "#/definitions/hexBytes" },
         "sig": { "$ref": "#/definitions/sig" }
       }
     },

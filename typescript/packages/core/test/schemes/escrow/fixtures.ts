@@ -79,7 +79,7 @@ const baseInner = {
     from: BUYER,
     nonce: "0",
     functionName: "createOfferCommitAndRedeem(...)",
-    functionArgs: "0xabcd1234",
+    functionSignature: "0xabcd1234",
     sig: { v: 27, r: HEX64_R, s: HEX64_S },
   },
 } as const;
