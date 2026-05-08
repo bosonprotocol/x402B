@@ -44,7 +44,12 @@
       "import": "./dist/esm/schemes/escrow/index.js",
       "require": "./dist/cjs/schemes/escrow/index.js"
     },
-    "./schemas/*": "./dist/schemas/*"
+    "./schemas/*": "./dist/schemas/*",
+    "./state-machine": {
+      "types": "./dist/cjs/state-machine/index.d.ts",
+      "import": "./dist/esm/state-machine/index.js",
+      "require": "./dist/cjs/state-machine/index.js"
+    }
   },
   "files": [
     "dist",
