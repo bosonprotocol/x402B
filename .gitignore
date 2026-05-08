@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# turbo
+.turbo/
+
+# test/coverage
+coverage/
+.nyc_output/
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# logs / env
+*.log
+.env
+.env.local
+.env.*.local
+
+# misc
+.pnpm-store/

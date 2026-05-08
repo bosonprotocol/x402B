@@ -51,14 +51,14 @@ This repo implements the [`x402-escrow-schema`](https://github.com/bosonprotocol
 
 | # | File | Status |
 |---|---|---|
-| 00 | [boson-impl-00-overview.md](./boson-impl-00-overview.md) | detailed |
-| 01 | [boson-impl-01-escrow-scheme.md](./boson-impl-01-escrow-scheme.md) | detailed — wire format source of truth |
-| 02 | [boson-impl-02-flows.md](./boson-impl-02-flows.md) | detailed — sequence diagrams |
-| 03 | [boson-impl-03-fulfillment-channels.md](./boson-impl-03-fulfillment-channels.md) | detailed — pluggable fulfillment channels |
-| 04 | [boson-impl-04-state-machine-and-next-actions.md](./boson-impl-04-state-machine-and-next-actions.md) | detailed — self-describing responses |
-| 05 | [boson-impl-05-server-sdk.md](./boson-impl-05-server-sdk.md) | stub |
-| 06 | [boson-impl-06-client-sdk.md](./boson-impl-06-client-sdk.md) | stub |
-| 07 | [boson-impl-07-facilitator.md](./boson-impl-07-facilitator.md) | stub |
-| 08 | [boson-impl-08-agent-mode.md](./boson-impl-08-agent-mode.md) | stub |
-| 09 | [boson-impl-09-seller-metadata.md](./boson-impl-09-seller-metadata.md) | stub |
+| 00 | [boson-impl-00-overview.md](./docs/boson-impl-00-overview.md) | detailed |
+| 01 | [boson-impl-01-escrow-scheme.md](./docs/boson-impl-01-escrow-scheme.md) | detailed — wire format source of truth |
+| 02 | [boson-impl-02-flows.md](./docs/boson-impl-02-flows.md) | detailed — sequence diagrams |
+| 03 | [boson-impl-03-fulfillment-channels.md](./docs/boson-impl-03-fulfillment-channels.md) | detailed — pluggable fulfillment channels |
+| 04 | [boson-impl-04-state-machine-and-next-actions.md](./docs/boson-impl-04-state-machine-and-next-actions.md) | detailed — self-describing responses |
+| 05 | [boson-impl-05-server-sdk.md](./docs/boson-impl-05-server-sdk.md) | stub |
+| 06 | [boson-impl-06-client-sdk.md](./docs/boson-impl-06-client-sdk.md) | stub |
+| 07 | [boson-impl-07-facilitator.md](./docs/boson-impl-07-facilitator.md) | stub |
+| 08 | [boson-impl-08-agent-mode.md](./docs/boson-impl-08-agent-mode.md) | stub |
+| 09 | [boson-impl-09-seller-metadata.md](./docs/boson-impl-09-seller-metadata.md) | stub |
 
