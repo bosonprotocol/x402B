@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bosonprotocol.io/schemas/x402-core/payment_requirements.schema.json",
+  "title": "x402B escrow PaymentRequirements",
+  "description": "Wire-format PaymentRequirements for the `escrow` scheme. Source: docs/boson-impl-01-escrow-scheme.md §2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scheme",
+    "network",
+    "asset",
+    "amount",
+    "escrowAddress",
+    "recipientId",
+    "maxTimeoutSeconds",
+    "offer",
+    "tokenAuthStrategies",
+    "actions"
+  ],
+  "properties": {
+    "scheme": { "const": "escrow" },
+    "network": { "type": "string", "pattern": "^eip155:[1-9][0-9]*$" },
+    "asset": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+    "amount": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+    "escrowAddress": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+    "recipientId": { "type": "string", "minLength": 1 },
+    "maxTimeoutSeconds": { "type": "integer", "minimum": 1 },
+    "offer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fullOffer", "sellerSig", "creator"],
+      "properties": {
+        "fullOffer": { "type": "object" },
+        "sellerSig": { "type": "string", "pattern": "^0x[a-fA-F0-9]+$" },
+        "creator": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" }
+      }
+    },
+    "tokenAuthStrategies": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["none", "erc3009", "permit", "permit2"] }
+    },
+    "fulfillment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "options"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "schema"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "schema": {
+                "oneOf": [{ "type": "object" }, { "type": "null" }]
+              }
+            }
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["next"],
+      "properties": {
+        "next": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "channels"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "channels": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": ["server", "facilitator", "onchain", "mcp", "xmtp"]
+                }
+              },
+              "endpoints": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              }
+            }
+          }
+        },
+        "fallback": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "xmtp": { "type": "string" },
+            "mcp": { "type": "string" },
+            "onchainHints": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["escrow", "metaTxFacet", "metaTxEntrypoint", "actionFacets"],
+              "properties": {
+                "escrow": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+                "metaTxFacet": { "type": "string", "minLength": 1 },
+                "metaTxEntrypoint": { "type": "string", "minLength": 1 },
+                "actionFacets": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
