@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+.turbo/
+coverage/
+pnpm-lock.yaml
+
+# Markdown is content (spec docs, READMEs) — don't auto-reformat.
+*.md
