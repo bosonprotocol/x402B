@@ -51,7 +51,10 @@ const actionsSchema = z
             id: z.string().min(1),
             channels: z
               .array(z.enum(ACTION_CHANNELS as readonly [ActionChannel, ...ActionChannel[]]))
-              .min(1),
+              .min(1)
+              .refine((channels) => new Set(channels).size === channels.length, {
+                message: "channels must contain unique items",
+              }),
             endpoints: z.record(z.string()).optional(),
           })
           .strict(),
@@ -109,7 +112,12 @@ export const escrowPaymentRequirementsSchema = z
     recipientId: z.string().min(1),
     maxTimeoutSeconds: z.number().int().positive(),
     offer: offerRefSchema,
-    tokenAuthStrategies: z.array(tokenAuthStrategySchema).min(1),
+    tokenAuthStrategies: z
+      .array(tokenAuthStrategySchema)
+      .min(1)
+      .refine((strategies) => new Set(strategies).size === strategies.length, {
+        message: "tokenAuthStrategies must not contain duplicates",
+      }),
     fulfillment: fulfillmentSchema.optional(),
     actions: actionsSchema,
   })
