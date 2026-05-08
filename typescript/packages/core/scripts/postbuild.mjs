@@ -8,7 +8,7 @@
 //    subtree under the correct module dialect without a
 //    MODULE_TYPELESS_PACKAGE_JSON warning at consume time.
 
-import { readdir, mkdir, copyFile, writeFile } from "node:fs/promises";
+import { readdir, mkdir, rm, copyFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +26,9 @@ async function* walk(dir) {
   }
 }
 
+// Wipe `dist/schemas/` first so renamed or removed source schemas don't
+// leak into published tarballs.
+await rm(schemasRoot, { recursive: true, force: true });
 await mkdir(schemasRoot, { recursive: true });
 
 let schemaCount = 0;
