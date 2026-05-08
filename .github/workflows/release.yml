@@ -1,12 +1,16 @@
 name: Release
 
+# Disabled until the @bosonprotocol/x402-* packages are ready to publish.
+# Re-enable by restoring the `push: branches: [main]` trigger below.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   release:
