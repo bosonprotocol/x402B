@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bosonprotocol.io/schemas/x402-core/payment_payload.schema.json",
+  "title": "x402B escrow PaymentPayload",
+  "description": "Wire-format PaymentPayload for the `escrow` scheme (carried base64-encoded in the `X-PAYMENT` header). Source: docs/boson-impl-01-escrow-scheme.md §3.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["x402Version", "scheme", "network", "payload"],
+  "definitions": {
+    "address": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+    "hex": { "type": "string", "pattern": "^0x[a-fA-F0-9]+$" },
+    "hexBytes": { "type": "string", "pattern": "^0x[a-fA-F0-9]*$" },
+    "hex32": { "type": "string", "pattern": "^0x[a-fA-F0-9]{64}$" },
+    "decimalUint": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+    "sig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "r", "s"],
+      "properties": {
+        "v": { "type": "integer" },
+        "r": { "$ref": "#/definitions/hex32" },
+        "s": { "$ref": "#/definitions/hex32" }
+      }
+    },
+    "metaTx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "nonce", "functionName", "functionArgs", "sig"],
+      "properties": {
+        "from": { "$ref": "#/definitions/address" },
+        "nonce": { "$ref": "#/definitions/decimalUint" },
+        "functionName": { "type": "string", "minLength": 1 },
+        "functionArgs": { "$ref": "#/definitions/hexBytes" },
+        "sig": { "$ref": "#/definitions/sig" }
+      }
+    },
+    "erc3009Auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "data"],
+      "properties": {
+        "kind": { "const": "erc3009" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to", "value", "validAfter", "validBefore", "nonce", "v", "r", "s"],
+          "properties": {
+            "from": { "$ref": "#/definitions/address" },
+            "to": { "$ref": "#/definitions/address" },
+            "value": { "$ref": "#/definitions/decimalUint" },
+            "validAfter": { "type": "integer", "minimum": 0 },
+            "validBefore": { "type": "integer", "minimum": 0 },
+            "nonce": { "$ref": "#/definitions/hex32" },
+            "v": { "type": "integer" },
+            "r": { "$ref": "#/definitions/hex32" },
+            "s": { "$ref": "#/definitions/hex32" }
+          }
+        }
+      }
+    },
+    "permitAuth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "data"],
+      "properties": {
+        "kind": { "const": "permit" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["owner", "spender", "value", "deadline", "nonce", "v", "r", "s"],
+          "properties": {
+            "owner": { "$ref": "#/definitions/address" },
+            "spender": { "$ref": "#/definitions/address" },
+            "value": { "$ref": "#/definitions/decimalUint" },
+            "deadline": { "type": "integer", "minimum": 0 },
+            "nonce": { "$ref": "#/definitions/decimalUint" },
+            "v": { "type": "integer" },
+            "r": { "$ref": "#/definitions/hex32" },
+            "s": { "$ref": "#/definitions/hex32" }
+          }
+        }
+      }
+    },
+    "permit2Auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "data"],
+      "properties": {
+        "kind": { "const": "permit2" },
+        "data": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["permitted", "spender", "nonce", "deadline", "signature"],
+          "properties": {
+            "permitted": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["token", "amount"],
+              "properties": {
+                "token": { "$ref": "#/definitions/address" },
+                "amount": { "$ref": "#/definitions/decimalUint" }
+              }
+            },
+            "spender": { "$ref": "#/definitions/address" },
+            "nonce": { "$ref": "#/definitions/decimalUint" },
+            "deadline": { "type": "integer", "minimum": 0 },
+            "signature": { "$ref": "#/definitions/hex" }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "x402Version": { "type": "integer" },
+    "scheme": { "const": "escrow" },
+    "network": { "type": "string", "pattern": "^eip155:[1-9][0-9]*$" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "tokenAuthStrategy", "offerRef", "buyer", "metaTx"],
+      "properties": {
+        "action": { "type": "string", "minLength": 1 },
+        "tokenAuthStrategy": { "enum": ["none", "erc3009", "permit", "permit2"] },
+        "offerRef": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fullOffer", "sellerSig"],
+          "properties": {
+            "fullOffer": { "type": "object" },
+            "sellerSig": { "$ref": "#/definitions/hex" }
+          }
+        },
+        "buyer": { "$ref": "#/definitions/address" },
+        "metaTx": { "$ref": "#/definitions/metaTx" },
+        "tokenAuth": {
+          "oneOf": [
+            { "$ref": "#/definitions/erc3009Auth" },
+            { "$ref": "#/definitions/permitAuth" },
+            { "$ref": "#/definitions/permit2Auth" }
+          ]
+        }
+      }
+    },
+    "fulfillment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["option", "data"],
+      "properties": {
+        "option": { "type": "string", "minLength": 1 },
+        "data": { "type": "object" }
+      }
+    }
+  }
+}

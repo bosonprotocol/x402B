@@ -1,12 +1,17 @@
 import { defineConfig } from "tsup";
 
 // Dual CJS + ESM build with type declarations.
-// JSON schemas under src/**/schemas/*.json are copied to dist/schemas/ so
-// consumers can resolve them via `@bosonprotocol/x402-core/schemas/<name>.json`
-// once schemas are added (PR 3).
+//
+// `entry` globs every `index.ts` under `src/` so any subpath under
+// `src/<subdir>/index.ts` builds as `@bosonprotocol/x402-core/<subdir>`
+// without further config changes. JSON schemas under
+// `src/**/schemas/*.json` are copied flat into `dist/schemas/` by the
+// `postbuild` step chained from package.json's `build` script.
+const entry = ["src/index.ts", "src/**/index.ts"];
+
 export default defineConfig([
   {
-    entry: ["src/index.ts"],
+    entry,
     format: "esm",
     outDir: "dist/esm",
     outExtension: () => ({ js: ".js" }),
@@ -17,7 +22,7 @@ export default defineConfig([
     treeshake: true,
   },
   {
-    entry: ["src/index.ts"],
+    entry,
     format: "cjs",
     outDir: "dist/cjs",
     outExtension: () => ({ js: ".js" }),
