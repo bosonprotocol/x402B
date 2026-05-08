@@ -1,7 +1,7 @@
 // EIP-712 typed-data builder for the Boson Protocol meta-transaction envelope.
 //
 // The MetaTransaction struct shape and the salt-flavor EIP-712 domain are
-// fully owned by `@bosonprotocol/core-sdk@1.46.1`'s
+// fully owned by `@bosonprotocol/core-sdk`'s
 // `metaTx.handler.signMetaTx`. Rather than re-declaring them here (and risking
 // drift), we route the signing call through a stub `Web3LibAdapter` that
 // intercepts `eth_signTypedData_v4` to capture the structured data, then

@@ -3,7 +3,7 @@
 // FullOffer's nested struct shape (Offer / OfferDates / OfferDurations /
 // DRParameters / Condition / RoyaltyInfo) is large and protocol-internal — it
 // can change as the contracts evolve. Rather than hand-mirroring it here,
-// this module wraps `@bosonprotocol/core-sdk@1.46.1`'s
+// this module wraps `@bosonprotocol/core-sdk`'s
 // `exchanges.handler.signFullOffer({..., returnTypedDataToSign: true})` and
 // re-exposes the typed-data through a viem-friendly hash + recover API.
 //
