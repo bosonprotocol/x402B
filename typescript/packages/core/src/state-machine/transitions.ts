@@ -1,13 +1,14 @@
 // Legal transitions per (exchange, dispute) state, split by invoker.
 //
 // Source of truth: docs/boson-impl-04-state-machine-and-next-actions.md.
-// Two separate tables:
+// Two separate tables, each listing the actions that the named party can
+// directly invoke:
 //
-//   - CLIENT — actions the buyer (the x402 client) can invoke. Drives the
-//     `nextActions` envelope on every server response to the buyer.
+//   - CLIENT — actions the buyer (the x402 client) can invoke. Drives
+//     the `nextActions` envelope on every server response to the buyer.
 //   - SERVER — actions the seller (the x402 resource server) can invoke.
-//     Used by the seller-side SDK to know what counterparty actions are
-//     legally available at each state.
+//     Used by the seller-side SDK to know which seller-invokable actions
+//     are legally available at the current state.
 //
 // `resolveDispute` is mutual — both parties' signatures are required — and
 // appears in BOTH tables: either side can initiate it once they hold the
@@ -76,9 +77,7 @@ function lookup(
   byDispute: DisputeTransitions,
 ): readonly ActionId[] {
   if (state === PRE_COMMIT) return byExchange[PRE_COMMIT];
-  if (state.exchange === ExchangeState.DISPUTED && state.dispute) {
-    return byDispute[state.dispute];
-  }
+  if (state.exchange === ExchangeState.DISPUTED) return byDispute[state.dispute];
   return byExchange[state.exchange];
 }
 

@@ -62,23 +62,30 @@ For each non-terminal `(exchange, dispute?)` pair, the SDK derives the legal nex
 
 Every server response (the initial 402, the 200 after commit, the 200 after redeem, after dispute, …) includes:
 
+Example for an exchange that is `DISPUTED` with a dispute in `RESOLVING` — the buyer can resolve, escalate, or retract:
+
 ```jsonc
 "nextActions": {
   "exchangeId": "12345",                  // omitted on the initial 402
-  "state": "REDEEMED",                    // ExchangeState; omitted on the initial 402
+  "state": "DISPUTED",                    // ExchangeState; omitted on the initial 402
   "disputeState": "RESOLVING",            // DisputeState; present iff state === "DISPUTED"
   "next": [
     {
-      "id": "boson-completeExchange",
+      "id": "boson-resolveDispute",
       "channels": ["server", "facilitator", "onchain", "mcp"],
-      "endpoints": { "server": "https://seller.example/x402B/complete" },
-      "deadline": "2026-05-11T00:00:00Z"  // optional, absolute
+      "endpoints": { "server": "https://seller.example/x402B/dispute/resolve" },
+      "deadline": "2026-05-15T00:00:00Z"  // optional, absolute — dispute resolution window
     },
     {
-      "id": "boson-raiseDispute",
+      "id": "boson-escalateDispute",
+      "channels": ["server", "facilitator", "onchain", "mcp"],
+      "endpoints": { "server": "https://seller.example/x402B/dispute/escalate" },
+      "deadline": "2026-05-15T00:00:00Z"
+    },
+    {
+      "id": "boson-retractDispute",
       "channels": ["server", "facilitator", "onchain", "mcp", "xmtp"],
-      "endpoints": { "server": "https://seller.example/x402B/dispute/raise" },
-      "deadline": "2026-05-11T00:00:00Z"
+      "endpoints": { "server": "https://seller.example/x402B/dispute/retract" }
     }
   ],
   "fallback": {
@@ -86,7 +93,7 @@ Every server response (the initial 402, the 200 after commit, the 200 after rede
     "mcp":  "boson://seller/12345",
     "onchainHints": {
       "escrow":           "0xEscrow...",
-      "facet":            "ExchangeHandlerFacet",  // varies per action
+      "facet":            "DisputeHandlerFacet",  // varies per action
       "metaTxFacet":      "MetaTransactionsHandlerFacet",
       "metaTxEntrypoint": "executeMetaTransactionWithTokenTransferAuthorization"
     }

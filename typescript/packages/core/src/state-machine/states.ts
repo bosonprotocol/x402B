@@ -32,12 +32,19 @@ export const PRE_COMMIT = "PRE_COMMIT" as const;
 export type PreCommit = typeof PRE_COMMIT;
 
 /**
- * Composite state used to look up buyer-invokable actions.
+ * Composite state used to look up buyer-invokable actions. Modelled as a
+ * true discriminated union so callers can't construct impossible states
+ * (e.g. `exchange: DISPUTED` with no dispute, or `exchange: COMMITTED`
+ * with a dispute attached).
  *
  *   - `PRE_COMMIT` — no exchange yet (the initial 402).
- *   - `{ exchange }` — exchange exists, no active dispute. Used for
- *     COMMITTED / REDEEMED / COMPLETED / CANCELLED / REVOKED.
- *   - `{ exchange: "DISPUTED", dispute }` — dispute is active; the
+ *   - `{ exchange: DISPUTED, dispute }` — dispute is active; the
  *     `dispute` sub-state determines which actions are available.
+ *   - `{ exchange }` for any non-DISPUTED exchange state — `dispute`
+ *     must not be present. Covers COMMITTED / REDEEMED / COMPLETED /
+ *     CANCELLED / REVOKED.
  */
-export type ClientState = PreCommit | { exchange: ExchangeState; dispute?: DisputeState };
+export type ClientState =
+  | PreCommit
+  | { exchange: typeof ExchangeState.DISPUTED; dispute: DisputeState }
+  | { exchange: Exclude<ExchangeState, typeof ExchangeState.DISPUTED>; dispute?: never };

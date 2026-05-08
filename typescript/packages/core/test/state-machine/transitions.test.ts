@@ -9,6 +9,7 @@ import {
   legalActions,
   PRE_COMMIT,
   serverLegalActions,
+  type ClientState,
 } from "../../src/state-machine/index.js";
 
 describe("clientLegalActions — buyer-side, spec-pinned shape", () => {
@@ -172,6 +173,50 @@ describe("legalActions — coverage", () => {
     }
     for (const id of ACTION_IDS) {
       expect(reachable.has(id)).toBe(true);
+    }
+  });
+});
+
+describe("ClientState — discriminated union enforcement", () => {
+  // These compile-time checks pin the tightened-union shape: TypeScript
+  // must reject a DISPUTED state without a `dispute`, and any non-DISPUTED
+  // state with a `dispute` attached. The `@ts-expect-error` directives
+  // fail the build if the type ever loosens accidentally.
+
+  it("rejects { exchange: DISPUTED } with no dispute sub-state at type-check time", () => {
+    // @ts-expect-error — DISPUTED requires a dispute sub-state.
+    const bad: ClientState = { exchange: ExchangeState.DISPUTED };
+    void bad;
+  });
+
+  it("rejects a dispute attached to a non-DISPUTED exchange state at type-check time", () => {
+    // @ts-expect-error — only DISPUTED carries a dispute sub-state.
+    const bad: ClientState = {
+      exchange: ExchangeState.COMMITTED,
+      dispute: DisputeState.RESOLVING,
+    };
+    void bad;
+  });
+
+  it("accepts every valid concrete shape", () => {
+    const valid: ClientState[] = [
+      PRE_COMMIT,
+      { exchange: ExchangeState.COMMITTED },
+      { exchange: ExchangeState.REDEEMED },
+      { exchange: ExchangeState.COMPLETED },
+      { exchange: ExchangeState.CANCELLED },
+      { exchange: ExchangeState.REVOKED },
+      { exchange: ExchangeState.DISPUTED, dispute: DisputeState.RESOLVING },
+      { exchange: ExchangeState.DISPUTED, dispute: DisputeState.ESCALATED },
+      { exchange: ExchangeState.DISPUTED, dispute: DisputeState.RESOLVED },
+      { exchange: ExchangeState.DISPUTED, dispute: DisputeState.RETRACTED },
+      { exchange: ExchangeState.DISPUTED, dispute: DisputeState.DECIDED },
+      { exchange: ExchangeState.DISPUTED, dispute: DisputeState.REFUSED },
+    ];
+    // Every shape must be looked up without throwing.
+    for (const state of valid) {
+      expect(() => clientLegalActions(state)).not.toThrow();
+      expect(() => serverLegalActions(state)).not.toThrow();
     }
   });
 });
