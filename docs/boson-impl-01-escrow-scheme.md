@@ -203,7 +203,7 @@ The header value is base64(JSON):
 ### 4.1 Seller — `FullOffer` (protocol EIP-712 domain)
 
 ```
-domain:  { name: "BosonProtocol", version: "V2", chainId, verifyingContract: <Diamond> }
+domain:  { name: "Boson Protocol", version: "V2", salt: bytes32(chainId), verifyingContract: <Diamond> }
 type:    FullOffer(
            Offer offer,
            OfferDates offerDates,
@@ -223,7 +223,7 @@ Nested structs `Offer`, `OfferDates`, `OfferDurations`, `DRParameters`, `Conditi
 The buyer signs **one** EIP-712 meta-tx authorising execution of `<action>` on the protocol Diamond. This is the only Boson-side signature required regardless of which token-auth strategy the buyer picks.
 
 ```
-domain:  { name: "BosonProtocol", version: "V2", chainId, verifyingContract: <Diamond> }
+domain:  { name: "Boson Protocol", version: "V2", chainId, verifyingContract: <Diamond> }
 type:    MetaTransaction(
            uint256 nonce,
            address from,
