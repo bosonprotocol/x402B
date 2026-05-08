@@ -70,10 +70,6 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
 
-  typescript/packages/core/dist/cjs: {}
-
-  typescript/packages/core/dist/esm: {}
-
 packages:
 
   '@adraffy/ens-normalize@1.10.1':

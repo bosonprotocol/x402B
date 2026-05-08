@@ -203,7 +203,7 @@ The header value is base64(JSON):
 ### 4.1 Seller — `FullOffer` (protocol EIP-712 domain)
 
 ```
-domain:  { name: "Boson Protocol", version: "V2", chainId, verifyingContract: <Diamond> }
+domain:  { name: "Boson Protocol", version: "V2", salt: bytes32(chainId), verifyingContract: <Diamond> }
 type:    FullOffer(
            Offer offer,
            OfferDates offerDates,
