@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm install --frozen-lockfile)",
+      "Bash(pnpm build)",
+      "Bash(pnpm test)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm format)",
+      "Bash(pnpm format:check)",
+      "Bash(pnpm clean)",
+      "Bash(pnpm exec turbo run build:*)",
+      "Bash(pnpm exec turbo run test:*)",
+      "Bash(pnpm exec turbo run lint:*)",
+      "Bash(pnpm exec turbo run format:*)",
+      "Bash(pnpm prettier --check:*)",
+      "Bash(pnpm prettier --write:*)",
+      "Bash(pnpm publish --dry-run:*)",
+      "Bash(pnpm list:*)",
+      "Bash(pnpm view:*)",
+      "Bash(pnpm changeset)",
+      "Bash(pnpm changeset version)",
+      "Bash(npm view:*)",
+
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git stash list)",
+
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh api:*)",
+
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)"
+    ],
+
+    "ask": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git stash push:*)",
+      "Bash(git stash pop)",
+      "Bash(git stash drop:*)",
+      "Bash(git mv:*)",
+      "Bash(git rm:*)",
+      "Bash(git restore:*)",
+      "Bash(git rebase:*)",
+      "Bash(git merge:*)",
+
+      "Bash(gh pr create:*)",
+      "Bash(gh pr edit:*)",
+      "Bash(gh pr ready:*)",
+      "Bash(gh pr close:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh issue create:*)",
+
+      "Bash(pnpm add:*)",
+      "Bash(pnpm remove:*)",
+      "Bash(pnpm update:*)",
+      "Bash(pnpm publish:*)",
+
+      "Bash(rm:*)"
+    ],
+
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -f:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(git branch -D:*)",
+      "Bash(git tag -d:*)",
+      "Bash(git push --delete:*)",
+      "Bash(git push origin --delete:*)",
+      "Bash(rm -rf /:*)",
+      "Bash(npm publish:*)"
+    ]
+  }
+}
