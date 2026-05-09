@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { negotiateFulfillment, NoCompatibleFulfillmentError } from "../../src/client/index.js";
 
-const ATOMIC_HTTP: FulfillmentOption = { id: "atomic-http", schema: null };
+const INLINE: FulfillmentOption = { id: "inline", schema: null };
+
 const EMAIL: FulfillmentOption = {
   id: "email",
   schema: { type: "object", required: ["email"], properties: { email: { type: "string" } } },
@@ -19,16 +20,16 @@ const XMTP: FulfillmentOption = {
 
 describe("negotiateFulfillment", () => {
   it("returns a schemaless option immediately with data: null", async () => {
-    const choice = await negotiateFulfillment([ATOMIC_HTTP, EMAIL], {
-      supports: ["atomic-http", "email"],
+    const choice = await negotiateFulfillment([INLINE, EMAIL], {
+      supports: ["inline", "email"],
     });
-    expect(choice).toEqual({ option: "atomic-http", data: null });
+    expect(choice).toEqual({ option: "inline", data: null });
   });
 
   it("honours `prefer` ordering when both options are supported", async () => {
-    const choice = await negotiateFulfillment([ATOMIC_HTTP, XMTP], {
-      supports: ["atomic-http", "xmtp"],
-      prefer: ["xmtp", "atomic-http"],
+    const choice = await negotiateFulfillment([INLINE, XMTP], {
+      supports: ["inline", "xmtp"],
+      prefer: ["xmtp", "inline"],
       agentContext: { xmtpAddress: "0xabc" },
     });
     expect(choice).toEqual({ option: "xmtp", data: { xmtpAddress: "0xabc" } });
