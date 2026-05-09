@@ -42,12 +42,12 @@ describe("xmtp channel", () => {
     });
   });
 
-  it("onCommit stores by exchange id; onRedeem invokes send and returns an xmtp: pointer", async () => {
+  it("onCommit stores by exchange id; onFulfill invokes send and returns an xmtp: pointer", async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     const channel = createXmtpChannel({ send });
 
     await channel.onCommit("exch-1", { xmtpAddress: VALID_ADDRESS });
-    const result = await channel.onRedeem("exch-1");
+    const result = await channel.onFulfill("exch-1");
 
     expect(send).toHaveBeenCalledWith("exch-1", { xmtpAddress: VALID_ADDRESS });
     expect(result).toEqual({ kind: "async", pointer: `xmtp:${VALID_ADDRESS}` });
@@ -61,13 +61,13 @@ describe("xmtp channel", () => {
     expect(store.get("exch-2")).toEqual({ xmtpAddress: VALID_ADDRESS });
   });
 
-  it("onRedeem rejects when not configured", async () => {
+  it("onFulfill rejects when not configured", async () => {
     const channel = createXmtpChannel();
-    await expect(channel.onRedeem("exch-1")).rejects.toThrow(/configure/);
+    await expect(channel.onFulfill("exch-1")).rejects.toThrow(/configure/);
   });
 
-  it("onRedeem rejects when no commit data exists for the exchange", async () => {
+  it("onFulfill rejects when no commit data exists for the exchange", async () => {
     const channel = createXmtpChannel({ send: async () => {} });
-    await expect(channel.onRedeem("nonexistent")).rejects.toThrow(/no buyer data/);
+    await expect(channel.onFulfill("nonexistent")).rejects.toThrow(/no buyer data/);
   });
 });

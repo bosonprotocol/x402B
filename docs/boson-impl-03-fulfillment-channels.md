@@ -66,7 +66,7 @@ export interface FulfillmentChannel<TServerCfg = unknown, TBuyerData = unknown> 
   /** Server: invoked at commit acceptance — store buyerData against exchangeId. */
   onCommit(exchangeId: string, buyerData: TBuyerData): Promise<void>;
 
-  /** Server: invoked when fulfillment is observed; returns the resource inline or a pointer for async delivery. */
+  /** Server: invoked when the release is observed (REDEEMED on-chain); returns the resource inline or a pointer for async delivery. */
   onFulfill(exchangeId: string): Promise<FulfillmentResult>;
 
   /** Client: optionally collect buyer data interactively. */
@@ -82,7 +82,7 @@ export type FulfillmentResult =
 
 | `id` | Use case | Buyer-data schema | Notes |
 |---|---|---|---|
-| `inline` | Resource returned in the same HTTP response | `null` | Server `onFulfill` returns the body. Composes naturally with Flow B's atomic commit-and-redeem (the resource is ready), but Flow B does **not** require this channel — the redeem state transition can be atomic while delivery itself is async. |
+| `inline` | Resource returned in the same HTTP response | `null` | Server `onFulfill` returns the body inline. Composes naturally with Flow B's atomic commit-and-redeem (the resource is ready), but Flow B does **not** require this channel — the redeem state transition can be atomic while delivery itself is async. |
 | `email` | Mailing list signup, license key dispatch | `{ email: string }` | RFC 5321 validation. Server stores against exchangeId; sends on redeem. |
 | `xmtp` | Push to buyer's XMTP inbox | `{ xmtpAddress: string }` (EOA) | Useful for AI-agent buyers that already use XMTP for commerce. |
 | `webhook` | Push to buyer-controlled HTTPS endpoint | `{ url: string, authToken?: string, encryptionPubKey?: string }` | See [Webhook security](#webhook-security) below. Server signs the envelope with the key under `metadata.serverPublicKey`; client verifies signature. |

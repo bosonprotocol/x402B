@@ -3,12 +3,12 @@
 //
 // All four follow the same lifecycle — buyer attaches data at commit,
 // server validates with a per-channel zod schema, persists by
-// exchangeId, and at redeem time runs a per-channel dispatch hook
+// exchangeId, and at fulfill time runs a per-channel dispatch hook
 // that produces an async-pointer string. Only the schema, the cfg
 // shape, and the (dispatch + pointer-derivation) lambda differ.
 //
-// `atomic-http` is intentionally NOT factored through here — it has
-// no store, no zod schema, and returns an atomic body, so the shared
+// `inline` is intentionally NOT factored through here — it has no
+// store, no zod schema, and returns an inline body, so the shared
 // shape doesn't fit.
 //
 // The factory's generic constraint is inlined (rather than expressed
@@ -16,7 +16,6 @@
 // types of each channel stay fully self-contained — no shared
 // definitions chunk leaks into the published `.d.ts` files.
 
-import type { JSONSchema7 } from "json-schema";
 import type { z } from "zod";
 
 import type { FulfillmentChannel } from "../../types.js";
@@ -36,7 +35,7 @@ export interface DataAtCommitChannelDef<
   jsonSchema: Record<string, unknown>;
   /**
    * Hint at the missing config field name surfaced in the
-   * "configure({ <hookName> }) before invoking onRedeem" error so
+   * "configure({ <hookName> }) before invoking onFulfill" error so
    * channel implementors don't have to hand-write that string.
    */
   hookName: string;
@@ -63,7 +62,7 @@ export function createDataAtCommitChannel<
 
   return {
     id: def.id,
-    buyerDataSchema: def.jsonSchema as JSONSchema7,
+    buyerDataSchema: def.jsonSchema,
     configure(next) {
       cfg = next;
       store = next.store ?? new Map();
@@ -87,10 +86,10 @@ export function createDataAtCommitChannel<
     async onCommit(exchangeId, data) {
       store.set(exchangeId, data);
     },
-    async onRedeem(exchangeId) {
+    async onFulfill(exchangeId) {
       if (!cfg) {
         throw new Error(
-          `${def.id} channel: configure({ ${def.hookName} }) before invoking onRedeem`,
+          `${def.id} channel: configure({ ${def.hookName} }) before invoking onFulfill`,
         );
       }
       const data = store.get(exchangeId);

@@ -66,13 +66,13 @@ describe("webhook channel", () => {
     });
   });
 
-  it("onCommit stores by exchange id; onRedeem invokes send and returns the buyer url as pointer", async () => {
+  it("onCommit stores by exchange id; onFulfill invokes send and returns the buyer url as pointer", async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     const channel = createWebhookChannel({ send });
     const data: WebhookBuyerData = { url: URL_HTTPS, authToken: "tkn" };
 
     await channel.onCommit("exch-1", data);
-    const result = await channel.onRedeem("exch-1");
+    const result = await channel.onFulfill("exch-1");
 
     expect(send).toHaveBeenCalledWith("exch-1", data);
     expect(result).toEqual({ kind: "async", pointer: URL_HTTPS });
@@ -86,13 +86,13 @@ describe("webhook channel", () => {
     expect(store.get("exch-2")).toEqual(data);
   });
 
-  it("onRedeem rejects when not configured", async () => {
+  it("onFulfill rejects when not configured", async () => {
     const channel = createWebhookChannel();
-    await expect(channel.onRedeem("exch-1")).rejects.toThrow(/configure/);
+    await expect(channel.onFulfill("exch-1")).rejects.toThrow(/configure/);
   });
 
-  it("onRedeem rejects when no commit data exists for the exchange", async () => {
+  it("onFulfill rejects when no commit data exists for the exchange", async () => {
     const channel = createWebhookChannel({ send: async () => {} });
-    await expect(channel.onRedeem("nonexistent")).rejects.toThrow(/no buyer data/);
+    await expect(channel.onFulfill("nonexistent")).rejects.toThrow(/no buyer data/);
   });
 });

@@ -25,7 +25,7 @@ export const IPFS_POINTER_CHANNEL_ID = "ipfs-pointer";
 export interface IpfsPointerServerCfg {
   /** Persist `exchangeId → buyerData`. Defaults to an in-memory `Map`. */
   store?: Map<string, IpfsPointerBuyerData>;
-  /** Server-side hook invoked from `onRedeem`. Returns the IPFS CID (no `ipfs://` prefix). */
+  /** Server-side hook invoked from `onFulfill`. Returns the IPFS CID (no `ipfs://` prefix). */
   upload: (exchangeId: string, data: IpfsPointerBuyerData) => Promise<string>;
   /** Optional descriptor metadata (e.g. gateway hint) surfaced on the 402. */
   metadata?: unknown;

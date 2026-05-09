@@ -18,7 +18,7 @@ export const XMTP_CHANNEL_ID = "xmtp";
 export interface XmtpServerCfg {
   /** Persist `exchangeId → buyerData`. Defaults to an in-memory `Map`. */
   store?: Map<string, XmtpBuyerData>;
-  /** Server-side hook invoked from `onRedeem`. */
+  /** Server-side hook invoked from `onFulfill`. */
   send: (exchangeId: string, data: XmtpBuyerData) => Promise<void>;
   /** Optional descriptor metadata (e.g. seller XMTP address) surfaced on the 402. */
   metadata?: unknown;

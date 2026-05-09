@@ -44,24 +44,24 @@ describe("ipfs-pointer channel", () => {
     expect(channel.validate({ extra: 1 } as never)).toMatchObject({ ok: false });
   });
 
-  it("onCommit stores by exchange id; onRedeem uploads and returns an ipfs:// pointer", async () => {
+  it("onCommit stores by exchange id; onFulfill uploads and returns an ipfs:// pointer", async () => {
     const upload = vi.fn().mockResolvedValue(CID);
     const channel = createIpfsPointerChannel({ upload });
     const data: IpfsPointerBuyerData = { recipientPubKey: "0x04abcdef" };
 
     await channel.onCommit("exch-1", data);
-    const result = await channel.onRedeem("exch-1");
+    const result = await channel.onFulfill("exch-1");
 
     expect(upload).toHaveBeenCalledWith("exch-1", data);
     expect(result).toEqual({ kind: "async", pointer: `ipfs://${CID}` });
   });
 
-  it("onRedeem works with no recipientPubKey supplied", async () => {
+  it("onFulfill works with no recipientPubKey supplied", async () => {
     const upload = vi.fn().mockResolvedValue(CID);
     const channel = createIpfsPointerChannel({ upload });
 
     await channel.onCommit("exch-2", {});
-    const result = await channel.onRedeem("exch-2");
+    const result = await channel.onFulfill("exch-2");
 
     expect(upload).toHaveBeenCalledWith("exch-2", {});
     expect(result).toEqual({ kind: "async", pointer: `ipfs://${CID}` });
@@ -74,13 +74,13 @@ describe("ipfs-pointer channel", () => {
     expect(store.get("exch-3")).toEqual({ recipientPubKey: "0x04abcdef" });
   });
 
-  it("onRedeem rejects when not configured", async () => {
+  it("onFulfill rejects when not configured", async () => {
     const channel = createIpfsPointerChannel();
-    await expect(channel.onRedeem("exch-1")).rejects.toThrow(/configure/);
+    await expect(channel.onFulfill("exch-1")).rejects.toThrow(/configure/);
   });
 
-  it("onRedeem rejects when no commit data exists for the exchange", async () => {
+  it("onFulfill rejects when no commit data exists for the exchange", async () => {
     const channel = createIpfsPointerChannel({ upload: async () => CID });
-    await expect(channel.onRedeem("nonexistent")).rejects.toThrow(/no buyer data/);
+    await expect(channel.onFulfill("nonexistent")).rejects.toThrow(/no buyer data/);
   });
 });

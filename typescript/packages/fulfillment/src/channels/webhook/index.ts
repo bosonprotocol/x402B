@@ -33,7 +33,7 @@ export const WEBHOOK_CHANNEL_ID = "webhook";
 export interface WebhookServerCfg {
   /** Persist `exchangeId → buyerData`. Defaults to an in-memory `Map`. */
   store?: Map<string, WebhookBuyerData>;
-  /** Server-side hook invoked from `onRedeem`. */
+  /** Server-side hook invoked from `onFulfill`. */
   send: (exchangeId: string, data: WebhookBuyerData) => Promise<void>;
   /** Optional descriptor metadata (e.g. server's signing key) surfaced on the 402. */
   metadata?: unknown;

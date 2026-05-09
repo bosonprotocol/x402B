@@ -21,7 +21,7 @@ export const EMAIL_CHANNEL_ID = "email";
 export interface EmailServerCfg {
   /** Persist `exchangeId → buyerData`. Defaults to an in-memory `Map`. */
   store?: Map<string, EmailBuyerData>;
-  /** Server-side hook invoked from `onRedeem`. */
+  /** Server-side hook invoked from `onFulfill`. */
   send: (exchangeId: string, data: EmailBuyerData) => Promise<void>;
   /** Optional descriptor metadata (e.g. sender display name) surfaced on the 402. */
   metadata?: unknown;
