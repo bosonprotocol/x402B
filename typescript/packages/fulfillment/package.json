@@ -1,0 +1,75 @@
+{
+  "name": "@bosonprotocol/x402-fulfillment",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Boson Protocol fulfillment channels for x402 — pluggable FulfillmentChannel interface, registry, client-side negotiation helper, and built-in channel implementations.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosonprotocol/x402B.git",
+    "directory": "typescript/packages/fulfillment"
+  },
+  "homepage": "https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/fulfillment",
+  "bugs": {
+    "url": "https://github.com/bosonprotocol/x402B/issues"
+  },
+  "keywords": [
+    "x402",
+    "boson-protocol",
+    "fulfillment",
+    "delivery",
+    "escrow"
+  ],
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./registry": {
+      "types": "./dist/cjs/registry/index.d.ts",
+      "import": "./dist/esm/registry/index.js",
+      "require": "./dist/cjs/registry/index.js"
+    },
+    "./client": {
+      "types": "./dist/cjs/client/index.d.ts",
+      "import": "./dist/esm/client/index.js",
+      "require": "./dist/cjs/client/index.js"
+    },
+    "./channels/*": {
+      "types": "./dist/cjs/channels/*/index.d.ts",
+      "import": "./dist/esm/channels/*/index.js",
+      "require": "./dist/cjs/channels/*/index.js"
+    },
+    "./schemas/*": "./dist/schemas/*"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup && node scripts/postbuild.mjs",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src --max-warnings 0",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@bosonprotocol/x402-core": "workspace:^",
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "^3.23.5"
+  },
+  "devDependencies": {
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^20.17.10",
+    "ajv": "^8.17.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
