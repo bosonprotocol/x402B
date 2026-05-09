@@ -7,15 +7,15 @@ import type {
 } from "../src/index.js";
 
 describe("@bosonprotocol/x402-fulfillment public types", () => {
-  it("FulfillmentResult is a discriminated union of atomic | async", () => {
-    const atomic: FulfillmentResult = {
-      kind: "atomic",
+  it("FulfillmentResult is a discriminated union of inline | async", () => {
+    const inline: FulfillmentResult = {
+      kind: "inline",
       body: new Uint8Array([0x4f, 0x4b]),
       contentType: "text/plain",
     };
     const async: FulfillmentResult = { kind: "async", pointer: "ipfs://bafy" };
-    expectTypeOf(atomic.kind).toEqualTypeOf<"atomic" | "async">();
-    expectTypeOf(async.kind).toEqualTypeOf<"atomic" | "async">();
+    expectTypeOf(inline.kind).toEqualTypeOf<"inline" | "async">();
+    expectTypeOf(async.kind).toEqualTypeOf<"inline" | "async">();
   });
 
   it("FulfillmentChannel is generic over TServerCfg and TBuyerData", () => {

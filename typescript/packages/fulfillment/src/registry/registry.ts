@@ -1,7 +1,7 @@
 // Server-side registry of configured FulfillmentChannel instances.
 //
 // Owns one channel instance per `id`, dispatches the lifecycle methods
-// (`validate` / `onCommit` / `onRedeem`) by id, and produces the
+// (`validate` / `onCommit` / `onFulfill`) by id, and produces the
 // `options[]` array that goes into PaymentRequirements.fulfillment.
 //
 // Channels are kept opaque (generic params erased to `unknown`) once
@@ -78,9 +78,9 @@ export class FulfillmentRegistry {
     await this.requireChannel(id).onCommit(exchangeId, data);
   }
 
-  /** Drive the redeem-time delivery via the named channel. */
-  async onRedeem(id: string, exchangeId: string): Promise<FulfillmentResult> {
-    return await this.requireChannel(id).onRedeem(exchangeId);
+  /** Drive the fulfillment delivery via the named channel. */
+  async onFulfill(id: string, exchangeId: string): Promise<FulfillmentResult> {
+    return await this.requireChannel(id).onFulfill(exchangeId);
   }
 
   private requireChannel(id: string): AnyChannel {

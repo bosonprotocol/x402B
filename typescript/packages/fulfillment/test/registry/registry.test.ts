@@ -35,7 +35,7 @@ function makeFakeChannel(
         : ({ ok: false, reason: "invalid email" } as const),
     ),
     onCommit: vi.fn(async () => {}),
-    onRedeem: vi.fn(
+    onFulfill: vi.fn(
       async (): Promise<FulfillmentResult> => ({ kind: "async", pointer: `done:${id}` }),
     ),
     ...overrides,
@@ -67,7 +67,7 @@ describe("FulfillmentRegistry", () => {
     expect(all[0].metadata).toEqual({ hint: "xmtp" });
   });
 
-  it("dispatches validate/onCommit/onRedeem to the named channel", async () => {
+  it("dispatches validate/onCommit/onFulfill to the named channel", async () => {
     const registry = new FulfillmentRegistry();
     const email = makeFakeChannel("email");
     registry.register(email);
@@ -81,7 +81,7 @@ describe("FulfillmentRegistry", () => {
     await registry.onCommit("email", "exch-1", { email: "buyer@example.com" });
     expect(email.onCommit).toHaveBeenCalledWith("exch-1", { email: "buyer@example.com" });
 
-    await expect(registry.onRedeem("email", "exch-1")).resolves.toEqual({
+    await expect(registry.onFulfill("email", "exch-1")).resolves.toEqual({
       kind: "async",
       pointer: "done:email",
     });
@@ -91,6 +91,6 @@ describe("FulfillmentRegistry", () => {
     const registry = new FulfillmentRegistry();
     expect(() => registry.validate("missing", {})).toThrow(UnknownChannelError);
     expect(registry.onCommit("missing", "exch-1", {})).rejects.toBeInstanceOf(UnknownChannelError);
-    expect(registry.onRedeem("missing", "exch-1")).rejects.toBeInstanceOf(UnknownChannelError);
+    expect(registry.onFulfill("missing", "exch-1")).rejects.toBeInstanceOf(UnknownChannelError);
   });
 });

@@ -1,5 +1,7 @@
 // Pluggable fulfillment-channel contract.
 // Source of truth: docs/boson-impl-03-fulfillment-channels.md §`FulfillmentChannel` interface.
+// Aligns with the upstream `x402-escrow-schema` interface — same method
+// names (`onCommit` / `onFulfill`) and same `FulfillmentResult` shape.
 
 import type { FulfillmentOption } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { JSONSchema7 } from "json-schema";
@@ -14,16 +16,16 @@ export interface FulfillmentOptionDescriptor extends FulfillmentOption {
 }
 
 /**
- * Result of a server-side `onRedeem` invocation.
+ * Result of a server-side `onFulfill` invocation.
  *
- * - `atomic` — the resource itself is returned in-band (used by the
- *   `atomic-http` channel; the body is the HTTP response payload).
+ * - `inline` — the resource itself is returned in-band (used by the
+ *   `inline` channel; the body is the HTTP response payload).
  * - `async`  — the resource is delivered out-of-band; an optional
  *   `pointer` may be returned (e.g. `ipfs://…`, `https://…`,
  *   `mailto:…`) for callers that want to surface a tracking URL.
  */
 export type FulfillmentResult =
-  | { kind: "atomic"; body: Uint8Array; contentType: string }
+  | { kind: "inline"; body: Uint8Array; contentType: string }
   | { kind: "async"; pointer?: string };
 
 /**
@@ -32,14 +34,14 @@ export type FulfillmentResult =
  * Implementations describe one delivery mechanism the seller offers.
  * The same instance is used both to advertise the channel (`describe`)
  * and to drive the server-side lifecycle (`validate`, `onCommit`,
- * `onRedeem`). On the client, an optional `collect` may interactively
+ * `onFulfill`). On the client, an optional `collect` may interactively
  * gather the buyer's data from a UI or agent.
  *
  * Type parameters:
  * - `TServerCfg`  — channel-specific server configuration (keys, urls).
  * - `TBuyerData`  — shape of the buyer-supplied data validated by
  *   `buyerDataSchema`. `null` for schemaless channels (e.g.
- *   `atomic-http`, `widget`).
+ *   `inline`, `widget`).
  */
 export interface FulfillmentChannel<TServerCfg = unknown, TBuyerData = unknown> {
   /** Stable identifier used in the wire format (`fulfillment.option`). */
@@ -60,8 +62,12 @@ export interface FulfillmentChannel<TServerCfg = unknown, TBuyerData = unknown> 
   /** Invoked at commit acceptance — store the buyer data against the exchange id. */
   onCommit(exchangeId: string, buyerData: TBuyerData): Promise<void>;
 
-  /** Invoked when the redeem is observed — return the resource (atomic) or void (async). */
-  onRedeem(exchangeId: string): Promise<FulfillmentResult>;
+  /**
+   * Invoked when the on-chain release transition is observed (in Boson
+   * terms, when the exchange reaches `REDEEMED`). Returns the resource
+   * inline or a pointer for async delivery.
+   */
+  onFulfill(exchangeId: string): Promise<FulfillmentResult>;
 
   /** Client-side: optionally collect buyer data interactively. */
   collect?(metadata: unknown): Promise<TBuyerData>;
