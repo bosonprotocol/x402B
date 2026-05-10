@@ -12,6 +12,7 @@
 import type {
   ActionsEnvelope,
   ActionChannel,
+  ActionsFallback,
   EscrowNextActions,
   NextAction,
 } from "@bosonprotocol/x402-core/schemes/escrow";
@@ -24,6 +25,7 @@ import {
   type DisputeState,
 } from "@bosonprotocol/x402-core/state-machine";
 
+import { ACTION_FACETS, buildOnchainHints } from "./onchain-hints.js";
 import type { ChannelRegistry } from "./registry/index.js";
 
 /**
@@ -60,6 +62,20 @@ export type DeriveNextActionsInput = {
 );
 
 /**
+ * Build the `fallback` block from the registry's discrete sub-fields.
+ * On-chain fallback is mandatory, and `actionFacets` is computed from
+ * emitted actions so the seller never maintains it by hand.
+ */
+function buildFallback(registry: ChannelRegistry, actionIds: readonly ActionId[]): ActionsFallback {
+  const fallback: ActionsFallback = {
+    onchainHints: buildOnchainHints(registry.escrow, actionIds),
+  };
+  if (registry.xmtp !== undefined) fallback.xmtp = registry.xmtp;
+  if (registry.mcp !== undefined) fallback.mcp = registry.mcp;
+  return fallback;
+}
+
+/**
  * Build the inner `ActionsEnvelope` (the `next[]` + `fallback` block)
  * shared by both pre-commit and post-commit envelopes.
  */
@@ -75,7 +91,7 @@ function buildEnvelope(
     // reject envelopes built from a `ChannelRegistry` whose `channels`
     // list contains duplicates (a caller bypassing `buildChannelRegistry`).
     const seen = new Set<ActionChannel>();
-    const channels = registry.channels.filter((channel) => {
+    const channels = effectiveChannels(registry).filter((channel) => {
       if (seen.has(channel)) return false;
       if (!isUsableChannel(channel, id, registry, serverEndpoint)) return false;
       seen.add(channel);
@@ -96,7 +112,19 @@ function buildEnvelope(
     return entry;
   });
 
-  return { next, fallback: registry.fallback };
+  return {
+    next,
+    fallback: buildFallback(
+      registry,
+      next.map((entry) => entry.id as ActionId),
+    ),
+  };
+}
+
+function effectiveChannels(registry: ChannelRegistry): readonly ActionChannel[] {
+  return registry.channels.includes("onchain")
+    ? registry.channels
+    : [...registry.channels, "onchain"];
 }
 
 function isUsableChannel(
@@ -109,11 +137,11 @@ function isUsableChannel(
     case "server":
       return serverEndpoint !== undefined;
     case "mcp":
-      return registry.fallback.mcp !== undefined;
+      return registry.mcp !== undefined;
     case "xmtp":
-      return registry.fallback.xmtp !== undefined;
+      return registry.xmtp !== undefined;
     case "onchain":
-      return registry.fallback.onchainHints.actionFacets[actionId] !== undefined;
+      return registry.escrow.length > 0 && ACTION_FACETS[actionId] !== undefined;
     case "facilitator":
       return true;
   }

@@ -25,3 +25,11 @@ export type { ChannelRegistry } from "./registry/index.js";
 
 export type { DeriveDecorations, DeriveNextActionsInput } from "./derive.js";
 export { deriveInitialNextActions, deriveNextActions } from "./derive.js";
+
+export {
+  ACTION_FACETS,
+  META_TX_ENTRYPOINTS,
+  META_TX_FACET,
+  actionFacetsFor,
+  buildOnchainHints,
+} from "./onchain-hints.js";
