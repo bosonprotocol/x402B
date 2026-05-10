@@ -1,76 +1,50 @@
-// `nextActions` envelope types — the wire-format shape returned at the
-// top level of every server response (and nested in `accepts[i].actions`
-// on the initial 402 where there is no exchange yet).
+// `nextActions` envelope types for the actions package.
 //
 // Source of truth: docs/boson-impl-04-state-machine-and-next-actions.md
 // §"`nextActions` envelope".
 //
-// The base wire-format types (`NextAction`, `OnchainHints`,
-// `ActionsFallback`, `ActionsEnvelope`, `ActionChannel`) live in
-// `@bosonprotocol/x402-core/schemes/escrow` so the JSON-Schema validators
-// in core can reference them. This package adds the **execution-layer**
-// pieces those base types omit: an absolute `deadline` on each action
-// entry, and the post-commit envelope variant that carries the current
-// `(exchangeId, state, disputeState)` tuple.
+// All wire-format types live in `@bosonprotocol/x402-core/schemes/escrow`
+// next to the JSON Schema and zod validators that ship with them. This
+// module is a thin alias layer: `ActionEntry` is `NextAction` (the
+// id+channels+endpoints+deadline tuple) renamed for ergonomic short
+// usage, and `NextActionsEnvelope` is the union of the pre-commit
+// (initial 402) and post-commit (`EscrowNextActions`) shapes — useful
+// when a function may return either, e.g. a server-SDK helper that
+// dispatches the same builder for the 402 and post-redeem responses.
 
-import type { ActionsFallback, NextAction } from "@bosonprotocol/x402-core/schemes/escrow";
-import type { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
+import type {
+  ActionsEnvelope,
+  EscrowNextActions,
+  NextAction,
+} from "@bosonprotocol/x402-core/schemes/escrow";
 
 export type {
   ActionChannel,
   ActionsEnvelope,
   ActionsFallback,
+  EscrowNextActions,
   NextAction,
   OnchainHints,
 } from "@bosonprotocol/x402-core/schemes/escrow";
 export type { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
 
 /**
- * Single entry in the `next[]` array of a `nextActions` envelope.
- *
- * Extends the base `NextAction` (id, channels, endpoints) with an
- * optional absolute `deadline` the buyer must act by — relevant for
- * dispute-window-bounded actions like `boson-resolveDispute`,
- * `boson-escalateDispute`, and `boson-retractDispute`.
- *
- * Note: as of v0.1 the JSON Schema in
- * `@bosonprotocol/x402-core/schemas/payment_requirements.schema.json`
- * does not yet enumerate `deadline` on `actions.next[]` items — that
- * schema only covers the initial-402 envelope, where deadlines don't
- * apply. Adding `deadline` to the schema (and a separate post-commit
- * envelope schema) is tracked for a follow-up PR alongside the
- * `deriveNextActions` implementation.
+ * Single entry in the `next[]` array of a `nextActions` envelope. Alias
+ * of `NextAction` from `@bosonprotocol/x402-core/schemes/escrow` —
+ * carries `id`, `channels`, optional `endpoints`, and optional ISO 8601
+ * `deadline`.
  */
-export interface ActionEntry extends NextAction {
-  /** ISO 8601 absolute timestamp by which the action must be invoked. */
-  deadline?: string;
-}
-
-/**
- * Discriminator for the post-commit shape of a `NextActionsEnvelope`.
- * Encodes the spec invariant that `state === "DISPUTED"` ↔
- * `disputeState` is present, without any runtime check.
- */
-type ExchangeStatePair =
-  | { state: Exclude<ExchangeState, typeof ExchangeState.DISPUTED>; disputeState?: never }
-  | { state: typeof ExchangeState.DISPUTED; disputeState: DisputeState };
+export type ActionEntry = NextAction;
 
 /**
  * Top-level `nextActions` envelope returned in every server response.
  *
- * Two shapes:
- *
- * - **Pre-commit** (initial 402): no `exchangeId` / `state` /
- *   `disputeState` — the exchange doesn't exist yet. This is the shape
- *   nested inside `accepts[i].actions` on the 402 response.
- * - **Post-commit** (every subsequent response): carries the current
- *   `(exchangeId, state[, disputeState])` so clients can reason about
- *   the legal transitions without re-fetching the subgraph.
+ * - **Pre-commit** (initial 402): the base `ActionsEnvelope` (no
+ *   `exchangeId` / `state` / `disputeState`). Nested inside
+ *   `accepts[i].actions` on the 402 response.
+ * - **Post-commit**: the richer `EscrowNextActions` (with
+ *   `exchangeId`, `state`, and — when `state === DISPUTED` —
+ *   `disputeState`). Returned at the top level of every subsequent
+ *   response.
  */
-export type NextActionsEnvelope = {
-  next: ActionEntry[];
-  fallback?: ActionsFallback;
-} & (
-  | { exchangeId?: never; state?: never; disputeState?: never }
-  | ({ exchangeId: string } & ExchangeStatePair)
-);
+export type NextActionsEnvelope = ActionsEnvelope | EscrowNextActions;

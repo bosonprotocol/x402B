@@ -71,18 +71,50 @@ export interface NextAction {
   id: string;
   channels: ActionChannel[];
   endpoints?: Record<string, string>;
+  /**
+   * ISO 8601 absolute timestamp by which the action must be invoked.
+   * Relevant for dispute-window-bounded actions like
+   * `boson-resolveDispute`, `boson-escalateDispute`,
+   * `boson-retractDispute`, and (post-commit) `boson-completeExchange`.
+   */
+  deadline?: string;
 }
 
 export interface OnchainHints {
   /** Address of the Boson escrow contract. */
   escrow: Address;
   metaTxFacet: string;
-  metaTxEntrypoint: string;
+  /**
+   * Per-`tokenAuthStrategy` meta-tx entry points on `metaTxFacet`. The
+   * Boson Diamond exposes two functions on `MetaTransactionsHandlerFacet`:
+   *
+   * - `executeMetaTransaction` — legacy BPIP-9 entry point. Used when
+   *   the buyer's `tokenAuthStrategy` is `none` (the buyer has
+   *   pre-approved the Diamond, so no token-transfer authorization
+   *   queue is needed). Also the right entry point for any
+   *   post-commit action that doesn't move tokens (`redeem`,
+   *   `complete`, dispute transitions).
+   * - `executeMetaTransactionWithTokenTransferAuthorization` — BPIP-12
+   *   entry point. Carries the buyer's signed `MetaTransaction` *and*
+   *   a queue of token-transfer authorizations. Used when
+   *   `tokenAuthStrategy` is `erc3009`, `permit`, or `permit2`.
+   *
+   * Clients select the entry point by their chosen strategy at
+   * dispatch time.
+   */
+  metaTxEntrypoints: Record<TokenAuthStrategy, string>;
   actionFacets: Record<string, string>;
 }
 
 export interface ActionsFallback {
   xmtp?: string;
+  /**
+   * Identifier within the Boson MCP server (e.g. the
+   * `bosonprotocol/agentic-commerce` server) that the buyer's
+   * MCP-aware agent dispatches against. The MCP *server* is escrow-
+   * level (one BosonMCP serving every Boson seller); this value is the
+   * URI/identifier the BosonMCP routes to the right exchange / seller.
+   */
   mcp?: string;
   onchainHints?: OnchainHints;
 }

@@ -108,3 +108,18 @@ describe("EscrowPaymentRequirements — rejection cases", () => {
     expect(ajvValidate(bad)).toBe(false);
   });
 });
+
+describe("EscrowPaymentRequirements — actions.next[].deadline", () => {
+  it("accepts an ISO 8601 deadline on an action entry", () => {
+    const ok = cloneFixture();
+    ok.actions.next[0].deadline = "2026-05-15T00:00:00Z";
+    expect(escrowPaymentRequirementsSchema.safeParse(ok).success).toBe(true);
+    expect(ajvValidate(ok)).toBe(true);
+  });
+
+  it("rejects a malformed deadline", () => {
+    const bad = cloneFixture();
+    bad.actions.next[0].deadline = "not-a-date";
+    expect(escrowPaymentRequirementsSchema.safeParse(bad).success).toBe(false);
+  });
+});

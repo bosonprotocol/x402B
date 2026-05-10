@@ -56,6 +56,7 @@ const actionsSchema = z
                 message: "channels must contain unique items",
               }),
             endpoints: z.record(z.string()).optional(),
+            deadline: z.string().datetime({ offset: true }).optional(),
           })
           .strict(),
       )
@@ -68,7 +69,14 @@ const actionsSchema = z
           .object({
             escrow: addressSchema,
             metaTxFacet: z.string().min(1),
-            metaTxEntrypoint: z.string().min(1),
+            metaTxEntrypoints: z
+              .object({
+                none: z.string().min(1),
+                erc3009: z.string().min(1),
+                permit: z.string().min(1),
+                permit2: z.string().min(1),
+              })
+              .strict(),
             actionFacets: z.record(z.string()),
           })
           .strict()
