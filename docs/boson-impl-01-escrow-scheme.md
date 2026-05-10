@@ -67,7 +67,7 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
           "xmtp": "0xSellerXMTP...",
           "mcp":  "boson://seller/12345",
           "onchainHints": {
-            "diamond":          "0xDiamond...",
+            "escrow":           "0xDiamond...",
             "metaTxFacet":      "MetaTransactionsHandlerFacet",
             "metaTxEntrypoint": "executeMetaTransactionWithTokenTransferAuthorization",
             "actionFacets": {
@@ -135,7 +135,7 @@ The header value is base64(JSON):
       "from":         "0xBuyer...",
       "nonce":        "0",
       "functionName": "createOfferCommitAndRedeem(...)",  // or createOfferAndCommit(...)
-      "functionArgs": "0x...",                              // ABI-encoded args (echoes offerRef + conditional fields)
+      "functionSignature": "0x...",                              // ABI-encoded args (echoes offerRef + conditional fields)
       "sig":          { "v": 27, "r": "0x...", "s": "0x..." }
     },
 
@@ -229,7 +229,7 @@ type:    MetaTransaction(
            address from,
            address contractAddress,
            string  functionName,
-           bytes   functionArgs
+           bytes   functionSignature
          )
 ```
 
@@ -238,7 +238,7 @@ type:    MetaTransaction(
 - `"createOfferAndCommit(BosonTypes.FullOffer,address,bytes,uint256)"` — deferred path (`ExchangeCommitFacet`).
 - `"createOfferCommitAndRedeem(BosonTypes.FullOffer,address,bytes,uint256)"` — atomic path (`OrchestrationHandlerFacet2`, [PR #1105](https://github.com/bosonprotocol/boson-protocol-contracts/pull/1105)).
 
-`functionArgs` is the ABI encoding of the function parameters — including the `FullOffer` and the seller's signature, which echoes `requirements.offer.fullOffer` and `requirements.offer.sellerSig`.
+`functionSignature` is the ABI encoding of the function parameters — including the `FullOffer` and the seller's signature, which echoes `requirements.offer.fullOffer` and `requirements.offer.sellerSig`.
 
 The protocol's existing meta-tx replay protection (`MetaTransactionsHandlerFacet.usedNonce[from][nonce]`) applies. The relayer (facilitator) submits via `executeMetaTransactionWithTokenTransferAuthorization`, which reuses this nonce scheme and additionally accepts a queue of token-transfer authorizations.
 
@@ -269,7 +269,7 @@ For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomica
 4. `payload.offerRef.sellerSig === requirements.offer.sellerSig`.
 5. `payload.action ∈ requirements.actions.next[].id`.
 6. `payload.tokenAuthStrategy ∈ requirements.tokenAuthStrategies`.
-7. `payload.metaTx.functionArgs` decodes to args containing the same `FullOffer` and `sellerSig` as `requirements.offer`.
+7. `payload.metaTx.functionSignature` decodes to args containing the same `FullOffer` and `sellerSig` as `requirements.offer`.
 8. The recovered signer of `payload.metaTx.sig` equals `payload.buyer` and equals `payload.metaTx.from`.
 9. For `tokenAuthStrategy = "erc3009"`: `tokenAuth.data.value === requirements.amount`, `tokenAuth.data.to === requirements.escrowAddress`, `tokenAuth.data.validBefore − now ≤ requirements.maxTimeoutSeconds`.
 10. For `tokenAuthStrategy = "permit"`: `tokenAuth.data.value === requirements.amount`, `tokenAuth.data.spender === requirements.escrowAddress`, `tokenAuth.data.deadline − now ≤ requirements.maxTimeoutSeconds`.
@@ -294,5 +294,5 @@ A server may simultaneously advertise an `exact` and an `escrow` accept entry, l
 - **Multi-chain offer hashing:** PR #1105's `getOfferHashInternal` is per-chain — confirm the SDK exposes it with the right `chainId` defaulting.
 - **ERC-1271 sellers:** offer signatures from contract-wallets work on-chain via ERC-1271. The 402 sender side needs the seller's contract address surfaced in `offer.creator` so the verifier knows to call `isValidSignature`.
 - **`expires_at` on the requirements:** consider promoting `maxTimeoutSeconds` to an absolute `expiresAt` to make the 402 cacheable. Not in v0.1.
-- **Exact MetaTransaction type:** verify against `MetaTransactionsHandlerFacet` in the contracts repo — the `MetaTransaction(uint256 nonce, address from, address contractAddress, string functionName, bytes functionArgs)` shape above is BPIP-9 era; confirm it matches the BPIP-12 entrypoint expectations exactly.
+- **Exact MetaTransaction type:** verify against `MetaTransactionsHandlerFacet` in the contracts repo — the `MetaTransaction(uint256 nonce, address from, address contractAddress, string functionName, bytes functionSignature)` shape above is BPIP-9 era; confirm it matches the BPIP-12 entrypoint expectations exactly.
 - **Permit2 nonce shape:** Permit2 uses a word-bitmap nonce (`(uint256 wordPos, uint256 bitPos)` packed). Confirm the SDK builder produces and the facilitator passes a value the protocol's TokenTransferAuthorizationLib accepts.
