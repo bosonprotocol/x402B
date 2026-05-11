@@ -95,10 +95,6 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
 
-  typescript/packages/core/dist/cjs: {}
-
-  typescript/packages/core/dist/esm: {}
-
   typescript/packages/fulfillment:
     dependencies:
       '@bosonprotocol/x402-core':
@@ -129,10 +125,6 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
-
-  typescript/packages/fulfillment/dist/cjs: {}
-
-  typescript/packages/fulfillment/dist/esm: {}
 
 packages:
 
