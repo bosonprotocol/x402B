@@ -87,10 +87,14 @@ describe("FulfillmentRegistry", () => {
     });
   });
 
-  it("throws UnknownChannelError for unregistered ids", () => {
+  it("throws UnknownChannelError for unregistered ids", async () => {
     const registry = new FulfillmentRegistry();
     expect(() => registry.validate("missing", {})).toThrow(UnknownChannelError);
-    expect(registry.onCommit("missing", "exch-1", {})).rejects.toBeInstanceOf(UnknownChannelError);
-    expect(registry.onFulfill("missing", "exch-1")).rejects.toBeInstanceOf(UnknownChannelError);
+    await expect(registry.onCommit("missing", "exch-1", {})).rejects.toBeInstanceOf(
+      UnknownChannelError,
+    );
+    await expect(registry.onFulfill("missing", "exch-1")).rejects.toBeInstanceOf(
+      UnknownChannelError,
+    );
   });
 });
