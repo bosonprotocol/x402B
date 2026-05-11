@@ -27,7 +27,7 @@ const server = createX402bServer({
   diamond:    "0xDiamond...",
   signer:     sellerAssistant,           // signs FullOffer
   facilitator: { url: "https://facilitator.boson.example" },
-  fulfillment: [emailTransport(...), atomicTransport(...), xmtpTransport(...)],
+  fulfillment: [emailTransport(...), inlineTransport(...), xmtpTransport(...)],
   fallback:   { xmtp: "0x...", mcp: "boson://seller/12345" },
 });
 
@@ -51,7 +51,7 @@ Each endpoint is opt-in and configurable. The server MUST advertise the endpoint
 
 ## Sections to write
 
-- Hooks and lifecycle: `onCommitAccepted`, `onRedeem`, `onDispute`, `onComplete`.
+- Hooks and lifecycle: `onCommitAccepted`, `onFulfill`, `onDispute`, `onComplete`.
 - Seller-key management (HSM, KMS, ERC-1271 contract wallet).
 - Subgraph vs direct RPC for state verification.
 - Caching the 402 (TTL ≈ `maxTimeoutSeconds`).
