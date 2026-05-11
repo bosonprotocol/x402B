@@ -11,6 +11,7 @@
 
 import type {
   ActionsEnvelope,
+  ActionChannel,
   EscrowNextActions,
   NextAction,
 } from "@bosonprotocol/x402-core/schemes/escrow";
@@ -68,11 +69,15 @@ function buildEnvelope(
   decorations?: DeriveDecorations,
 ): ActionsEnvelope {
   const next: NextAction[] = actionIds.map((id) => {
-    const entry: NextAction = {
-      id,
-      channels: [...registry.channels],
-    };
     const serverEndpoint = registry.endpoints?.[id];
+    const channels = registry.channels.filter((channel) =>
+      isUsableChannel(channel, id, registry, serverEndpoint),
+    );
+    if (channels.length === 0) {
+      throw new Error(`No usable channel configured for action ${id}`);
+    }
+
+    const entry: NextAction = { id, channels };
     if (serverEndpoint !== undefined) {
       entry.endpoints = { server: serverEndpoint };
     }
@@ -83,17 +88,27 @@ function buildEnvelope(
     return entry;
   });
 
-  const envelope: ActionsEnvelope = { next };
-  // Re-emit the fallback block only when at least one sub-field is set so
-  // an empty `{}` doesn't leak onto the wire.
-  if (
-    registry.fallback.xmtp !== undefined ||
-    registry.fallback.mcp !== undefined ||
-    registry.fallback.onchainHints !== undefined
-  ) {
-    envelope.fallback = registry.fallback;
+  return { next, fallback: registry.fallback };
+}
+
+function isUsableChannel(
+  channel: ActionChannel,
+  actionId: ActionId,
+  registry: ChannelRegistry,
+  serverEndpoint: string | undefined,
+): boolean {
+  switch (channel) {
+    case "server":
+      return serverEndpoint !== undefined;
+    case "mcp":
+      return registry.fallback.mcp !== undefined;
+    case "xmtp":
+      return registry.fallback.xmtp !== undefined;
+    case "onchain":
+      return registry.fallback.onchainHints.actionFacets[actionId] !== undefined;
+    case "facilitator":
+      return true;
   }
-  return envelope;
 }
 
 function toClientState(input: DeriveNextActionsInput): ClientState {

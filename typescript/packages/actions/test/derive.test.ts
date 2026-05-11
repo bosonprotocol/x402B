@@ -28,7 +28,16 @@ const REGISTRY: ChannelRegistry = {
         permit2: "executeMetaTransactionWithTokenTransferAuthorization",
       },
       actionFacets: {
+        "boson-createOfferAndCommit": "ExchangeCommitFacet",
+        "boson-createOfferCommitAndRedeem": "OrchestrationHandlerFacet2",
         "boson-redeem": "ExchangeHandlerFacet",
+        "boson-cancelVoucher": "ExchangeHandlerFacet",
+        "boson-revokeVoucher": "ExchangeHandlerFacet",
+        "boson-completeExchange": "ExchangeHandlerFacet",
+        "boson-raiseDispute": "DisputeHandlerFacet",
+        "boson-resolveDispute": "DisputeHandlerFacet",
+        "boson-escalateDispute": "DisputeHandlerFacet",
+        "boson-retractDispute": "DisputeHandlerFacet",
       },
     },
   },
@@ -43,10 +52,10 @@ describe("deriveInitialNextActions (PRE_COMMIT)", () => {
     ]);
   });
 
-  it("each entry inherits the registry's channel order verbatim", () => {
+  it("each entry keeps only usable channels in registry order", () => {
     const envelope = deriveInitialNextActions(REGISTRY);
     for (const entry of envelope.next) {
-      expect(entry.channels).toEqual(REGISTRY.channels);
+      expect(entry.channels).toEqual(["facilitator", "onchain", "mcp", "xmtp"]);
     }
   });
 
@@ -54,6 +63,7 @@ describe("deriveInitialNextActions (PRE_COMMIT)", () => {
     const envelope = deriveInitialNextActions(REGISTRY);
     for (const entry of envelope.next) {
       expect(entry.endpoints).toBeUndefined();
+      expect(entry.channels).not.toContain("server");
     }
   });
 
@@ -74,12 +84,9 @@ describe("deriveInitialNextActions (PRE_COMMIT)", () => {
     expect(envelope.fallback).toEqual(REGISTRY.fallback);
   });
 
-  it("omits an empty fallback block", () => {
-    const envelope = deriveInitialNextActions({
-      channels: ["onchain"],
-      fallback: {},
-    });
-    expect(envelope.fallback).toBeUndefined();
+  it("always emits the on-chain fallback block", () => {
+    const envelope = deriveInitialNextActions(REGISTRY);
+    expect(envelope.fallback?.onchainHints).toEqual(REGISTRY.fallback.onchainHints);
   });
 });
 
@@ -107,6 +114,51 @@ describe("deriveNextActions — non-DISPUTED states", () => {
     expect(redeem?.endpoints).toEqual({
       server: "https://seller.example/x402B/redeem",
     });
+    expect(redeem?.channels).toEqual(["server", "facilitator", "onchain", "mcp", "xmtp"]);
+  });
+
+  it("omits channels whose required hints are absent", () => {
+    const envelope = deriveNextActions(
+      { exchangeId: "12345", exchangeState: ExchangeState.REDEEMED },
+      {
+        channels: ["server", "facilitator", "onchain", "mcp", "xmtp"],
+        fallback: {
+          onchainHints: {
+            escrow: "0x0000000000000000000000000000000000000001",
+            metaTxFacet: "MetaTransactionsHandlerFacet",
+            metaTxEntrypoints: {
+              none: "executeMetaTransaction",
+              erc3009: "executeMetaTransactionWithTokenTransferAuthorization",
+              permit: "executeMetaTransactionWithTokenTransferAuthorization",
+              permit2: "executeMetaTransactionWithTokenTransferAuthorization",
+            },
+            actionFacets: {
+              "boson-createOfferAndCommit": "ExchangeCommitFacet",
+              "boson-createOfferCommitAndRedeem": "OrchestrationHandlerFacet2",
+              "boson-redeem": "ExchangeHandlerFacet",
+              "boson-cancelVoucher": "ExchangeHandlerFacet",
+              "boson-revokeVoucher": "ExchangeHandlerFacet",
+              "boson-completeExchange": "ExchangeHandlerFacet",
+              "boson-raiseDispute": "DisputeHandlerFacet",
+              "boson-resolveDispute": "DisputeHandlerFacet",
+              "boson-escalateDispute": "DisputeHandlerFacet",
+              "boson-retractDispute": "DisputeHandlerFacet",
+            },
+          },
+        },
+      },
+    );
+
+    expect(envelope.next).toEqual([
+      {
+        id: "boson-completeExchange",
+        channels: ["facilitator", "onchain"],
+      },
+      {
+        id: "boson-raiseDispute",
+        channels: ["facilitator", "onchain"],
+      },
+    ]);
   });
 
   it("returns next: [] for terminal exchange states", () => {
@@ -118,6 +170,22 @@ describe("deriveNextActions — non-DISPUTED states", () => {
       const envelope = deriveNextActions({ exchangeId: "x", exchangeState }, REGISTRY);
       expect(envelope.next).toEqual([]);
     }
+  });
+});
+
+describe("deriveNextActions — unusable actions", () => {
+  it("throws when no configured channel can be used for a legal action", () => {
+    expect(() =>
+      deriveNextActions(
+        { exchangeId: "12345", exchangeState: ExchangeState.REDEEMED },
+        {
+          channels: ["server", "mcp", "xmtp"],
+          fallback: {
+            onchainHints: REGISTRY.fallback.onchainHints,
+          },
+        },
+      ),
+    ).toThrow("No usable channel configured for action boson-completeExchange");
   });
 });
 
