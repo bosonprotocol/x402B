@@ -14,7 +14,12 @@
 // `(exchangeId, state, disputeState)` tuple.
 
 import type { ActionsFallback, NextAction } from "@bosonprotocol/x402-core/schemes/escrow";
-import type { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
+import {
+  DisputeState,
+  ExchangeState,
+  type DisputeState as DisputeStateType,
+  type ExchangeState as ExchangeStateType,
+} from "@bosonprotocol/x402-core/state-machine";
 
 export type {
   ActionChannel,
@@ -23,7 +28,7 @@ export type {
   NextAction,
   OnchainHints,
 } from "@bosonprotocol/x402-core/schemes/escrow";
-export type { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
+export { DisputeState, ExchangeState };
 
 /**
  * Single entry in the `next[]` array of a `nextActions` envelope.
@@ -52,8 +57,8 @@ export interface ActionEntry extends NextAction {
  * `disputeState` is present, without any runtime check.
  */
 type ExchangeStatePair =
-  | { state: Exclude<ExchangeState, typeof ExchangeState.DISPUTED>; disputeState?: never }
-  | { state: typeof ExchangeState.DISPUTED; disputeState: DisputeState };
+  | { state: Exclude<ExchangeStateType, typeof ExchangeState.DISPUTED>; disputeState?: never }
+  | { state: typeof ExchangeState.DISPUTED; disputeState: DisputeStateType };
 
 /**
  * Top-level `nextActions` envelope returned in every server response.
