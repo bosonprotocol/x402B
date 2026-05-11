@@ -43,7 +43,7 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
       "fulfillment": {                                         // see boson-impl-03-fulfillment-channels.md
         "required": true,
         "options": [
-          { "id": "atomic-http", "schema": null },
+          { "id": "inline",      "schema": null },
           { "id": "email",       "schema": { "type": "object", "required": ["email"] } },
           { "id": "xmtp",        "schema": { "type": "object", "required": ["xmtpAddress"] } },
           { "id": "webhook",     "schema": { "type": "object", "required": ["url", "publicKey"] } }

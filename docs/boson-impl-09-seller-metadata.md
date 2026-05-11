@@ -26,7 +26,7 @@ When the buyer falls off the seller's HTTP server (server down, server censoring
       },
       "fallbackOrder": ["server", "facilitator", "onchain", "mcp", "xmtp"],
       "preferredFacilitator": "https://facilitator.boson.example",
-      "supportedFulfillmentChannels": ["atomic-http", "email", "xmtp"]
+      "supportedFulfillmentChannels": ["inline", "email", "xmtp"]
     }
   }
 }

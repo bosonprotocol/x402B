@@ -27,7 +27,7 @@ const client = createX402bClient({
   signer:                  buyerWallet,
   channelOrder:            ["server", "facilitator", "onchain", "mcp"],
   fulfillment: {
-    prefer: ["atomic-http", "xmtp", "email"],
+    prefer: ["inline", "xmtp", "email"],
     knownData: { xmtpAddress: buyerWallet.xmtp },
   },
   policy: {

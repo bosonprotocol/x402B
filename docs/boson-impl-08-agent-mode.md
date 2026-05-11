@@ -22,7 +22,7 @@ const buyer = createAgentBuyer({
   policy: {
     maxAmount: "5000000",
     preferredChannels: ["mcp", "onchain", "facilitator", "server"],
-    preferredFulfillment: ["atomic-http", "xmtp", "email"],
+    preferredFulfillment: ["inline", "xmtp", "email"],
     autoCompleteAfterRedeem: true,
   },
 });
