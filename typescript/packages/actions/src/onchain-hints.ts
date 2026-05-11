@@ -52,8 +52,8 @@ export const META_TX_ENTRYPOINTS: Readonly<Record<TokenAuthStrategy, string>> = 
  * `fallback.onchainHints.actionFacets` only for the actions the
  * envelope actually advertises, keeping the wire format compact.
  */
-export function actionFacetsFor(actionIds: readonly ActionId[]): Record<ActionId, string> {
-  const out = {} as Record<ActionId, string>;
+export function actionFacetsFor(actionIds: readonly ActionId[]): Record<string, string> {
+  const out: Record<string, string> = {};
   for (const id of actionIds) {
     out[id] = ACTION_FACETS[id];
   }
