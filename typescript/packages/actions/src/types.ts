@@ -17,6 +17,7 @@ import type {
   EscrowNextActions,
   NextAction,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+import { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
 
 export type {
   ActionChannel,
@@ -26,7 +27,7 @@ export type {
   NextAction,
   OnchainHints,
 } from "@bosonprotocol/x402-core/schemes/escrow";
-export type { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
+export { DisputeState, ExchangeState };
 
 /**
  * Single entry in the `next[]` array of a `nextActions` envelope. Alias
@@ -40,10 +41,10 @@ export type ActionEntry = NextAction;
  * Top-level `nextActions` envelope returned in every server response.
  *
  * - **Pre-commit** (initial 402): the base `ActionsEnvelope` (no
- *   `exchangeId` / `state` / `disputeState`). Nested inside
+ *   `exchangeId` / `exchangeState` / `disputeState`). Nested inside
  *   `accepts[i].actions` on the 402 response.
  * - **Post-commit**: the richer `EscrowNextActions` (with
- *   `exchangeId`, `state`, and — when `state === DISPUTED` —
+ *   `exchangeId`, `exchangeState`, and — when `exchangeState === DISPUTED` —
  *   `disputeState`). Returned at the top level of every subsequent
  *   response.
  */

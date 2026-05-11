@@ -11,13 +11,12 @@ export type {
   ActionEntry,
   ActionsEnvelope,
   ActionsFallback,
-  DisputeState,
   EscrowNextActions,
-  ExchangeState,
   NextAction,
   NextActionsEnvelope,
   OnchainHints,
 } from "./types.js";
+export { DisputeState, ExchangeState } from "./types.js";
 
 export type { Channel, ChannelAdapter } from "./channels/index.js";
 export { CHANNEL_IDS } from "./channels/index.js";

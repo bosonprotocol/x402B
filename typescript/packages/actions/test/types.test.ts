@@ -1,7 +1,9 @@
-import { describe, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   CHANNEL_IDS,
+  DisputeState,
+  ExchangeState,
   type ActionEntry,
   type Channel,
   type ChannelAdapter,
@@ -41,10 +43,15 @@ describe("@bosonprotocol/x402-actions public types", () => {
     expectTypeOf(preCommit).toMatchTypeOf<NextActionsEnvelope>();
   });
 
-  it("NextActionsEnvelope has a post-commit shape with exchangeId+state", () => {
+  it("re-exports state enums as runtime values", () => {
+    expect(ExchangeState.DISPUTED).toBe("DISPUTED");
+    expect(DisputeState.RESOLVING).toBe("RESOLVING");
+  });
+
+  it("NextActionsEnvelope has a post-commit shape with exchangeId+exchangeState", () => {
     const postCommit: NextActionsEnvelope = {
       exchangeId: "12345",
-      state: "REDEEMED",
+      exchangeState: ExchangeState.REDEEMED,
       next: [
         {
           id: "boson-completeExchange",
@@ -58,8 +65,8 @@ describe("@bosonprotocol/x402-actions public types", () => {
   it("NextActionsEnvelope's DISPUTED variant requires disputeState", () => {
     const disputed: NextActionsEnvelope = {
       exchangeId: "12345",
-      state: "DISPUTED",
-      disputeState: "RESOLVING",
+      exchangeState: ExchangeState.DISPUTED,
+      disputeState: DisputeState.RESOLVING,
       next: [
         {
           id: "boson-resolveDispute",
