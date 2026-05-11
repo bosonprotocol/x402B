@@ -45,6 +45,17 @@ describe("EscrowPaymentRequirements — happy path", () => {
     const ajvOk = ajvValidate(validRequirements);
     expect(zodOk).toBe(ajvOk);
   });
+
+  it("accepts channel metadata on fulfillment options", () => {
+    const withMetadata = cloneFixture();
+    withMetadata.fulfillment?.options.push({
+      id: "webhook",
+      schema: { type: "object", required: ["url", "publicKey"] },
+      metadata: { serverPublicKey: "0xabc123", endpoint: "https://seller.example/webhook" },
+    });
+    expect(escrowPaymentRequirementsSchema.safeParse(withMetadata).success).toBe(true);
+    expect(ajvValidate(withMetadata)).toBe(true);
+  });
 });
 
 describe("EscrowPaymentRequirements — rejection cases", () => {
