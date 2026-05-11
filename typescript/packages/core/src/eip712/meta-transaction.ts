@@ -6,6 +6,11 @@
 // drift), we route the signing call through a stub `Web3LibAdapter` that
 // intercepts `eth_signTypedData_v4` to capture the structured data, then
 // returns a dummy 65-byte signature so signMetaTx can finish without errors.
+// The intercept adapter is built by the shared
+// `createTypedDataInterceptAdapter` factory from `internal/web3lib-stub.ts`,
+// so the same loud-error semantics apply to any future helper that needs
+// to extract typed-data out of core-sdk.
+//
 // The captured object is exactly what the deployed protocol's
 // `MetaTransactionsHandlerFacet` recovers signatures against.
 //
@@ -25,9 +30,9 @@
 // happens at calldata-build time downstream (in `@bosonprotocol/x402-evm`).
 
 import { metaTx } from "@bosonprotocol/core-sdk";
-import type { Web3LibAdapter } from "@bosonprotocol/common";
 import { hashTypedData, recoverTypedDataAddress, type Address, type Hex } from "viem";
 
+import { createTypedDataInterceptAdapter } from "../internal/web3lib-stub.js";
 import type { TypedDataField } from "./full-offer.js";
 
 export const META_TRANSACTION_PRIMARY_TYPE = "MetaTransaction" as const;
@@ -63,9 +68,7 @@ export interface MetaTransactionArgs {
   message: MetaTransactionMessage;
 }
 
-// Any 65-byte hex; the value is irrelevant — core-sdk's
-// `getSignatureParameters` only slices it without validation.
-const DUMMY_SIGNATURE_65: Hex = `0x${"11".repeat(32)}${"22".repeat(32)}1b`;
+const STUB_CALLER_TAG = "@bosonprotocol/x402-core:meta-transaction";
 
 /**
  * Build the EIP-712 typed-data for a Boson meta-transaction.
@@ -82,36 +85,17 @@ export async function metaTransactionTypedData({
   chainId,
   verifyingContract,
 }: MetaTransactionArgs): Promise<MetaTransactionTypedData> {
-  let captured: MetaTransactionTypedData | undefined;
-
-  const intercept: Web3LibAdapter = {
-    uuid: "x402-core:meta-tx-typed-data-intercept",
+  const intercept = createTypedDataInterceptAdapter<MetaTransactionTypedData>({
+    callerTag: STUB_CALLER_TAG,
     // signMetaTx puts the signer's address into the `from` field of the
     // typed-data message — we want it to match the caller-supplied `from`.
-    getSignerAddress: () => Promise.resolve(message.from),
-    isSignerContract: () => Promise.resolve(false),
-    getChainId: () => Promise.resolve(chainId),
-    send: async (method, params) => {
-      if (method !== "eth_signTypedData_v4") {
-        throw new Error(`x402-core: unexpected RPC method during typed-data capture: ${method}`);
-      }
-      const json = (params as unknown[])[1];
-      if (typeof json !== "string") {
-        throw new Error("x402-core: signMetaTx send payload is not a JSON string");
-      }
-      captured = JSON.parse(json) as MetaTransactionTypedData;
-      return DUMMY_SIGNATURE_65;
-    },
-    getBalance: () => Promise.reject(unreachable("getBalance")),
-    estimateGas: () => Promise.reject(unreachable("estimateGas")),
-    sendTransaction: () => Promise.reject(unreachable("sendTransaction")),
-    call: () => Promise.reject(unreachable("call")),
-    getTransactionReceipt: () => Promise.reject(unreachable("getTransactionReceipt")),
-    getCurrentTimeMs: () => Promise.reject(unreachable("getCurrentTimeMs")),
-  };
+    signerAddress: message.from,
+    chainId,
+    parse: (json) => JSON.parse(json) as MetaTransactionTypedData,
+  });
 
   await metaTx.handler.signMetaTx({
-    web3Lib: intercept,
+    web3Lib: intercept.adapter,
     nonce: message.nonce.toString(),
     metaTxHandlerAddress: verifyingContract,
     chainId,
@@ -119,18 +103,14 @@ export async function metaTransactionTypedData({
     functionSignature: message.functionSignature,
   });
 
+  const captured = intercept.read();
   if (!captured) {
     throw new Error(
-      "x402-core: signMetaTx did not invoke eth_signTypedData_v4 — core-sdk internals may have changed",
+      "@bosonprotocol/x402-core:meta-transaction: signMetaTx did not invoke eth_signTypedData_v4 — " +
+        "core-sdk internals may have changed",
     );
   }
   return captured;
-}
-
-function unreachable(method: string): Error {
-  return new Error(
-    `x402-core: stub Web3LibAdapter.${method}() should never be called during typed-data capture`,
-  );
 }
 
 /** EIP-712 digest for the meta-tx — what gets signed. */
