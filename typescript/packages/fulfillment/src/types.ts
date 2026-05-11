@@ -17,7 +17,7 @@ export interface FulfillmentOptionDescriptor extends FulfillmentOption {
  * Result of a server-side `onRedeem` invocation.
  *
  * - `atomic` — the resource itself is returned in-band (used by the
- *   `atomic-http` channel; the body is the HTTP response payload).
+ *   `inline` channel; the body is the HTTP response payload).
  * - `async`  — the resource is delivered out-of-band; an optional
  *   `pointer` may be returned (e.g. `ipfs://…`, `https://…`,
  *   `mailto:…`) for callers that want to surface a tracking URL.
@@ -39,7 +39,7 @@ export type FulfillmentResult =
  * - `TServerCfg`  — channel-specific server configuration (keys, urls).
  * - `TBuyerData`  — shape of the buyer-supplied data validated by
  *   `buyerDataSchema`. `null` for schemaless channels (e.g.
- *   `atomic-http`, `widget`).
+ *   `inline`, `widget`).
  */
 export interface FulfillmentChannel<TServerCfg = unknown, TBuyerData = unknown> {
   /** Stable identifier used in the wire format (`fulfillment.option`). */

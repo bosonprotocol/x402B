@@ -1,9 +1,11 @@
 import type { FulfillmentOption } from "@bosonprotocol/x402-core/schemes/escrow";
 import { describe, expect, it, vi } from "vitest";
 
+import { parseEscrowPaymentPayload } from "../../../core/src/schemes/escrow/index.js";
 import { negotiateFulfillment, NoCompatibleFulfillmentError } from "../../src/client/index.js";
 
 const INLINE: FulfillmentOption = { id: "inline", schema: null };
+const BUYER = "0x2222222222222222222222222222222222222222";
 
 const EMAIL: FulfillmentOption = {
   id: "email",
@@ -18,12 +20,47 @@ const XMTP: FulfillmentOption = {
   },
 };
 
+const paymentPayloadBase = {
+  x402Version: 2,
+  scheme: "escrow",
+  network: "eip155:8453",
+  payload: {
+    action: "boson-createOfferCommitAndRedeem",
+    tokenAuthStrategy: "none",
+    offerRef: { fullOffer: { id: "0" }, sellerSig: "0xdeadbeef" },
+    buyer: BUYER,
+    metaTx: {
+      from: BUYER,
+      nonce: "0",
+      functionName: "createOfferCommitAndRedeem(...)",
+      functionSignature: "0xabcd1234",
+      sig: {
+        v: 27,
+        r: "0x" + "11".repeat(32),
+        s: "0x" + "22".repeat(32),
+      },
+    },
+  },
+} as const;
+
 describe("negotiateFulfillment", () => {
   it("returns a schemaless option immediately with data: null", async () => {
     const choice = await negotiateFulfillment([INLINE, EMAIL], {
       supports: ["inline", "email"],
     });
     expect(choice).toEqual({ option: "inline", data: null });
+  });
+
+  it("returns a schemaless choice that core accepts in the payment payload", async () => {
+    const choice = await negotiateFulfillment([INLINE], {
+      supports: ["inline"],
+    });
+    expect(() =>
+      parseEscrowPaymentPayload({
+        ...paymentPayloadBase,
+        fulfillment: choice,
+      }),
+    ).not.toThrow();
   });
 
   it("honours `prefer` ordering when both options are supported", async () => {
@@ -61,12 +98,29 @@ describe("negotiateFulfillment", () => {
       agentContext: {},
     });
     await expect(tryNegotiate).rejects.toBeInstanceOf(NoCompatibleFulfillmentError);
-    await expect(tryNegotiate).rejects.toMatchObject({ tried: ["email", "xmtp"] });
+    await expect(tryNegotiate).rejects.toMatchObject({
+      advertised: ["email", "xmtp"],
+      attempted: ["email", "xmtp"],
+      tried: ["email", "xmtp"],
+    });
   });
 
-  it("throws NoCompatibleFulfillmentError with empty tried[] when seller advertised no options", async () => {
+  it("throws NoCompatibleFulfillmentError with empty advertised[] when seller advertised no options", async () => {
     await expect(negotiateFulfillment([], { supports: ["email"] })).rejects.toMatchObject({
-      tried: [],
+      advertised: [],
+      attempted: [],
+    });
+  });
+
+  it("tracks advertised options separately from supported attempts", async () => {
+    await expect(
+      negotiateFulfillment([EMAIL, XMTP], {
+        supports: ["webhook"],
+        agentContext: { email: "buyer@example.com", xmtpAddress: "0xabc" },
+      }),
+    ).rejects.toMatchObject({
+      advertised: ["email", "xmtp"],
+      attempted: [],
     });
   });
 

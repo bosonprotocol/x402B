@@ -27,18 +27,28 @@ export interface NegotiateOptions {
 
 export interface NegotiationChoice {
   option: string;
-  /** `null` when the option is schemaless (e.g. `atomic-http`). */
+  /** `null` when the option is schemaless (e.g. `inline`). */
   data: unknown | null;
 }
 
 export class NoCompatibleFulfillmentError extends Error {
-  constructor(public readonly tried: string[]) {
+  constructor(
+    public readonly advertised: string[],
+    public readonly attempted: string[],
+  ) {
     super(
-      tried.length === 0
+      advertised.length === 0
         ? "No fulfillment options were advertised by the seller"
-        : `No advertised fulfillment option could be satisfied by the client (tried: ${tried.join(", ")})`,
+        : attempted.length === 0
+          ? `No advertised fulfillment option is supported by the client (advertised: ${advertised.join(", ")})`
+          : `No advertised fulfillment option could be satisfied by the client (attempted: ${attempted.join(", ")})`,
     );
     this.name = "NoCompatibleFulfillmentError";
+  }
+
+  /** Supported options the client actually tried to satisfy. */
+  get tried(): string[] {
+    return this.attempted;
   }
 }
 
@@ -53,11 +63,12 @@ export async function negotiateFulfillment(
   cfg: NegotiateOptions,
 ): Promise<NegotiationChoice> {
   const ordered = orderOptions(options, cfg.prefer ?? []);
-  const tried: string[] = [];
+  const advertised = ordered.map((option) => option.id);
+  const attempted: string[] = [];
 
   for (const option of ordered) {
     if (!cfg.supports.includes(option.id)) continue;
-    tried.push(option.id);
+    attempted.push(option.id);
 
     if (option.schema == null) {
       return { option: option.id, data: null };
@@ -78,7 +89,7 @@ export async function negotiateFulfillment(
     }
   }
 
-  throw new NoCompatibleFulfillmentError(tried);
+  throw new NoCompatibleFulfillmentError(advertised, attempted);
 }
 
 function orderOptions(
