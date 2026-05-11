@@ -1,0 +1,66 @@
+{
+  "name": "@bosonprotocol/x402-client",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Boson Protocol x402 buyer-side SDK — framework-agnostic client that intercepts 402 escrow-scheme responses and produces the X-PAYMENT header.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosonprotocol/x402B.git",
+    "directory": "typescript/packages/client"
+  },
+  "homepage": "https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/client",
+  "bugs": {
+    "url": "https://github.com/bosonprotocol/x402B/issues"
+  },
+  "keywords": [
+    "x402",
+    "boson-protocol",
+    "escrow",
+    "client",
+    "buyer",
+    "web3",
+    "payments"
+  ],
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./signer": {
+      "types": "./dist/cjs/signer/index.d.ts",
+      "import": "./dist/esm/signer/index.js",
+      "require": "./dist/cjs/signer/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup && node scripts/postbuild.mjs",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src --max-warnings 0",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@bosonprotocol/common": "^1.32.2",
+    "@bosonprotocol/x402-core": "workspace:^",
+    "ajv": "^8.17.1",
+    "viem": "^2.39.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
