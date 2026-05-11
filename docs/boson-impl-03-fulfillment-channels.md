@@ -66,15 +66,15 @@ export interface FulfillmentChannel<TServerCfg = unknown, TBuyerData = unknown> 
   /** Server: invoked at commit acceptance — store buyerData against exchangeId. */
   onCommit(exchangeId: string, buyerData: TBuyerData): Promise<void>;
 
-  /** Server: invoked when the redeem is observed; returns the resource (atomic) or void (async). */
-  onRedeem(exchangeId: string): Promise<FulfillmentResult>;
+  /** Server: invoked when fulfillment is observed; returns the resource inline or a pointer for async delivery. */
+  onFulfill(exchangeId: string): Promise<FulfillmentResult>;
 
   /** Client: optionally collect buyer data interactively. */
   collect?(metadata: unknown): Promise<TBuyerData>;
 }
 
 export type FulfillmentResult =
-  | { kind: "atomic"; body: Uint8Array; contentType: string }
+  | { kind: "inline"; body: Uint8Array; contentType: string }
   | { kind: "async"; pointer?: string }; // pointer e.g. ipfs://, https://, mailto:
 ```
 
@@ -82,7 +82,7 @@ export type FulfillmentResult =
 
 | `id` | Use case | Buyer-data schema | Notes |
 |---|---|---|---|
-| `atomic-http` | Resource returned in same HTTP response | `null` | Server `onRedeem` returns the body. Composes naturally with Flow B's atomic commit-and-redeem (the resource is ready), but Flow B does **not** require this channel — the redeem state transition can be atomic while delivery itself is async. |
+| `inline` | Resource returned in the same HTTP response | `null` | Server `onFulfill` returns the body. Composes naturally with Flow B's atomic commit-and-redeem (the resource is ready), but Flow B does **not** require this channel — the redeem state transition can be atomic while delivery itself is async. |
 | `email` | Mailing list signup, license key dispatch | `{ email: string }` | RFC 5321 validation. Server stores against exchangeId; sends on redeem. |
 | `xmtp` | Push to buyer's XMTP inbox | `{ xmtpAddress: string }` (EOA) | Useful for AI-agent buyers that already use XMTP for commerce. |
 | `webhook` | Push to buyer-controlled HTTPS endpoint | `{ url: string, publicKey: string }` | Server signs the payload with a key under `metadata.serverPublicKey`; client verifies signature. |
@@ -96,7 +96,7 @@ The registry is open: third parties can ship additional channels as `@bosonproto
 
 | Channel | Collected at | Why |
 |---|---|---|
-| `atomic-http` | n/a | No data. |
+| `inline` | n/a | No data. |
 | `email`, `xmtp`, `webhook`, `ipfs-pointer` | At commit (in X-PAYMENT) | Lightweight, no side-channel needed. |
 | `widget`, `mcp` | Post-commit, via the channel itself | Heavier UI / agent-driven; not a fit for header-sized data. |
 
@@ -121,7 +121,7 @@ Servers SHOULD advertise at least one "in-payload" fulfillment channel (email/xm
 import { negotiateFulfillment } from "@bosonprotocol/x402-fulfillment";
 
 const choice = await negotiateFulfillment(requirements.fulfillment.options, {
-  prefer: ["atomic-http", "xmtp", "email"],          // for AI agents
+  prefer: ["inline", "xmtp", "email"],               // for AI agents
   collectInteractive: ui?.collect,                   // for humans
   agentContext: { xmtpAddress: agentWallet.xmtp },   // pre-known data
 });

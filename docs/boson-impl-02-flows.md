@@ -37,7 +37,7 @@ sequenceDiagram
     S->>S: getExchanges(exchangeId) — verify state=COMMITTED, seller=self, amount=expected
     S-->>C: 200 OK<br/>X-PAYMENT-RESPONSE: { exchangeId, txHash }<br/>nextActions: [boson-redeem, boson-raiseDispute, boson-cancelVoucher]
 
-    Note over C: Buyer fulfills delivery details out-of-band (per fulfillment.option)<br/>or already attached them at commit (atomic-http / email / xmtp / webhook)
+    Note over C: Buyer fulfills delivery details out-of-band (per fulfillment.option)<br/>or already attached them at commit (inline / email / xmtp / webhook)
 
     C->>D: redeemVoucher(exchangeId)<br/>(or via server, facilitator, MCP)
     D-->>C: state = REDEEMED
@@ -78,7 +78,7 @@ sequenceDiagram
     C->>S: GET /resource
     S-->>C: 402 PaymentRequirements (action options include "boson-createOfferCommitAndRedeem")
 
-    Note over C: Buyer chooses action="boson-createOfferCommitAndRedeem"<br/>+ tokenAuthStrategy + fulfillment channel option (often "atomic-http")
+    Note over C: Buyer chooses action="boson-createOfferCommitAndRedeem"<br/>+ tokenAuthStrategy + fulfillment channel option (often "inline")
 
     C->>C: Sign meta-tx for createOfferCommitAndRedeem (protocol Diamond domain)
     C->>C: Sign token-transfer authorization (per BPIP-12 strategy)<br/>— skipped when tokenAuthStrategy="none"
