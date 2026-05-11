@@ -1,9 +1,8 @@
 // Public surface for `@bosonprotocol/x402-client`.
 //
-// MVP scaffold: configuration types, typed errors, signer interface, and
-// the pure-function utilities the in-progress `handle402` entrypoint will
-// compose (action picker, fulfillment resolver). Signing, the `CoreSDK`
-// bridge, and the `handle402` entrypoint land in the next iteration.
+// MVP: ERC-3009 token-auth, server-channel submission only,
+// `boson-createOfferAndCommit` action only. Signing routes through
+// `CoreSDK.signMetaTxCreateOfferAndCommit` directly.
 
 export type {
   ExchangeSummary,
@@ -25,3 +24,7 @@ export {
 
 export { pickAction } from "./action.js";
 export { resolveFulfillment, type ResolvedFulfillment } from "./fulfillment.js";
+export { parseChainId } from "./core-sdk-factory.js";
+export { parsePaymentResponse } from "./response.js";
+export { createX402bClient, type X402bClient } from "./client.js";
+export type { ResolveDisputeArgs, SignActionArgs, SimplePostCommitArgs } from "./post-commit.js";

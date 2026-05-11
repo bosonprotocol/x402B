@@ -54,6 +54,7 @@
   },
   "dependencies": {
     "@bosonprotocol/common": "^1.32.2",
+    "@bosonprotocol/core-sdk": "1.47.1-alpha.0",
     "@bosonprotocol/x402-core": "workspace:^",
     "ajv": "^8.17.1",
     "viem": "^2.39.3"
