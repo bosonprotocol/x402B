@@ -38,7 +38,7 @@ const channelRegistrySchema = z
     endpoints: z.record(actionIdSchema, httpsUrlSchema).optional(),
     xmtp: addressSchema.optional(),
     mcp: z.string().min(1).optional(),
-    escrow: addressSchema.optional(),
+    escrow: addressSchema,
   })
   .strict();
 

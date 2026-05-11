@@ -18,21 +18,39 @@ describe("buildChannelRegistry — happy path", () => {
     expect(registry.escrow).toBe("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
   });
 
-  it("accepts a minimal config (channels only)", () => {
-    const registry = buildChannelRegistry({ channels: ["onchain"] });
+  it("accepts a minimal config", () => {
+    const registry = buildChannelRegistry({
+      channels: ["onchain"],
+      escrow: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    });
     expect(registry.channels).toEqual(["onchain"]);
+    expect(registry.escrow).toBe("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
   });
 });
 
 describe("buildChannelRegistry — rejection cases", () => {
   it("rejects an empty channels array", () => {
-    expect(() => buildChannelRegistry({ channels: [] })).toThrow();
+    expect(() =>
+      buildChannelRegistry({
+        channels: [],
+        escrow: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects a missing escrow address", () => {
+    expect(() =>
+      buildChannelRegistry({
+        channels: ["onchain"],
+      } as never),
+    ).toThrow();
   });
 
   it("rejects duplicate channel ids", () => {
     expect(() =>
       buildChannelRegistry({
         channels: ["server", "server"],
+        escrow: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       } as never),
     ).toThrow();
   });
@@ -41,6 +59,7 @@ describe("buildChannelRegistry — rejection cases", () => {
     expect(() =>
       buildChannelRegistry({
         channels: ["server", "telegram"],
+        escrow: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       } as never),
     ).toThrow();
   });
@@ -50,6 +69,7 @@ describe("buildChannelRegistry — rejection cases", () => {
       buildChannelRegistry({
         channels: ["server"],
         endpoints: { "boson-redeem": "ftp://seller.example/redeem" } as never,
+        escrow: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       }),
     ).toThrow();
   });
@@ -59,6 +79,7 @@ describe("buildChannelRegistry — rejection cases", () => {
       buildChannelRegistry({
         channels: ["server"],
         endpoints: { "boson-doesnt-exist": "https://seller.example/x" } as never,
+        escrow: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       }),
     ).toThrow();
   });
@@ -75,6 +96,7 @@ describe("buildChannelRegistry — rejection cases", () => {
   it("rejects an unknown top-level field", () => {
     const result = channelRegistryZodSchema.safeParse({
       channels: ["onchain"],
+      escrow: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       surprise: "extra",
     });
     expect(result.success).toBe(false);
