@@ -4,16 +4,6 @@
 // names (`onCommit` / `onFulfill`) and same `FulfillmentResult` shape.
 
 import type { FulfillmentOption } from "@bosonprotocol/x402-core/schemes/escrow";
-import type { JSONSchema7 } from "json-schema";
-
-/**
- * Server-side description of an advertised fulfillment option as it
- * appears on the wire, optionally augmented with channel-specific
- * `metadata` (e.g. a webhook URL or a widget endpoint).
- */
-export interface FulfillmentOptionDescriptor extends FulfillmentOption {
-  metadata?: unknown;
-}
 
 /**
  * Result of a server-side `onFulfill` invocation.
@@ -47,14 +37,19 @@ export interface FulfillmentChannel<TServerCfg = unknown, TBuyerData = unknown> 
   /** Stable identifier used in the wire format (`fulfillment.option`). */
   readonly id: string;
 
-  /** JSON Schema for the buyer's `fulfillment.data`, or `null` if the channel takes no data. */
-  readonly buyerDataSchema: JSONSchema7 | null;
+  /**
+   * JSON-Schema-shaped description of the data the buyer must supply,
+   * or `null` for schemaless channels. Same shape and nullability as
+   * `FulfillmentOption.schema` on the wire so the value can be
+   * surfaced from `describe()` without a cast.
+   */
+  readonly buyerDataSchema: Record<string, unknown> | null;
 
   /** Apply server-side configuration. Called once at boot, not per request. */
   configure(cfg: TServerCfg): void;
 
   /** Build the entry that goes into `PaymentRequirements.fulfillment.options[]`. */
-  describe(): FulfillmentOptionDescriptor;
+  describe(): FulfillmentOption;
 
   /** Validate the buyer's attached data against `buyerDataSchema`. */
   validate(data: TBuyerData): { ok: true } | { ok: false; reason: string };

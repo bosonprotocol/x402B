@@ -1,10 +1,7 @@
+import type { FulfillmentOption } from "@bosonprotocol/x402-core/schemes/escrow";
 import { describe, expectTypeOf, it } from "vitest";
 
-import type {
-  FulfillmentChannel,
-  FulfillmentOptionDescriptor,
-  FulfillmentResult,
-} from "../src/index.js";
+import type { FulfillmentChannel, FulfillmentResult } from "../src/index.js";
 
 describe("@bosonprotocol/x402-fulfillment public types", () => {
   it("FulfillmentResult is a discriminated union of inline | async", () => {
@@ -24,6 +21,6 @@ describe("@bosonprotocol/x402-fulfillment public types", () => {
     type Channel = FulfillmentChannel<Cfg, Data>;
     expectTypeOf<Parameters<Channel["configure"]>[0]>().toEqualTypeOf<Cfg>();
     expectTypeOf<Parameters<Channel["onCommit"]>[1]>().toEqualTypeOf<Data>();
-    expectTypeOf<ReturnType<Channel["describe"]>>().toEqualTypeOf<FulfillmentOptionDescriptor>();
+    expectTypeOf<ReturnType<Channel["describe"]>>().toEqualTypeOf<FulfillmentOption>();
   });
 });

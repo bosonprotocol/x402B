@@ -1,10 +1,7 @@
+import type { FulfillmentOption } from "@bosonprotocol/x402-core/schemes/escrow";
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  FulfillmentChannel,
-  FulfillmentOptionDescriptor,
-  FulfillmentResult,
-} from "../../src/index.js";
+import type { FulfillmentChannel, FulfillmentResult } from "../../src/index.js";
 import {
   DuplicateChannelError,
   FulfillmentRegistry,
@@ -19,14 +16,14 @@ function makeFakeChannel(
   id: string,
   overrides: Partial<FulfillmentChannel<unknown, FakeData>> = {},
 ): FulfillmentChannel<unknown, FakeData> {
-  const descriptor: FulfillmentOptionDescriptor = {
+  const descriptor: FulfillmentOption = {
     id,
     schema: { type: "object", properties: { email: { type: "string" } }, required: ["email"] },
     metadata: { hint: id },
   };
   return {
     id,
-    buyerDataSchema: descriptor.schema as Record<string, unknown>,
+    buyerDataSchema: descriptor.schema,
     configure: vi.fn(),
     describe: vi.fn(() => descriptor),
     validate: vi.fn((data: FakeData) =>

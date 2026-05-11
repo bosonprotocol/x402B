@@ -8,11 +8,9 @@
 // registered — the registry doesn't pretend to know each channel's
 // `TBuyerData` shape; runtime validation lives inside each channel.
 
-import type {
-  FulfillmentChannel,
-  FulfillmentOptionDescriptor,
-  FulfillmentResult,
-} from "../types.js";
+import type { FulfillmentOption } from "@bosonprotocol/x402-core/schemes/escrow";
+
+import type { FulfillmentChannel, FulfillmentResult } from "../types.js";
 
 export class FulfillmentRegistryError extends Error {
   constructor(message: string) {
@@ -64,7 +62,7 @@ export class FulfillmentRegistry {
   }
 
   /** Build the `options[]` entries for the 402 PaymentRequirements. */
-  describeAll(): FulfillmentOptionDescriptor[] {
+  describeAll(): FulfillmentOption[] {
     return Array.from(this.channels.values()).map((c) => c.describe());
   }
 
@@ -80,7 +78,7 @@ export class FulfillmentRegistry {
 
   /** Drive the fulfillment delivery via the named channel. */
   async onFulfill(id: string, exchangeId: string): Promise<FulfillmentResult> {
-    return await this.requireChannel(id).onFulfill(exchangeId);
+    return this.requireChannel(id).onFulfill(exchangeId);
   }
 
   private requireChannel(id: string): AnyChannel {
