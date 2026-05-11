@@ -7,7 +7,9 @@
 //
 // See docs/boson-impl-03-fulfillment-channels.md for the registry entry.
 
-import type { FulfillmentChannel, FulfillmentOptionDescriptor } from "../../types.js";
+import type { FulfillmentOption } from "@bosonprotocol/x402-core/schemes/escrow";
+
+import type { FulfillmentChannel } from "../../types.js";
 
 export const INLINE_CHANNEL_ID = "inline";
 
@@ -21,7 +23,7 @@ export type InlineChannel = FulfillmentChannel<InlineServerCfg, null>;
 export function createInlineChannel(initialCfg?: InlineServerCfg): InlineChannel {
   let cfg: InlineServerCfg | undefined = initialCfg;
 
-  const descriptor: FulfillmentOptionDescriptor = {
+  const descriptor: FulfillmentOption = {
     id: INLINE_CHANNEL_ID,
     schema: null,
   };

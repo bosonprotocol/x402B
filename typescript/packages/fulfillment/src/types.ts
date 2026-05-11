@@ -6,15 +6,6 @@
 import type { FulfillmentOption } from "@bosonprotocol/x402-core/schemes/escrow";
 
 /**
- * Server-side description of an advertised fulfillment option as it
- * appears on the wire, optionally augmented with channel-specific
- * `metadata` (e.g. a webhook URL or a widget endpoint).
- */
-export interface FulfillmentOptionDescriptor extends FulfillmentOption {
-  metadata?: unknown;
-}
-
-/**
  * Result of a server-side `onFulfill` invocation.
  *
  * - `inline` — the resource itself is returned in-band (used by the

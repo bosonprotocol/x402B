@@ -42,3 +42,11 @@ exports so downstream packages can reuse them instead of duplicating
 regex.
 
 Each channel exposed under its own `./channels/<id>` subpath.
+
+Channels return the wire-format `FulfillmentOption` from `describe()`
+(the `FulfillmentOptionDescriptor` alias was dropped in favour of the
+underlying type, which now carries `metadata?`). `buyerDataSchema` is
+typed as `Record<string, unknown> | null` to match
+`FulfillmentOption.schema`, removing the previous `JSONSchema7` casts
+in the factory and inline channel and dropping the `@types/json-schema`
+devDep.
