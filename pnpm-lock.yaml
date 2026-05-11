@@ -36,6 +36,25 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.7.5)
 
+  typescript/packages/actions:
+    dependencies:
+      '@bosonprotocol/x402-core':
+        specifier: workspace:^
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.10
+        version: 20.19.40
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(postcss@8.5.14)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.40)
+  
   typescript/packages/actions/dist/cjs: {}
 
   typescript/packages/actions/dist/esm: {}

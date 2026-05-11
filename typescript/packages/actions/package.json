@@ -1,0 +1,65 @@
+{
+  "name": "@bosonprotocol/x402-actions",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Boson Protocol `nextActions` envelope builder for x402 — channel registry, action-entry types, and the pluggable channel-adapter contract used by the server SDK to advertise legal next transitions on every response.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosonprotocol/x402B.git",
+    "directory": "typescript/packages/actions"
+  },
+  "homepage": "https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/actions",
+  "bugs": {
+    "url": "https://github.com/bosonprotocol/x402B/issues"
+  },
+  "keywords": [
+    "x402",
+    "boson-protocol",
+    "escrow",
+    "next-actions",
+    "state-machine"
+  ],
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./channels": {
+      "types": "./dist/cjs/channels/index.d.ts",
+      "import": "./dist/esm/channels/index.js",
+      "require": "./dist/cjs/channels/index.js"
+    },
+    "./registry": {
+      "types": "./dist/cjs/registry/index.d.ts",
+      "import": "./dist/esm/registry/index.js",
+      "require": "./dist/cjs/registry/index.js"
+    },
+    "./schemas/*": "./dist/schemas/*"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup && node scripts/postbuild.mjs",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src --max-warnings 0",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@bosonprotocol/x402-core": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

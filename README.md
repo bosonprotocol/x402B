@@ -20,7 +20,7 @@ All packages publish under `@bosonprotocol/`.
 | `x402-client` | Framework-agnostic client. Interceptor that parses the 402, picks a fulfillment channel option and a token-auth strategy, signs the meta-tx + token authorization(s), retries, then drives post-redeem actions through whichever channel is preferred. Adapters: `x402-client-axios`, `x402-client-fetch`. |
 | `x402-facilitator` | Reference verify + settle service for the `escrow` scheme. Submits via `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`. |
 | `x402-fulfillment` | Pluggable `FulfillmentChannel` interface + atomic / email / XMTP / webhook / IPFS-pointer implementations. |
-| `x402-actions` | Exchange state machine + channel registry. Powers the `nextActions` envelope on every server response and the post-redeem endpoint set. |
+| `x402-actions` | Channel registry, `ChannelAdapter` contract, and the `nextActions` envelope builder. Drives off the state-machine tables in `x402-core` to advertise legal next transitions on every server response and powers the post-redeem endpoint set. |
 | `x402-agent` | Thin glue layer for AI-agent clients. Bridges to `bosonprotocol/agentic-commerce` MCP and lets agents pick channel (server / facilitator / on-chain / MCP) per action. |
 
 ---
