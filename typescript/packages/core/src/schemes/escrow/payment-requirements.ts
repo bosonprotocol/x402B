@@ -36,6 +36,7 @@ const fulfillmentSchema = z
         .object({
           id: z.string().min(1),
           schema: z.union([z.record(z.unknown()), z.null()]),
+          metadata: z.unknown().optional(),
         })
         .strict(),
     ),

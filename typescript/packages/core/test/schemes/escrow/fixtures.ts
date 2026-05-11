@@ -33,8 +33,12 @@ export const validRequirements: EscrowPaymentRequirements = {
   fulfillment: {
     required: true,
     options: [
-      { id: "atomic-http", schema: null },
-      { id: "email", schema: { type: "object", required: ["email"] } },
+      { id: "inline", schema: null },
+      {
+        id: "email",
+        schema: { type: "object", required: ["email"] },
+        metadata: { hint: "Use a monitored delivery address" },
+      },
     ],
   },
   actions: {

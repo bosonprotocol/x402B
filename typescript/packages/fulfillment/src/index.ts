@@ -5,8 +5,4 @@
 // helper are reached via subpath imports (`./channels/<id>`,
 // `./registry`, `./client`).
 
-export type {
-  FulfillmentChannel,
-  FulfillmentOptionDescriptor,
-  FulfillmentResult,
-} from "./types.js";
+export type { FulfillmentChannel, FulfillmentResult } from "./types.js";
