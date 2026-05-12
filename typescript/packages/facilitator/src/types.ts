@@ -10,6 +10,7 @@
 // stay framework-neutral.
 
 import type {
+  Address,
   EscrowPaymentPayload,
   EscrowPaymentRequirements,
   EvmNetwork,
@@ -70,11 +71,24 @@ export type FacilitatorSettleResult =
   | { ok: true; exchangeId: string; txHash: Hex }
   | { ok: false; code: FacilitatorErrorCode; reason: string };
 
-/** Body of `POST /perform-action` (per spec §"Endpoints"). */
+/** Body of `POST /perform-action` (per spec §"Endpoints").
+ *
+ * Carries enough context for the facilitator to dispatch a post-commit
+ * meta-tx without re-fetching protocol state: `network` selects which
+ * relayer wallet / RPC to use, and `escrowAddress` is the Boson Diamond
+ * the signed meta-tx was bound to (its EIP-712 verifyingContract).
+ *
+ * `signedPayload` is the ABI-encoded `BosonMetaTx` tuple
+ * `(address from, string functionName, bytes functionSignature,
+ *   uint256 nonce, uint8 v, bytes32 r, bytes32 s)` —
+ * the buyer / seller's pre-signed envelope ready to be wrapped in
+ * `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
+ */
 export interface FacilitatorPerformActionInput {
+  network: EvmNetwork;
+  escrowAddress: Address;
   exchangeId: string;
   action: ActionId;
-  /** Fully signed meta-tx envelope, as a 0x-prefixed hex blob. */
   signedPayload: Hex;
 }
 

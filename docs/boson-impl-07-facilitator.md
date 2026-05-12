@@ -24,8 +24,18 @@ POST /settle
   -> { ok: true, exchangeId, txHash } | { ok: false, code, reason }
 
 POST /perform-action?action=<ActionId>     // optional, for the "facilitator" channel in nextActions
-  body: { exchangeId, action, signedPayload }
+  body: { network, escrowAddress, exchangeId, action, signedPayload }
   -> { ok: true, txHash, newExchangeState, newDisputeState? } | { ok: false, code, reason }
+
+  `signedPayload` is the ABI-encoded tuple
+    (address from, string functionName, bytes functionSignature,
+     uint256 nonce, uint8 v, bytes32 r, bytes32 s)
+  — a serialised `BosonMetaTx` ready to be wrapped in
+  `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
+
+  `newExchangeState` / `newDisputeState` are looked up from the static
+  `ACTION_POST_STATE` table in `@bosonprotocol/x402-core/state-machine`
+  so clients can update local state without a subgraph round-trip.
 ```
 
 `FacilitatorChannelAdapter` stamps `endpoints.facilitator` with:
