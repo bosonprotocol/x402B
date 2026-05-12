@@ -70,9 +70,17 @@ function buildEnvelope(
 ): ActionsEnvelope {
   const next: NextAction[] = actionIds.map((id) => {
     const serverEndpoint = registry.endpoints?.[id];
-    const channels = registry.channels.filter((channel) =>
-      isUsableChannel(channel, id, registry, serverEndpoint),
-    );
+    // Dedupe defensively while preserving order: the `uniqueItems`
+    // constraint on `next[].channels` in the JSON Schema would otherwise
+    // reject envelopes built from a `ChannelRegistry` whose `channels`
+    // list contains duplicates (a caller bypassing `buildChannelRegistry`).
+    const seen = new Set<ActionChannel>();
+    const channels = registry.channels.filter((channel) => {
+      if (seen.has(channel)) return false;
+      if (!isUsableChannel(channel, id, registry, serverEndpoint)) return false;
+      seen.add(channel);
+      return true;
+    });
     if (channels.length === 0) {
       throw new Error(`No usable channel configured for action ${id}`);
     }
@@ -155,13 +163,13 @@ export function deriveNextActions(
       exchangeState: input.exchangeState,
       disputeState: input.disputeState,
       next: inner.next,
-      ...(inner.fallback !== undefined ? { fallback: inner.fallback } : {}),
+      fallback: inner.fallback,
     };
   }
   return {
     exchangeId: input.exchangeId,
     exchangeState: input.exchangeState,
     next: inner.next,
-    ...(inner.fallback !== undefined ? { fallback: inner.fallback } : {}),
+    fallback: inner.fallback,
   };
 }

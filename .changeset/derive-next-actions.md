@@ -15,7 +15,8 @@ In `@bosonprotocol/x402-core`:
   (`escrowNextActionsSchema` / `parseEscrowNextActions`), and the JSON
   Schema `next_actions.schema.json` (re-exported under
   `./schemas/next_actions.schema.json`). The type and schema encode the
-  spec invariant that `state === DISPUTED` ↔ `disputeState` is present.
+  spec invariant that `exchangeState === DISPUTED` ↔ `disputeState` is
+  present.
 - Extend the `NextAction` wire-format type and the
   `payment_requirements.schema.json` `actions.next[]` items with an
   optional ISO 8601 `deadline` field (relevant for

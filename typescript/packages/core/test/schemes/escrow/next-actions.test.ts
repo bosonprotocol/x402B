@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 import Ajv, { type ValidateFunction } from "ajv";
+import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -26,7 +27,9 @@ const schemaPath = join(
   "next_actions.schema.json",
 );
 const jsonSchema = JSON.parse(readFileSync(schemaPath, "utf8"));
-const ajv = new Ajv({ allErrors: true, strict: false });
+// Register the standard JSON Schema string formats (notably `date-time`)
+// so Ajv actually enforces them — Ajv v8 ignores formats by default.
+const ajv = addFormats(new Ajv({ allErrors: true, strict: false }));
 const ajvValidate: ValidateFunction = ajv.compile(jsonSchema);
 
 const fallback = {
@@ -133,5 +136,6 @@ describe("EscrowNextActions — invariants", () => {
     const bad = JSON.parse(JSON.stringify(validNonDisputed)) as Record<string, unknown>;
     (bad.next as Array<Record<string, unknown>>)[0].deadline = "not-a-date";
     expect(escrowNextActionsSchema.safeParse(bad).success).toBe(false);
+    expect(ajvValidate(bad)).toBe(false);
   });
 });
