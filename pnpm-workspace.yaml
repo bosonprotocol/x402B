@@ -1,2 +1,4 @@
 packages:
-  - "typescript/packages/**"
+  # Single-star glob (`*` not `**`) so post-build `dist/{cjs,esm}/package.json`
+  # markers don't get picked up as nested workspaces and dirty the lockfile.
+  - "typescript/packages/*"
