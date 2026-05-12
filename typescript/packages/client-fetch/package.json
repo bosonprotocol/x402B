@@ -1,0 +1,58 @@
+{
+  "name": "@bosonprotocol/x402-client-fetch",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Native-fetch adapter for the Boson Protocol x402 buyer-side SDK — intercepts 402 escrow-scheme responses and retries with the X-PAYMENT header produced by @bosonprotocol/x402-client.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosonprotocol/x402B.git",
+    "directory": "typescript/packages/client-fetch"
+  },
+  "homepage": "https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/client-fetch",
+  "bugs": {
+    "url": "https://github.com/bosonprotocol/x402B/issues"
+  },
+  "keywords": [
+    "x402",
+    "boson-protocol",
+    "escrow",
+    "fetch",
+    "client",
+    "buyer",
+    "web3",
+    "payments"
+  ],
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup && node scripts/postbuild.mjs",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src --max-warnings 0",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@bosonprotocol/x402-client": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
