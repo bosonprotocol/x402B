@@ -7,41 +7,8 @@
 import { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
 import { describe, expect, it } from "vitest";
 
-import { deriveInitialNextActions, deriveNextActions, type ChannelRegistry } from "../src/index.js";
-
-const REGISTRY: ChannelRegistry = {
-  channels: ["server", "facilitator", "onchain", "mcp", "xmtp"],
-  endpoints: {
-    "boson-redeem": "https://seller.example/x402B/redeem",
-    "boson-cancelVoucher": "https://seller.example/x402B/cancel",
-  },
-  fallback: {
-    xmtp: "0xSellerXMTP",
-    mcp: "boson://seller/12345",
-    onchainHints: {
-      escrow: "0x0000000000000000000000000000000000000001",
-      metaTxFacet: "MetaTransactionsHandlerFacet",
-      metaTxEntrypoints: {
-        none: "executeMetaTransaction",
-        erc3009: "executeMetaTransactionWithTokenTransferAuthorization",
-        permit: "executeMetaTransactionWithTokenTransferAuthorization",
-        permit2: "executeMetaTransactionWithTokenTransferAuthorization",
-      },
-      actionFacets: {
-        "boson-createOfferAndCommit": "ExchangeCommitFacet",
-        "boson-createOfferCommitAndRedeem": "OrchestrationHandlerFacet2",
-        "boson-redeem": "ExchangeHandlerFacet",
-        "boson-cancelVoucher": "ExchangeHandlerFacet",
-        "boson-revokeVoucher": "ExchangeHandlerFacet",
-        "boson-completeExchange": "ExchangeHandlerFacet",
-        "boson-raiseDispute": "DisputeHandlerFacet",
-        "boson-resolveDispute": "DisputeHandlerFacet",
-        "boson-escalateDispute": "DisputeHandlerFacet",
-        "boson-retractDispute": "DisputeHandlerFacet",
-      },
-    },
-  },
-};
+import { deriveInitialNextActions, deriveNextActions } from "../src/index.js";
+import { REGISTRY } from "./fixtures/registry.js";
 
 describe("deriveInitialNextActions (PRE_COMMIT)", () => {
   it("emits the two commit-time actions in spec order", () => {

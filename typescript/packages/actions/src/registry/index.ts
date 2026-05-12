@@ -37,10 +37,16 @@ export interface ChannelRegistry {
    */
   endpoints?: Partial<Record<ActionId, string>>;
 
-  /** Fallback hints embedded in the envelope's `fallback` field. */
+  /**
+   * Fallback hints embedded in the envelope's `fallback` field. The
+   * `actionFacets` map is `Partial` because a seller is not obliged to
+   * advertise every `ActionId` — actions absent from the map are
+   * effectively excluded from the `onchain` channel for that exchange
+   * (see `isUsableChannel` in `derive.ts`).
+   */
   fallback: Omit<ActionsFallback, "onchainHints"> & {
     onchainHints: Omit<OnchainHints, "actionFacets"> & {
-      actionFacets: Record<ActionId, string>;
+      actionFacets: Partial<Record<ActionId, string>>;
     };
   };
 }

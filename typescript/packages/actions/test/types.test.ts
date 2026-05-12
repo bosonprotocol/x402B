@@ -10,6 +10,7 @@ import {
   type ChannelRegistry,
   type NextActionsEnvelope,
 } from "../src/index.js";
+import { REGISTRY } from "./fixtures/registry.js";
 
 describe("@bosonprotocol/x402-actions public types", () => {
   it("CHANNEL_IDS includes the five standard channels in stable order", () => {
@@ -85,38 +86,7 @@ describe("@bosonprotocol/x402-actions public types", () => {
   });
 
   it("ChannelRegistry types channel order and per-action server endpoints", () => {
-    const registry: ChannelRegistry = {
-      channels: ["server", "facilitator", "onchain", "mcp"],
-      endpoints: {
-        "boson-redeem": "https://seller.example/x402B/redeem",
-      },
-      fallback: {
-        xmtp: "0xSellerXMTP",
-        mcp: "boson://seller/12345",
-        onchainHints: {
-          escrow: "0x0000000000000000000000000000000000000001",
-          metaTxFacet: "MetaTransactionsHandlerFacet",
-          metaTxEntrypoints: {
-            none: "executeMetaTransaction",
-            erc3009: "executeMetaTransactionWithTokenTransferAuthorization",
-            permit: "executeMetaTransactionWithTokenTransferAuthorization",
-            permit2: "executeMetaTransactionWithTokenTransferAuthorization",
-          },
-          actionFacets: {
-            "boson-createOfferAndCommit": "ExchangeCommitFacet",
-            "boson-createOfferCommitAndRedeem": "OrchestrationHandlerFacet2",
-            "boson-redeem": "ExchangeHandlerFacet",
-            "boson-cancelVoucher": "ExchangeHandlerFacet",
-            "boson-revokeVoucher": "ExchangeHandlerFacet",
-            "boson-completeExchange": "ExchangeHandlerFacet",
-            "boson-raiseDispute": "DisputeHandlerFacet",
-            "boson-resolveDispute": "DisputeHandlerFacet",
-            "boson-escalateDispute": "DisputeHandlerFacet",
-            "boson-retractDispute": "DisputeHandlerFacet",
-          },
-        },
-      },
-    };
-    expectTypeOf(registry.channels).toMatchTypeOf<readonly Channel[]>();
+    expectTypeOf(REGISTRY).toMatchTypeOf<ChannelRegistry>();
+    expectTypeOf(REGISTRY.channels).toMatchTypeOf<readonly Channel[]>();
   });
 });
