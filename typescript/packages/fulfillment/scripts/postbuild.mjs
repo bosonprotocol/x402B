@@ -36,6 +36,10 @@ await mkdir(schemasRoot, { recursive: true });
 // the flat `dist/schemas/` layout. The `./schemas/*` package export
 // resolves on basename, so duplicates would produce a non-deterministic
 // published artifact — fail the build instead.
+//
+// Comparison is case-insensitive: macOS APFS and Windows NTFS default to
+// case-insensitive matching, so `Foo.json` and `foo.json` would also
+// collide there even though Linux would treat them as distinct files.
 let schemaCount = 0;
 const seenSchemaNames = new Set();
 for await (const file of walk(srcRoot)) {
@@ -44,13 +48,14 @@ for await (const file of walk(srcRoot)) {
   if (!rel.split(/[\\/]/).includes("schemas")) continue;
   const name = file.split(/[\\/]/).pop();
   if (!name) continue;
-  if (seenSchemaNames.has(name)) {
+  const normalizedName = name.toLowerCase();
+  if (seenSchemaNames.has(normalizedName)) {
     throw new Error(
       `postbuild: duplicate schema basename '${name}' found while flattening into dist/schemas/. ` +
         `Use a unique filename for each schema (or update the script to preserve subpaths).`,
     );
   }
-  seenSchemaNames.add(name);
+  seenSchemaNames.add(normalizedName);
   await copyFile(file, join(schemasRoot, name));
   schemaCount += 1;
 }
