@@ -181,6 +181,9 @@ importers:
 
   typescript/packages/facilitator:
     dependencies:
+      '@bosonprotocol/common':
+        specifier: ^1.32.2
+        version: 1.32.2
       '@bosonprotocol/x402-actions':
         specifier: workspace:^
         version: link:../actions
