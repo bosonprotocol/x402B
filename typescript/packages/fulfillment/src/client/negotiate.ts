@@ -9,8 +9,8 @@
 // which it prefers (`prefer`), what data it already has
 // (`agentContext`), and how to ask the buyer for missing data
 // (`collectInteractive`). Full JSON-Schema validation lives server-side;
-// here we do a minimal "required keys present" check so we don't
-// happily pick an option we can't satisfy.
+// here we do a minimal "required keys present + object-shape" check so
+// we don't happily pick an option we can't satisfy.
 
 import type { FulfillmentOption } from "@bosonprotocol/x402-core/schemes/escrow";
 
@@ -32,10 +32,10 @@ export interface NegotiationChoice {
 }
 
 export class NoCompatibleFulfillmentError extends Error {
-  constructor(
-    public readonly advertised: string[],
-    public readonly attempted: string[],
-  ) {
+  readonly advertised: readonly string[];
+  readonly attempted: readonly string[];
+
+  constructor(advertised: readonly string[], attempted: readonly string[]) {
     super(
       advertised.length === 0
         ? "No fulfillment options were advertised by the seller"
@@ -44,10 +44,14 @@ export class NoCompatibleFulfillmentError extends Error {
           : `No advertised fulfillment option could be satisfied by the client (attempted: ${attempted.join(", ")})`,
     );
     this.name = "NoCompatibleFulfillmentError";
+    // Defensive copy + freeze so callers can't mutate the diagnostic
+    // payload after the error is thrown.
+    this.advertised = Object.freeze([...advertised]);
+    this.attempted = Object.freeze([...attempted]);
   }
 
   /** Supported options the client actually tried to satisfy. */
-  get tried(): string[] {
+  get tried(): readonly string[] {
     return this.attempted;
   }
 }
@@ -62,12 +66,13 @@ export async function negotiateFulfillment(
   options: readonly FulfillmentOption[],
   cfg: NegotiateOptions,
 ): Promise<NegotiationChoice> {
+  const supports = new Set(cfg.supports);
   const ordered = orderOptions(options, cfg.prefer ?? []);
   const advertised = ordered.map((option) => option.id);
   const attempted: string[] = [];
 
   for (const option of ordered) {
-    if (!cfg.supports.includes(option.id)) continue;
+    if (!supports.has(option.id)) continue;
     attempted.push(option.id);
 
     if (option.schema == null) {
@@ -120,8 +125,12 @@ function extractFromAgentContext(
   agentContext: Record<string, unknown>,
 ): unknown | null {
   const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
+  // Treat `undefined` (key absent or explicitly undefined) as
+  // unsatisfied. Without this check, `{ email: undefined }` would pass
+  // the `in` test below and we'd happily return data with an undefined
+  // field — which the server would later reject anyway.
   for (const key of required) {
-    if (!(key in agentContext)) return null;
+    if (agentContext[key] === undefined) return null;
   }
   const properties =
     schema.properties && typeof schema.properties === "object"
@@ -130,15 +139,18 @@ function extractFromAgentContext(
   const known = new Set<string>([...required, ...Object.keys(properties)]);
   const data: Record<string, unknown> = {};
   for (const key of known) {
-    if (key in agentContext) data[key] = agentContext[key];
+    const value = agentContext[key];
+    if (value !== undefined) data[key] = value;
   }
   return data;
 }
 
 function matchesRequiredKeys(schema: Record<string, unknown>, data: unknown): boolean {
-  const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
-  if (required.length === 0) return data !== undefined;
+  // The advertised wire schema is `type: object` (or `null`, already
+  // handled at the call site), so a non-object value can't satisfy
+  // it regardless of which required keys are listed.
   if (data === null || typeof data !== "object") return false;
   const obj = data as Record<string, unknown>;
-  return required.every((key) => key in obj);
+  const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
+  return required.every((key) => obj[key] !== undefined);
 }

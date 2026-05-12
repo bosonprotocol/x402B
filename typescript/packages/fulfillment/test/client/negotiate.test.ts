@@ -124,6 +124,48 @@ describe("negotiateFulfillment", () => {
     });
   });
 
+  it("treats agentContext values that are explicitly undefined as missing", async () => {
+    const collectInteractive = vi.fn().mockResolvedValue({ email: "buyer@example.com" });
+    const choice = await negotiateFulfillment([EMAIL], {
+      supports: ["email"],
+      agentContext: { email: undefined },
+      collectInteractive,
+    });
+    // Should NOT short-circuit on agentContext { email: undefined } —
+    // that's effectively unsatisfied; collectInteractive runs instead.
+    expect(collectInteractive).toHaveBeenCalledWith(EMAIL);
+    expect(choice).toEqual({ option: "email", data: { email: "buyer@example.com" } });
+  });
+
+  it("rejects non-object collectInteractive output for schemaful options", async () => {
+    const collectInteractive = vi.fn(async (opt: FulfillmentOption) =>
+      // Email gets a non-object back (a primitive string); xmtp gets a valid object.
+      opt.id === "email" ? ("buyer@example.com" as unknown) : { xmtpAddress: "0xabc" },
+    );
+    const choice = await negotiateFulfillment([EMAIL, XMTP], {
+      supports: ["email", "xmtp"],
+      collectInteractive,
+    });
+    // Falls through to xmtp because the email collect returned a primitive.
+    expect(choice).toEqual({ option: "xmtp", data: { xmtpAddress: "0xabc" } });
+  });
+
+  it("freezes advertised/attempted on the error so callers can't mutate the diagnostic payload", async () => {
+    try {
+      await negotiateFulfillment([EMAIL, XMTP], {
+        supports: ["email", "xmtp"],
+        agentContext: {},
+      });
+      throw new Error("expected NoCompatibleFulfillmentError");
+    } catch (err) {
+      if (!(err instanceof NoCompatibleFulfillmentError)) throw err;
+      expect(Object.isFrozen(err.advertised)).toBe(true);
+      expect(Object.isFrozen(err.attempted)).toBe(true);
+      expect(() => (err.advertised as string[]).push("oops")).toThrow();
+      expect(() => (err.attempted as string[]).push("oops")).toThrow();
+    }
+  });
+
   it("rejects collectInteractive output that misses required keys and keeps trying", async () => {
     const collectInteractive = vi.fn(async (opt: FulfillmentOption) =>
       opt.id === "email" ? {} : { xmtpAddress: "0xabc" },
