@@ -31,12 +31,26 @@ async function* walk(dir) {
 await rm(schemasRoot, { recursive: true, force: true });
 await mkdir(schemasRoot, { recursive: true });
 
+// Track basenames as we go so two `src/**/schemas/<name>.json` files
+// from different subdirectories don't silently overwrite each other in
+// the flat `dist/schemas/` layout. The `./schemas/*` package export
+// resolves on basename, so duplicates would produce a non-deterministic
+// published artifact — fail the build instead.
 let schemaCount = 0;
+const seenSchemaNames = new Set();
 for await (const file of walk(srcRoot)) {
   if (!file.endsWith(".json")) continue;
   const rel = relative(srcRoot, file);
   if (!rel.split(/[\\/]/).includes("schemas")) continue;
   const name = file.split(/[\\/]/).pop();
+  if (!name) continue;
+  if (seenSchemaNames.has(name)) {
+    throw new Error(
+      `postbuild: duplicate schema basename '${name}' found while flattening into dist/schemas/. ` +
+        `Use a unique filename for each schema (or update the script to preserve subpaths).`,
+    );
+  }
+  seenSchemaNames.add(name);
   await copyFile(file, join(schemasRoot, name));
   schemaCount += 1;
 }
