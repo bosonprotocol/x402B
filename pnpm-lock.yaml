@@ -55,10 +55,6 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
 
-  typescript/packages/actions/dist/cjs: {}
-
-  typescript/packages/actions/dist/esm: {}
-
   typescript/packages/client:
     dependencies:
       '@bosonprotocol/common':
@@ -73,9 +69,6 @@ importers:
       viem:
         specifier: ^2.39.3
         version: 2.48.11(typescript@5.9.3)(zod@3.25.76)
-      zod:
-        specifier: ^3.24.2
-        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^20.17.10
@@ -130,10 +123,6 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
 
-  typescript/packages/core/dist/cjs: {}
-
-  typescript/packages/core/dist/esm: {}
-
   typescript/packages/fulfillment:
     dependencies:
       '@bosonprotocol/x402-core':
@@ -161,10 +150,6 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
-
-  typescript/packages/fulfillment/dist/cjs: {}
-
-  typescript/packages/fulfillment/dist/esm: {}
 
 packages:
 
