@@ -31,12 +31,28 @@ import { toBuyerDataJsonSchema } from "../_internal/to-json-schema.js";
 
 export const webhookBuyerDataSchema = z
   .object({
+    // `.url()` validates parseability; the refine then narrows the
+    // protocol via `new URL(...).protocol` so the check is
+    // case-insensitive (`HTTPS://` is also accepted, matching the
+    // URL spec's case-insensitive scheme). zod v3's `.url()` does
+    // not yet expose a `protocols` option; that's a v4 API. The
+    // try/catch is needed because zod still runs refines even when
+    // earlier validators (`.url()`) have already reported failure.
     url: z
       .string()
       .url()
-      .refine((u) => u.startsWith("https://"), { message: "url must be https://" }),
-    authToken: z.string().min(1).optional(),
-    encryptionPubKey: z.string().min(1).optional(),
+      .refine(
+        (u) => {
+          try {
+            return new URL(u).protocol === "https:";
+          } catch {
+            return false;
+          }
+        },
+        { message: "url must use https://" },
+      ),
+    authToken: z.string().trim().min(1).optional(),
+    encryptionPubKey: z.string().trim().min(1).optional(),
   })
   .strict();
 

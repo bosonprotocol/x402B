@@ -44,6 +44,13 @@ describe("webhook channel", () => {
     ).toMatchObject({ ok: false });
   });
 
+  it("accepts an uppercase HTTPS scheme (case-insensitive)", () => {
+    const channel = createWebhookChannel();
+    expect(
+      channel.validate({ url: "HTTPS://buyer.example.com/x402b/deliver" } as WebhookBuyerData),
+    ).toEqual({ ok: true });
+  });
+
   it("rejects malformed urls", () => {
     const channel = createWebhookChannel();
     expect(channel.validate({ url: "not-a-url" } as WebhookBuyerData)).toMatchObject({
@@ -55,6 +62,14 @@ describe("webhook channel", () => {
     const channel = createWebhookChannel();
     expect(channel.validate({ url: URL_HTTPS, authToken: "" })).toMatchObject({ ok: false });
     expect(channel.validate({ url: URL_HTTPS, encryptionPubKey: "" })).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it("rejects whitespace-only optional fields", () => {
+    const channel = createWebhookChannel();
+    expect(channel.validate({ url: URL_HTTPS, authToken: "   " })).toMatchObject({ ok: false });
+    expect(channel.validate({ url: URL_HTTPS, encryptionPubKey: "\t\n" })).toMatchObject({
       ok: false,
     });
   });

@@ -97,10 +97,15 @@ export function createDataAtCommitChannel<
           `${def.id} channel: configure({ ${def.hookName} }) before invoking onFulfill`,
         );
       }
-      const data = store.get(exchangeId);
-      if (!data) {
+      // Use `has` for the existence check so legitimate falsy
+      // payloads (e.g. `null`, `""`, `0`) survive — `!data` would
+      // misclassify them as "no data stored". `TBuyerData` is
+      // constrained by the per-channel schema, but the factory
+      // itself can't make that assumption.
+      if (!store.has(exchangeId)) {
         throw new Error(`${def.id} channel: no buyer data stored for exchange ${exchangeId}`);
       }
+      const data = store.get(exchangeId) as TBuyerData;
       const pointer = await def.dispatch(cfg, exchangeId, data);
       return { kind: "async", pointer };
     },
