@@ -40,10 +40,12 @@ export function pickAction(
     return SUPPORTED_ACTION;
   }
 
-  const onlyUnsupported = requirements.actions.next.some((a) => a.id === UNSUPPORTED_ACTION);
-  if (onlyUnsupported) {
+  const unsupportedOnServer = requirements.actions.next.some(
+    (a) => a.id === UNSUPPORTED_ACTION && a.channels.includes("server"),
+  );
+  if (unsupportedOnServer) {
     throw new NotImplementedError(
-      `server advertises only ${UNSUPPORTED_ACTION}; client does not yet implement that action`,
+      `server advertises ${UNSUPPORTED_ACTION}; client does not yet implement that action`,
     );
   }
 

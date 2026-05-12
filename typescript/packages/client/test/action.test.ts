@@ -43,7 +43,7 @@ describe("pickAction", () => {
     expect(() => pickAction(req, { redeemMode: "commit-and-redeem" })).toThrow(NotImplementedError);
   });
 
-  it("throws NotImplementedError when only boson-createOfferCommitAndRedeem is offered", () => {
+  it("throws NotImplementedError when boson-createOfferCommitAndRedeem is offered over the server channel", () => {
     const req = baseRequirements();
     req.actions.next = [{ id: "boson-createOfferCommitAndRedeem", channels: ["server"] }];
     expect(() => pickAction(req)).toThrow(NotImplementedError);
@@ -52,6 +52,16 @@ describe("pickAction", () => {
   it("throws NoCompatibleActionError when boson-createOfferAndCommit is offered but only over non-server channels", () => {
     const req = baseRequirements();
     req.actions.next = [{ id: "boson-createOfferAndCommit", channels: ["facilitator", "onchain"] }];
+    expect(() => pickAction(req)).toThrow(NoCompatibleActionError);
+  });
+
+  it("throws NoCompatibleActionError when boson-createOfferCommitAndRedeem is offered only on non-server channels", () => {
+    // Server doesn't expose the unsupported action over `server` either, so
+    // the right error is "no compatible action", not "not implemented".
+    const req = baseRequirements();
+    req.actions.next = [
+      { id: "boson-createOfferCommitAndRedeem", channels: ["facilitator", "onchain"] },
+    ];
     expect(() => pickAction(req)).toThrow(NoCompatibleActionError);
   });
 

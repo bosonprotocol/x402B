@@ -4,7 +4,7 @@ Framework-agnostic buyer-side SDK for [x402B](https://github.com/bosonprotocol/x
 
 This package intercepts a `402 Payment Required` carrying `scheme: "escrow"`, signs the buyer's Boson protocol meta-transaction + token-transfer authorization, and produces the `X-PAYMENT` header so the request can be re-issued.
 
-Adapters for specific HTTP clients are published as sibling packages — e.g. [`@bosonprotocol/x402-client-fetch`](../client-fetch) for native `fetch`.
+Adapters for specific HTTP clients will be published as sibling packages — e.g. `@bosonprotocol/x402-client-fetch` for native `fetch`.
 
 ## Status
 
