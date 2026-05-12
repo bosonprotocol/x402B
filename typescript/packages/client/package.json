@@ -45,6 +45,7 @@
     "access": "public"
   },
   "scripts": {
+    "prebuild": "pnpm --filter @bosonprotocol/x402-core build",
     "build": "tsup && node scripts/postbuild.mjs",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint src --max-warnings 0",
