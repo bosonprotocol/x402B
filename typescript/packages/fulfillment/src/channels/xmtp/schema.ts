@@ -1,10 +1,13 @@
 // Buyer-data schema for the `xmtp` fulfillment channel.
 //
-import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+// Reuses `addressSchema` from `@bosonprotocol/x402-core/schemes/escrow`
+// so the EVM-address validation rule stays in lockstep with the rest
+// of the escrow scheme. See CLAUDE.md "Reuse > re-implementation".
 
-const ADDRESS = /^0x[a-fA-F0-9]{40}$/;
-const addressSchema = z.string().regex(ADDRESS);
+import { addressSchema } from "@bosonprotocol/x402-core/schemes/escrow";
+import { z } from "zod";
+
+import { toBuyerDataJsonSchema } from "../_internal/to-json-schema.js";
 
 export const xmtpBuyerDataSchema = z
   .object({
@@ -14,7 +17,4 @@ export const xmtpBuyerDataSchema = z
 
 export type XmtpBuyerData = z.infer<typeof xmtpBuyerDataSchema>;
 
-export const xmtpBuyerDataJsonSchema = zodToJsonSchema(xmtpBuyerDataSchema, {
-  $refStrategy: "none",
-  target: "jsonSchema7",
-}) as Record<string, unknown>;
+export const xmtpBuyerDataJsonSchema = toBuyerDataJsonSchema(xmtpBuyerDataSchema);

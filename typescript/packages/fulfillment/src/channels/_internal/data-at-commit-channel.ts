@@ -65,7 +65,12 @@ export function createDataAtCommitChannel<
     buyerDataSchema: def.jsonSchema,
     configure(next) {
       cfg = next;
-      store = next.store ?? new Map();
+      // Preserve the existing store when `next.store` is omitted —
+      // dropping it would silently discard already-committed buyer
+      // data if `configure` is called more than once during the
+      // channel's lifetime. Only create a fresh `Map` on first
+      // configure when no store has been established yet.
+      if (next.store) store = next.store;
     },
     describe() {
       return {

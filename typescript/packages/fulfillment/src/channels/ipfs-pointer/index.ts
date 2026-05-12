@@ -36,6 +36,32 @@ export type IpfsPointerChannel = FulfillmentChannel<IpfsPointerServerCfg, IpfsPo
 export type { IpfsPointerBuyerData } from "./schema.js";
 export { ipfsPointerBuyerDataJsonSchema, ipfsPointerBuyerDataSchema } from "./schema.js";
 
+// Multibase CIDs (v0 or v1) use a small alphabet — alphanumerics for
+// base58btc and base32. We don't bind to a specific multibase here
+// (the upload adapter is free to use either), so the check stays a
+// permissive non-empty, no-whitespace, no-slash guard.
+const CID_CHARS = /^[A-Za-z0-9]+$/;
+
+function sanitizeCid(raw: string): string {
+  if (typeof raw !== "string") {
+    throw new TypeError("ipfs-pointer channel: upload() must resolve to a string CID");
+  }
+  // Strip any common prefix the adapter may have added so the channel
+  // owns a single `ipfs://` namespacing.
+  const stripped = raw
+    .trim()
+    .replace(/^ipfs:\/\//, "")
+    .replace(/^\/ipfs\//, "")
+    .replace(/^\/+/, "");
+  if (stripped.length === 0) {
+    throw new Error("ipfs-pointer channel: upload() returned an empty CID");
+  }
+  if (!CID_CHARS.test(stripped)) {
+    throw new Error(`ipfs-pointer channel: upload() returned an invalid CID "${raw}"`);
+  }
+  return stripped;
+}
+
 export function createIpfsPointerChannel(initialCfg?: IpfsPointerServerCfg): IpfsPointerChannel {
   return createDataAtCommitChannel<IpfsPointerBuyerData, IpfsPointerServerCfg>(
     {
@@ -44,7 +70,7 @@ export function createIpfsPointerChannel(initialCfg?: IpfsPointerServerCfg): Ipf
       jsonSchema: ipfsPointerBuyerDataJsonSchema,
       hookName: "upload",
       dispatch: async (cfg, exchangeId, data) => {
-        const cid = await cfg.upload(exchangeId, data);
+        const cid = sanitizeCid(await cfg.upload(exchangeId, data));
         return `ipfs://${cid}`;
       },
     },

@@ -39,6 +39,12 @@ describe("ipfs-pointer channel", () => {
     expect(channel.validate({ recipientPubKey: "" })).toMatchObject({ ok: false });
   });
 
+  it("rejects whitespace-only recipientPubKey", () => {
+    const channel = createIpfsPointerChannel();
+    expect(channel.validate({ recipientPubKey: "   " })).toMatchObject({ ok: false });
+    expect(channel.validate({ recipientPubKey: "\t\n" })).toMatchObject({ ok: false });
+  });
+
   it("rejects extra keys (strict mode)", () => {
     const channel = createIpfsPointerChannel();
     expect(channel.validate({ extra: 1 } as never)).toMatchObject({ ok: false });
@@ -82,5 +88,33 @@ describe("ipfs-pointer channel", () => {
   it("onFulfill rejects when no commit data exists for the exchange", async () => {
     const channel = createIpfsPointerChannel({ upload: async () => CID });
     await expect(channel.onFulfill("nonexistent")).rejects.toThrow(/no buyer data/);
+  });
+
+  it("strips an `ipfs://` or `/ipfs/` prefix the upload adapter may have added", async () => {
+    const channel = createIpfsPointerChannel({ upload: async () => `ipfs://${CID}` });
+    await channel.onCommit("exch-prefix", {});
+    await expect(channel.onFulfill("exch-prefix")).resolves.toEqual({
+      kind: "async",
+      pointer: `ipfs://${CID}`,
+    });
+
+    const channel2 = createIpfsPointerChannel({ upload: async () => `/ipfs/${CID}` });
+    await channel2.onCommit("exch-prefix-2", {});
+    await expect(channel2.onFulfill("exch-prefix-2")).resolves.toEqual({
+      kind: "async",
+      pointer: `ipfs://${CID}`,
+    });
+  });
+
+  it("rejects an empty CID from the upload adapter", async () => {
+    const channel = createIpfsPointerChannel({ upload: async () => "   " });
+    await channel.onCommit("exch-empty", {});
+    await expect(channel.onFulfill("exch-empty")).rejects.toThrow(/empty CID/);
+  });
+
+  it("rejects an invalid CID containing illegal characters", async () => {
+    const channel = createIpfsPointerChannel({ upload: async () => "not/a/cid" });
+    await channel.onCommit("exch-bad", {});
+    await expect(channel.onFulfill("exch-bad")).rejects.toThrow(/invalid CID/);
   });
 });

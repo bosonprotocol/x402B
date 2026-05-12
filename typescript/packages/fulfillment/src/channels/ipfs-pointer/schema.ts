@@ -6,17 +6,19 @@
 // handed to the upload adapter at redeem time.
 
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+
+import { toBuyerDataJsonSchema } from "../_internal/to-json-schema.js";
 
 export const ipfsPointerBuyerDataSchema = z
   .object({
-    recipientPubKey: z.string().min(1).optional(),
+    recipientPubKey: z
+      .string()
+      .trim()
+      .min(1, { message: "recipientPubKey must not be empty or whitespace" })
+      .optional(),
   })
   .strict();
 
 export type IpfsPointerBuyerData = z.infer<typeof ipfsPointerBuyerDataSchema>;
 
-export const ipfsPointerBuyerDataJsonSchema = zodToJsonSchema(ipfsPointerBuyerDataSchema, {
-  $refStrategy: "none",
-  target: "jsonSchema7",
-}) as Record<string, unknown>;
+export const ipfsPointerBuyerDataJsonSchema = toBuyerDataJsonSchema(ipfsPointerBuyerDataSchema);

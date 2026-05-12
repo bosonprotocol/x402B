@@ -5,7 +5,8 @@
 // surfaced on `describe()` so it travels in the 402 response.
 
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+
+import { toBuyerDataJsonSchema } from "../_internal/to-json-schema.js";
 
 export const emailBuyerDataSchema = z
   .object({
@@ -15,7 +16,4 @@ export const emailBuyerDataSchema = z
 
 export type EmailBuyerData = z.infer<typeof emailBuyerDataSchema>;
 
-export const emailBuyerDataJsonSchema = zodToJsonSchema(emailBuyerDataSchema, {
-  $refStrategy: "none",
-  target: "jsonSchema7",
-}) as Record<string, unknown>;
+export const emailBuyerDataJsonSchema = toBuyerDataJsonSchema(emailBuyerDataSchema);

@@ -26,7 +26,8 @@
 // idempotency on `exchangeId`.
 
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+
+import { toBuyerDataJsonSchema } from "../_internal/to-json-schema.js";
 
 export const webhookBuyerDataSchema = z
   .object({
@@ -41,7 +42,4 @@ export const webhookBuyerDataSchema = z
 
 export type WebhookBuyerData = z.infer<typeof webhookBuyerDataSchema>;
 
-export const webhookBuyerDataJsonSchema = zodToJsonSchema(webhookBuyerDataSchema, {
-  $refStrategy: "none",
-  target: "jsonSchema7",
-}) as Record<string, unknown>;
+export const webhookBuyerDataJsonSchema = toBuyerDataJsonSchema(webhookBuyerDataSchema);
