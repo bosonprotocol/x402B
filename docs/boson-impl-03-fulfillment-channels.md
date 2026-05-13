@@ -66,7 +66,7 @@ export interface FulfillmentChannel<TServerCfg = unknown, TBuyerData = unknown> 
   /** Server: invoked at commit acceptance — store buyerData against exchangeId. */
   onCommit(exchangeId: string, buyerData: TBuyerData): Promise<void>;
 
-  /** Server: invoked when fulfillment is observed; returns the resource inline or a pointer for async delivery. */
+  /** Server: invoked when the release is observed (REDEEMED on-chain); returns the resource inline or a pointer for async delivery. */
   onFulfill(exchangeId: string): Promise<FulfillmentResult>;
 
   /** Client: optionally collect buyer data interactively. */
@@ -82,10 +82,10 @@ export type FulfillmentResult =
 
 | `id` | Use case | Buyer-data schema | Notes |
 |---|---|---|---|
-| `inline` | Resource returned in the same HTTP response | `null` | Server `onFulfill` returns the body. Composes naturally with Flow B's atomic commit-and-redeem (the resource is ready), but Flow B does **not** require this channel — the redeem state transition can be atomic while delivery itself is async. |
+| `inline` | Resource returned in the same HTTP response | `null` | Server `onFulfill` returns the body inline. Composes naturally with Flow B's atomic commit-and-redeem (the resource is ready), but Flow B does **not** require this channel — the redeem state transition can be atomic while delivery itself is async. |
 | `email` | Mailing list signup, license key dispatch | `{ email: string }` | RFC 5321 validation. Server stores against exchangeId; sends on redeem. |
 | `xmtp` | Push to buyer's XMTP inbox | `{ xmtpAddress: string }` (EOA) | Useful for AI-agent buyers that already use XMTP for commerce. |
-| `webhook` | Push to buyer-controlled HTTPS endpoint | `{ url: string, publicKey: string }` | Server signs the payload with a key under `metadata.serverPublicKey`; client verifies signature. |
+| `webhook` | Push to buyer-controlled HTTPS endpoint | `{ url: string, authToken?: string, encryptionPubKey?: string }` | See [Webhook security](#webhook-security) below. Server signs the envelope with the key under `metadata.serverPublicKey`; client verifies signature. |
 | `ipfs-pointer` | Server uploads to IPFS, returns CID | `{ recipientPubKey?: string }` | Optional encryption to recipientPubKey. Returned on redeem. |
 | `widget` | Human buyer + physical goods (existing Boson Redemption Widget) | `null` (collected by widget) | `metadata.widgetUrl` points the human to the existing redemption widget. The widget's existing backend hook is reused unchanged. |
 | `mcp` | AI-agent buyer drives a server-exposed MCP tool | `{ mcpEndpoint?: string }` | The seller's MCP exposes a `submit_fulfillment_data(exchangeId, ...)` tool. The buyer's agent calls it post-commit. |
@@ -105,8 +105,18 @@ Servers SHOULD advertise at least one "in-payload" fulfillment channel (email/xm
 ## Privacy considerations
 
 - `fulfillment.data` is stored server-side keyed by exchangeId. Servers MUST NOT include it in any unauthenticated channel.
-- For `webhook`, the buyer's `publicKey` MAY be used to encrypt the resource payload (out of scope for v1; specced in `03b-webhook-encryption.md` later).
+- For `webhook`, the buyer's `encryptionPubKey` MAY be used to encrypt the resource payload (out of scope for v1; specced in `03b-webhook-encryption.md` later).
 - Sellers should expose a deletion endpoint per their privacy policy; not in the protocol.
+
+## Webhook security
+
+The `webhook` channel hands the seller a buyer-controlled HTTPS URL — the buyer's endpoint can become a target as soon as the URL is known. The protocol layers three independent protections; the buyer SHOULD use all three:
+
+1. **Server signature (always on).** The seller signs every webhook envelope with the key advertised under `metadata.serverPublicKey`. The envelope MUST include the `exchangeId` and a millisecond `timestamp`. The buyer MUST verify the signature, MUST reject envelopes whose `timestamp` is older than a small freshness window (recommended: ≤ 300 s), and MUST treat repeated deliveries with the same `exchangeId` as idempotent (one logical delivery, dedupe on the buyer's side).
+2. **Bearer token (optional, buyer-published).** When the buyer sets `authToken`, the seller MUST send it as `Authorization: Bearer <authToken>` on every webhook request. This lets the buyer's edge layer reject unauthenticated traffic before any signature work — useful against random POSTers and leaked-URL scanning. The token travels in the X-PAYMENT, so it offers no protection against an attacker who can read the X-PAYMENT itself; pair it with (1) for end-to-end authenticity.
+3. **Encryption to buyer (optional, buyer-published).** When the buyer sets `encryptionPubKey`, the seller MAY encrypt the resource body to that key (cipher specified in `03b-webhook-encryption.md`; not yet implemented). Protects confidentiality against any actor with the URL but without the buyer's private key.
+
+Seller adapters MUST refuse plain `http://` URLs — TLS is mandatory for the transport. Buyers SHOULD also rotate `authToken` per offer / per session if the same endpoint is reused across many exchanges.
 
 ## Validation rules (server side, before /verify)
 
