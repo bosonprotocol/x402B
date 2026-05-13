@@ -137,6 +137,19 @@ export async function verifyTokenAuthSignature(
       return verifyPermit(args, args.tokenAuth.data);
     case "permit2":
       return verifyPermit2(args, args.tokenAuth.data);
+    default: {
+      // Compile-time exhaustiveness check: a new `kind` added to the
+      // `BosonTokenAuth` discriminated union without updating this
+      // switch will break this `never` assignment, forcing the new
+      // strategy to grow a matching `verifyXxx` helper here.
+      const _exhaustive: never = args.tokenAuth;
+      void _exhaustive;
+      return {
+        ok: false,
+        code: "INVALID_PAYLOAD",
+        reason: `unsupported tokenAuth.kind: ${(args.tokenAuth as { kind: string }).kind}`,
+      };
+    }
   }
 }
 
@@ -349,6 +362,16 @@ function validateDeadlineWindow(
   label: string,
 ): StepResult {
   const nowSeconds = Math.floor(Date.now() / 1000);
+  // Reject already-expired deadlines before checking the future-window —
+  // an expired signature should never reach the on-chain simulation,
+  // where it would surface as a less-actionable SIMULATION_REVERT.
+  if (deadlineSeconds <= nowSeconds) {
+    return {
+      ok: false,
+      code: "BAD_TOKEN_AUTH_SIGNATURE",
+      reason: `${label} has already expired (deadline ${deadlineSeconds} <= now ${nowSeconds})`,
+    };
+  }
   if (deadlineSeconds - nowSeconds > maxTimeoutSeconds) {
     return {
       ok: false,

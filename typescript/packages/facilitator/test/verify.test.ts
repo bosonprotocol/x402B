@@ -6,7 +6,15 @@ import type {
 } from "@bosonprotocol/x402-core/schemes/escrow";
 import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm/actions";
 import { describe, expect, it } from "vitest";
-import { parseSignature, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
+import {
+  BaseError,
+  RawContractError,
+  parseSignature,
+  type Address,
+  type Hex,
+  type PublicClient,
+  type WalletClient,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { verify } from "../src/verify/index.js";
@@ -143,21 +151,35 @@ function buildValidRequirements(): EscrowPaymentRequirements {
   };
 }
 
-/** Build a PublicClient stub whose `call` is configurable per test. */
+/**
+ * Build a PublicClient stub whose `call` is configurable per test.
+ *
+ * `callBehavior: "revert"` throws a viem `BaseError` whose cause chain
+ * contains a `RawContractError` — this matches the structure viem
+ * produces for an actual on-chain revert and lets
+ * `simulateExecuteMetaTransaction`'s revert-discrimination logic
+ * recognise the failure as `SIMULATION_REVERT` (rather than
+ * `INTERNAL_ERROR`, which is reserved for transport-layer failures).
+ *
+ * `callBehavior: "rpc-error"` throws a plain `Error` to exercise the
+ * non-revert branch.
+ */
 function buildPublicClient(
   opts: {
-    callBehavior?: "pass" | "revert";
+    callBehavior?: "pass" | "revert" | "rpc-error";
     revertReason?: string;
+    rpcErrorMessage?: string;
   } = {},
 ): PublicClient {
   return {
     call: async () => {
       if (opts.callBehavior === "revert") {
-        const e = new Error("execution reverted: nonce already used") as Error & {
-          shortMessage?: string;
-        };
-        e.shortMessage = opts.revertReason ?? "execution reverted: nonce already used";
-        throw e;
+        const reason = opts.revertReason ?? "execution reverted: nonce already used";
+        const rawRevert = new RawContractError({ message: reason });
+        throw new BaseError("Execution reverted", { cause: rawRevert });
+      }
+      if (opts.callBehavior === "rpc-error") {
+        throw new Error(opts.rpcErrorMessage ?? "ECONNREFUSED: RPC unreachable");
       }
       return { data: "0x" };
     },
@@ -323,6 +345,23 @@ describe("verify()", () => {
     expect((result as { ok: false; reason: string }).reason).toContain("USED_NONCE");
   });
 
+  it("maps RPC / transport failures to INTERNAL_ERROR (not SIMULATION_REVERT)", async () => {
+    const payload = await buildValidPayload();
+    const requirements = buildValidRequirements();
+    const config = buildConfig({
+      client: buildPublicClient({
+        callBehavior: "rpc-error",
+        rpcErrorMessage: "fetch failed: ECONNREFUSED",
+      }),
+    });
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      config,
+    );
+    expect(result).toMatchObject({ ok: false, code: "INTERNAL_ERROR" });
+    expect((result as { ok: false; reason: string }).reason).toContain("ECONNREFUSED");
+  });
+
   it("rejects when input.scheme is wrong", async () => {
     const payload = await buildValidPayload();
     const requirements = buildValidRequirements();
@@ -388,6 +427,26 @@ describe("verify()", () => {
       buildConfig(),
     );
     expect(result).toMatchObject({ ok: false, code: "BAD_TOKEN_AUTH_SIGNATURE" });
+  });
+
+  it("rejects token-auth when the deadline is already in the past", async () => {
+    const payload = await buildValidPayload();
+    payload.payload.tokenAuthStrategy = "permit2";
+    // Sign a permit whose deadline already elapsed. The recovery itself
+    // succeeds (signing is timeless); the past-deadline guard inside
+    // validateDeadlineWindow must catch this in `verify()`, ahead of
+    // any on-chain simulation that would otherwise surface a less
+    // actionable SIMULATION_REVERT.
+    payload.payload.tokenAuth = await buildValidPermit2TokenAuth(
+      Math.floor(Date.now() / 1000) - 60,
+    );
+    const requirements = { ...buildValidRequirements(), tokenAuthStrategies: ["permit2" as const] };
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "BAD_TOKEN_AUTH_SIGNATURE" });
+    expect((result as { ok: false; reason: string }).reason).toContain("expired");
   });
 
   it("returns UNSUPPORTED_TOKEN_AUTH_STRATEGY for valid token-auth while BPIP-12 simulation is deferred", async () => {
