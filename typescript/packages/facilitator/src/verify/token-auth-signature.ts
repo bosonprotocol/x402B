@@ -20,7 +20,7 @@ import {
   recoverPermit2Signer,
   recoverPermitSigner,
 } from "@bosonprotocol/x402-core/eip712/token-auth";
-import { type PublicClient } from "viem";
+import { ContractFunctionExecutionError, type PublicClient } from "viem";
 
 import { packRsv } from "./meta-tx-signature.js";
 import type { StepResult } from "./structural.js";
@@ -84,7 +84,15 @@ const VERSION_ABI = [
 /**
  * Look up the token's EIP-712 domain. Tries EIP-5267 first (one call,
  * canonical); falls back to `name()` + `version()` (with version
- * defaulting to `"1"` per EIP-2612 if the function reverts).
+ * defaulting to `"1"` per EIP-2612 if `version()` reverts).
+ *
+ * Error handling: only `ContractFunctionExecutionError` is treated as
+ * "method not implemented" and triggers the fallback. RPC / transport
+ * failures (HTTP timeouts, JSON-RPC errors) propagate as-is so the
+ * caller can distinguish them and surface a clear
+ * `INTERNAL_ERROR` rather than a silent fallback that fails again on
+ * the next call. `name()` is required by ERC-20 so any failure there
+ * is a real error and propagates.
  *
  * Exported so tests can inject a mocked PublicClient and so future
  * caching layers can wrap it.
@@ -106,7 +114,13 @@ export async function fetchTokenDomain(
       chainId: Number(result[3]),
       verifyingContract: result[4] as `0x${string}`,
     };
-  } catch {
+  } catch (e) {
+    if (!(e instanceof ContractFunctionExecutionError)) {
+      // Transport / RPC failure — propagate. EIP-5267-not-implemented
+      // would surface as a ContractFunctionExecutionError; anything
+      // else means we couldn't reach the contract at all.
+      throw e;
+    }
     // EIP-5267 not implemented — fall back to name() + version().
   }
   const name = (await publicClient.readContract({
@@ -121,7 +135,10 @@ export async function fetchTokenDomain(
       abi: VERSION_ABI,
       functionName: "version",
     })) as string;
-  } catch {
+  } catch (e) {
+    if (!(e instanceof ContractFunctionExecutionError)) {
+      throw e;
+    }
     // version() is optional per EIP-2612 — keep the default.
   }
   return { name, version, chainId, verifyingContract: token as `0x${string}` };
@@ -206,7 +223,19 @@ async function verifyErc3009(
   );
   if (!timeout.ok) return timeout;
 
-  const domain = await fetchTokenDomain(args.publicClient, args.asset, args.chainId);
+  let domain: TokenEip712Domain;
+  try {
+    domain = await fetchTokenDomain(args.publicClient, args.asset, args.chainId);
+  } catch (e) {
+    return {
+      ok: false,
+      code: "INTERNAL_ERROR",
+      reason:
+        e instanceof Error
+          ? `failed to fetch token EIP-712 domain for ${args.asset}: ${e.message}`
+          : `failed to fetch token EIP-712 domain for ${args.asset}`,
+    };
+  }
   const signature = packRsv(data.r as Hex, data.s as Hex, data.v);
   let recovered: Address;
   try {
@@ -275,7 +304,19 @@ async function verifyPermit(
   const timeout = validateDeadlineWindow(data.deadline, args.maxTimeoutSeconds, "Permit deadline");
   if (!timeout.ok) return timeout;
 
-  const domain = await fetchTokenDomain(args.publicClient, args.asset, args.chainId);
+  let domain: TokenEip712Domain;
+  try {
+    domain = await fetchTokenDomain(args.publicClient, args.asset, args.chainId);
+  } catch (e) {
+    return {
+      ok: false,
+      code: "INTERNAL_ERROR",
+      reason:
+        e instanceof Error
+          ? `failed to fetch token EIP-712 domain for ${args.asset}: ${e.message}`
+          : `failed to fetch token EIP-712 domain for ${args.asset}`,
+    };
+  }
   const signature = packRsv(data.r as Hex, data.s as Hex, data.v);
   let recovered: Address;
   try {

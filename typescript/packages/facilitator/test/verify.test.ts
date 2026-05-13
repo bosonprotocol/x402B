@@ -482,6 +482,45 @@ describe("verify()", () => {
     expect((result as { ok: false; reason: string }).reason).toMatch(/validAfter|not yet/i);
   });
 
+  it("maps RPC failures during token-domain lookup to INTERNAL_ERROR", async () => {
+    // Drive an ERC-3009 path far enough that fetchTokenDomain runs.
+    // The eip712Domain() / name() / version() reads on the token go
+    // through publicClient.readContract — stub it to throw a plain
+    // Error (not a ContractFunctionExecutionError), which simulates an
+    // RPC transport failure rather than a missing-method revert.
+    // The fix bubbles that through verifyErc3009's wrapper as
+    // INTERNAL_ERROR instead of letting it escape Promise<StepResult>.
+    const payload = await buildValidPayload();
+    payload.payload.tokenAuthStrategy = "erc3009";
+    payload.payload.tokenAuth = {
+      kind: "erc3009",
+      data: {
+        from: buyer.address,
+        to: ESCROW,
+        value: "1000000",
+        validAfter: Math.floor(Date.now() / 1000) - 60,
+        validBefore: Math.floor(Date.now() / 1000) + 600,
+        nonce: `0x${"00".repeat(32)}`,
+        v: 27,
+        r: `0x${"aa".repeat(32)}`,
+        s: `0x${"bb".repeat(32)}`,
+      },
+    };
+    const requirements = { ...buildValidRequirements(), tokenAuthStrategies: ["erc3009" as const] };
+    const rpcFailing = {
+      ...buildPublicClient(),
+      readContract: async () => {
+        throw new Error("ECONNREFUSED: token RPC unreachable");
+      },
+    } as unknown as PublicClient;
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig({ client: rpcFailing }),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INTERNAL_ERROR" });
+    expect((result as { ok: false; reason: string }).reason).toContain("ECONNREFUSED");
+  });
+
   it("returns UNSUPPORTED_TOKEN_AUTH_STRATEGY for valid token-auth while BPIP-12 simulation is deferred", async () => {
     const payload = await buildValidPayload();
     payload.payload.tokenAuthStrategy = "permit2";
