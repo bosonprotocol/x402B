@@ -449,6 +449,39 @@ describe("verify()", () => {
     expect((result as { ok: false; reason: string }).reason).toContain("expired");
   });
 
+  it("rejects ERC-3009 token-auth when validAfter is in the future", async () => {
+    const payload = await buildValidPayload();
+    payload.payload.tokenAuthStrategy = "erc3009";
+    // EIP-3009 requires `block.timestamp > validAfter` strictly; a
+    // future validAfter means the authorization isn't active yet and
+    // the on-chain transferWithAuthorization call would revert. Catch
+    // it in verify so callers get BAD_TOKEN_AUTH_SIGNATURE instead of
+    // letting it slip through to simulation. The validAfter check
+    // fires before signature recovery, so this test can use placeholder
+    // r/s/v without setting up a real ERC-3009 sign flow.
+    payload.payload.tokenAuth = {
+      kind: "erc3009",
+      data: {
+        from: buyer.address,
+        to: ESCROW,
+        value: "1000000",
+        validAfter: Math.floor(Date.now() / 1000) + 3600,
+        validBefore: Math.floor(Date.now() / 1000) + 7200,
+        nonce: `0x${"00".repeat(32)}`,
+        v: 27,
+        r: `0x${"aa".repeat(32)}`,
+        s: `0x${"bb".repeat(32)}`,
+      },
+    };
+    const requirements = { ...buildValidRequirements(), tokenAuthStrategies: ["erc3009" as const] };
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "BAD_TOKEN_AUTH_SIGNATURE" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(/validAfter|not yet/i);
+  });
+
   it("returns UNSUPPORTED_TOKEN_AUTH_STRATEGY for valid token-auth while BPIP-12 simulation is deferred", async () => {
     const payload = await buildValidPayload();
     payload.payload.tokenAuthStrategy = "permit2";

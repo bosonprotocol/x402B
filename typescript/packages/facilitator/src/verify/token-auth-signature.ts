@@ -186,6 +186,19 @@ async function verifyErc3009(
       reason: `ERC-3009 value ${data.value} != requirements.amount ${args.amount}`,
     };
   }
+  // EIP-3009 requires `block.timestamp > validAfter` AND
+  // `block.timestamp < validBefore` (both strict). The contract reverts
+  // on the boundary cases — flag them upfront in verify so callers get
+  // BAD_TOKEN_AUTH_SIGNATURE rather than a less actionable
+  // SIMULATION_REVERT.
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (data.validAfter >= nowSeconds) {
+    return {
+      ok: false,
+      code: "BAD_TOKEN_AUTH_SIGNATURE",
+      reason: `ERC-3009 validAfter ${data.validAfter} is not yet active (now ${nowSeconds}); EIP-3009 requires now > validAfter`,
+    };
+  }
   const timeout = validateDeadlineWindow(
     data.validBefore,
     args.maxTimeoutSeconds,
