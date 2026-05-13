@@ -5,17 +5,14 @@
 // which encodes the existing
 // `MetaTransactionsHandlerFacet.executeMetaTransaction(...)` entrypoint.
 //
-// For ERC-3009 / EIP-2612 Permit / Permit2 strategies we delegate to
-// `buildExecuteMetaTransactionWithTokenAuthTx`, which currently throws
-// `NotYetSupportedError` until BPIP-12 ships in `core-sdk`. We catch the
-// throw and surface it to the caller as
-// `UNSUPPORTED_TOKEN_AUTH_STRATEGY` so HTTP consumers get a structured
-// 4xx instead of a 5xx.
+// ERC-3009 / EIP-2612 Permit / Permit2 strategies require the BPIP-12
+// token-auth envelope. That encoder is not wired through here yet because
+// it also needs the buyer's tokenAuth payload, so return a structured
+// `UNSUPPORTED_TOKEN_AUTH_STRATEGY` instead of ever building incomplete
+// calldata.
 
 import {
-  NotYetSupportedError,
   buildExecuteMetaTransactionTx,
-  buildExecuteMetaTransactionWithTokenAuthTx,
   type TxRequest,
 } from "@bosonprotocol/x402-evm/envelope";
 import type {
@@ -55,23 +52,9 @@ export function buildSettleEnvelope(args: BuildSettleEnvelopeArgs): BuildSettleE
     return { ok: true, tx: buildExecuteMetaTransactionTx(common) };
   }
 
-  try {
-    const tx = buildExecuteMetaTransactionWithTokenAuthTx({
-      ...common,
-      // The actual byte layout of `tokenTransferAuthorizations[i]` is
-      // gated on BPIP-12; for now pass an empty queue. When BPIP-12
-      // lands the caller will encode the buyer's tokenAuth payload here.
-      tokenTransferAuthorizations: [],
-    });
-    return { ok: true, tx };
-  } catch (e) {
-    if (e instanceof NotYetSupportedError) {
-      return {
-        ok: false,
-        code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY",
-        reason: `tokenAuthStrategy "${args.strategy}" is not yet supported by @bosonprotocol/x402-evm: ${e.message}`,
-      };
-    }
-    throw e;
-  }
+  return {
+    ok: false,
+    code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY",
+    reason: `tokenAuthStrategy "${args.strategy}" requires the BPIP-12 token-auth envelope, which is not yet wired in settle()`,
+  };
 }

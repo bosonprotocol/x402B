@@ -3,8 +3,9 @@
 // Submission uses the configured viem `WalletClient` (the relayer pays
 // gas); we then call `waitForTransactionReceipt` on the `PublicClient`
 // to confirm the transaction mined. A receipt with `status !== "success"`
-// is an on-chain revert — surfaced as `ONCHAIN_REVERT` so callers can
-// distinguish from network errors.
+// is an on-chain revert — surfaced as `ONCHAIN_REVERT`. Pre-broadcast
+// operator/provider failures remain distinguishable as INTERNAL_ERROR,
+// except relayer balance failures which map to INSUFFICIENT_FUNDS_FOR_GAS.
 //
 // Note: `walletClient.sendTransaction` here goes through whatever
 // account/transport the operator configured. We don't fetch a fresh
@@ -14,7 +15,16 @@
 
 import type { Hex } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { TxRequest } from "@bosonprotocol/x402-evm/envelope";
-import type { PublicClient, TransactionReceipt, WalletClient } from "viem";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  ExecutionRevertedError,
+  InsufficientFundsError,
+  RawContractError,
+  type PublicClient,
+  type TransactionReceipt,
+  type WalletClient,
+} from "viem";
 
 import type { FacilitatorErrorCode } from "../types.js";
 
@@ -48,12 +58,7 @@ export async function submit(args: SubmitArgs): Promise<SubmitResult> {
       value: args.tx.value ?? 0n,
     });
   } catch (e) {
-    return {
-      ok: false,
-      code: "ONCHAIN_REVERT",
-      reason:
-        e instanceof Error ? `sendTransaction failed: ${e.message}` : "sendTransaction failed",
-    };
+    return classifySendError(e);
   }
   const receipt = await args.publicClient.waitForTransactionReceipt({
     hash: txHash as `0x${string}`,
@@ -66,4 +71,29 @@ export async function submit(args: SubmitArgs): Promise<SubmitResult> {
     };
   }
   return { ok: true, txHash, receipt };
+}
+
+function classifySendError(e: unknown): Exclude<SubmitResult, { ok: true }> {
+  const reason = e instanceof Error ? `sendTransaction failed: ${e.message}` : "sendTransaction failed";
+
+  if (hasViemCause(e, InsufficientFundsError)) {
+    return { ok: false, code: "INSUFFICIENT_FUNDS_FOR_GAS", reason };
+  }
+  if (
+    hasViemCause(e, ExecutionRevertedError) ||
+    hasViemCause(e, ContractFunctionRevertedError) ||
+    hasViemCause(e, RawContractError)
+  ) {
+    return { ok: false, code: "ONCHAIN_REVERT", reason };
+  }
+  return { ok: false, code: "INTERNAL_ERROR", reason };
+}
+
+function hasViemCause<T extends abstract new (...args: never[]) => Error>(
+  e: unknown,
+  ctor: T,
+): boolean {
+  if (e instanceof ctor) return true;
+  if (!(e instanceof BaseError)) return false;
+  return e.walk((err) => err instanceof ctor) !== null;
 }

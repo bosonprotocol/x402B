@@ -8,6 +8,7 @@ import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm/actio
 import { describe, expect, it } from "vitest";
 import {
   BaseError,
+  InsufficientFundsError,
   RawContractError,
   encodeAbiParameters,
   encodeEventTopics,
@@ -266,7 +267,9 @@ function buildPublicClient(
   } as unknown as PublicClient;
 }
 
-function buildWalletClient(opts: { sendBehavior?: "pass" | "fail" } = {}): WalletClient {
+function buildWalletClient(
+  opts: { sendBehavior?: "pass" | "fail" | "insufficient-funds" } = {},
+): WalletClient {
   return {
     account: { address: relayer.address, type: "json-rpc" },
     chain: {
@@ -277,6 +280,7 @@ function buildWalletClient(opts: { sendBehavior?: "pass" | "fail" } = {}): Walle
     },
     sendTransaction: async () => {
       if (opts.sendBehavior === "fail") throw new Error("RPC unreachable");
+      if (opts.sendBehavior === "insufficient-funds") throw new InsufficientFundsError();
       return TX_HASH;
     },
   } as unknown as WalletClient;
@@ -369,7 +373,7 @@ describe("settle()", () => {
     expect(result).toMatchObject({ ok: false, code: "EVENT_NOT_FOUND" });
   });
 
-  it("returns ONCHAIN_REVERT when sendTransaction itself fails", async () => {
+  it("returns INTERNAL_ERROR when sendTransaction fails before broadcast", async () => {
     const payload = await buildValidPayload();
     const requirements = buildValidRequirements();
     const config = buildConfig({ walletClient: buildWalletClient({ sendBehavior: "fail" }) });
@@ -377,7 +381,20 @@ describe("settle()", () => {
       { scheme: "escrow", network: NETWORK, payload, requirements },
       config,
     );
-    expect(result).toMatchObject({ ok: false, code: "ONCHAIN_REVERT" });
+    expect(result).toMatchObject({ ok: false, code: "INTERNAL_ERROR" });
+  });
+
+  it("returns INSUFFICIENT_FUNDS_FOR_GAS when the relayer cannot fund gas", async () => {
+    const payload = await buildValidPayload();
+    const requirements = buildValidRequirements();
+    const config = buildConfig({
+      walletClient: buildWalletClient({ sendBehavior: "insufficient-funds" }),
+    });
+    const result = await settle(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      config,
+    );
+    expect(result).toMatchObject({ ok: false, code: "INSUFFICIENT_FUNDS_FOR_GAS" });
   });
 });
 
