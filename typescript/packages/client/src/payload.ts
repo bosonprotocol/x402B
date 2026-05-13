@@ -72,7 +72,16 @@ export function assembleAndEncodePayload(args: AssembleArgs): string {
   if (typeof Buffer !== "undefined") {
     return Buffer.from(json, "utf8").toString("base64");
   }
-  // Browser fallback. `btoa` is available in every modern browser and in
-  // Node 18+; the `Buffer` branch above takes precedence on Node anyway.
-  return btoa(json);
+  // Browser fallback. Wire payloads mostly carry hex/numeric strings, but
+  // `fulfillment.data` is a `Record<string, unknown>` that the buyer
+  // populates — emails, addresses, free-form notes. `btoa` accepts only
+  // a binary string (code units 0–255) and throws `InvalidCharacterError`
+  // on any character above U+00FF. UTF-8 encode the JSON first, then map
+  // the bytes into the binary-string form `btoa` expects.
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  for (const b of bytes) {
+    binary += String.fromCharCode(b);
+  }
+  return btoa(binary);
 }
