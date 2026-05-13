@@ -3,10 +3,9 @@
 
 import { z } from "zod";
 
+import { actionEntrySchema, actionsFallbackSchema } from "./shared-schemas.js";
 import {
-  ACTION_CHANNELS,
   TOKEN_AUTH_STRATEGIES,
-  type ActionChannel,
   type ActionsEnvelope,
   type Address,
   type BosonOfferRef,
@@ -43,40 +42,13 @@ const fulfillmentSchema = z
   })
   .strict();
 
+// Pre-commit (initial 402) `actions` envelope: `next[]` must be
+// non-empty (the buyer needs at least one path to commit) and the
+// `fallback` block is optional.
 const actionsSchema = z
   .object({
-    next: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1),
-            channels: z
-              .array(z.enum(ACTION_CHANNELS as readonly [ActionChannel, ...ActionChannel[]]))
-              .min(1)
-              .refine((channels) => new Set(channels).size === channels.length, {
-                message: "channels must contain unique items",
-              }),
-            endpoints: z.record(z.string()).optional(),
-          })
-          .strict(),
-      )
-      .min(1),
-    fallback: z
-      .object({
-        xmtp: z.string().optional(),
-        mcp: z.string().optional(),
-        onchainHints: z
-          .object({
-            escrow: addressSchema,
-            metaTxFacet: z.string().min(1),
-            metaTxEntrypoint: z.string().min(1),
-            actionFacets: z.record(z.string()),
-          })
-          .strict()
-          .optional(),
-      })
-      .strict()
-      .optional(),
+    next: z.array(actionEntrySchema).min(1),
+    fallback: actionsFallbackSchema.optional(),
   })
   .strict();
 

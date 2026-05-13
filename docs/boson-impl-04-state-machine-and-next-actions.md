@@ -67,8 +67,8 @@ Example for an exchange that is `DISPUTED` with a dispute in `RESOLVING` — the
 ```jsonc
 "nextActions": {
   "exchangeId": "12345",                  // omitted on the initial 402
-  "state": "DISPUTED",                    // ExchangeState; omitted on the initial 402
-  "disputeState": "RESOLVING",            // DisputeState; present iff state === "DISPUTED"
+  "exchangeState": "DISPUTED",            // ExchangeState; omitted on the initial 402
+  "disputeState": "RESOLVING",            // DisputeState; present iff exchangeState === "DISPUTED"
   "next": [
     {
       "id": "boson-resolveDispute",
@@ -90,12 +90,21 @@ Example for an exchange that is `DISPUTED` with a dispute in `RESOLVING` — the
   ],
   "fallback": {
     "xmtp": "0xSellerXMTP...",
-    "mcp":  "boson://seller/12345",
+    "mcp":  "boson://exchange/12345",          // identifier within the Boson MCP (e.g. `bosonprotocol/agentic-commerce`)
     "onchainHints": {
-      "escrow":           "0xEscrow...",
-      "facet":            "DisputeHandlerFacet",  // varies per action
-      "metaTxFacet":      "MetaTransactionsHandlerFacet",
-      "metaTxEntrypoint": "executeMetaTransactionWithTokenTransferAuthorization"
+      "escrow":      "0xEscrow...",
+      "metaTxFacet": "MetaTransactionsHandlerFacet",
+      "metaTxEntrypoints": {                    // keyed by buyer's `tokenAuthStrategy`
+        "none":    "executeMetaTransaction",
+        "erc3009": "executeMetaTransactionWithTokenTransferAuthorization",
+        "permit":  "executeMetaTransactionWithTokenTransferAuthorization",
+        "permit2": "executeMetaTransactionWithTokenTransferAuthorization"
+      },
+      "actionFacets": {                          // facet hosting each emitted action
+        "boson-resolveDispute":  "DisputeHandlerFacet",
+        "boson-escalateDispute": "DisputeHandlerFacet",
+        "boson-retractDispute":  "DisputeHandlerFacet"
+      }
     }
   }
 }
@@ -146,7 +155,7 @@ A **channel** is a transport for invoking an action. The standard registry:
 | `server` | The seller's HTTP server exposes a convenience endpoint that wraps the on-chain call (and may notify the seller for context). | `POST <endpoints.server>` with action-specific body. |
 | `facilitator` | A third-party facilitator that submits on-chain on the buyer's behalf (gas-paying meta-tx). | `POST <facilitator>/x402B/<action>` per the facilitator's API (see [boson-impl-07-facilitator.md](./boson-impl-07-facilitator.md)). |
 | `onchain` | Direct on-chain submission. The buyer signs and submits the raw tx themselves. | `<facet>.<method>(...)` per `onchainHints`. |
-| `mcp` | The buyer's agent calls a Boson MCP tool (e.g. `bosonprotocol/agentic-commerce`). | MCP tool invocation; identifier in `fallback.mcp`. |
+| `mcp` | The buyer's agent dispatches against the **escrow's** MCP server (the Boson Protocol MCP, currently [`bosonprotocol/agentic-commerce`](https://github.com/bosonprotocol/agentic-commerce)) — one shared server across every Boson seller, not a per-seller endpoint. The seller-specific routing lives in `fallback.mcp` as a Boson-namespaced identifier the BosonMCP resolves. | MCP tool invocation against BosonMCP; identifier from `fallback.mcp`. |
 | `xmtp` | Out-of-band: the buyer messages the seller's XMTP inbox; the seller can act on behalf of the buyer for some actions, or simply acknowledge. | XMTP message to `fallback.xmtp` with structured payload. |
 
 `channels[]` ordering on the server response is the seller's *preferred* order, but the client SDK is free to override based on its own policy (e.g. AI-agent clients may always prefer `onchain` or `mcp`).

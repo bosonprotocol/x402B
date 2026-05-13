@@ -62,7 +62,12 @@ export const validRequirements: EscrowPaymentRequirements = {
       onchainHints: {
         escrow: ESCROW,
         metaTxFacet: "MetaTransactionsHandlerFacet",
-        metaTxEntrypoint: "executeMetaTransactionWithTokenTransferAuthorization",
+        metaTxEntrypoints: {
+          none: "executeMetaTransaction",
+          erc3009: "executeMetaTransactionWithTokenTransferAuthorization",
+          permit: "executeMetaTransactionWithTokenTransferAuthorization",
+          permit2: "executeMetaTransactionWithTokenTransferAuthorization",
+        },
         actionFacets: {
           "boson-createOfferAndCommit": "ExchangeCommitFacet",
           "boson-createOfferCommitAndRedeem": "OrchestrationHandlerFacet2",

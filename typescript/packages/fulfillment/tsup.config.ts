@@ -10,6 +10,12 @@ import { defineConfig } from "tsup";
 // package.json's `build` script.
 const entry = ["src/**/index.ts"];
 
+// `splitting: false` keeps each `<subdir>/index` self-contained in
+// the dist tree — without it, shared internal modules (e.g. the
+// data-at-commit channel factory under `_internal/`) would be hoisted
+// into hash-named chunks (`chunk-XXXXXXXX.js`) that would shift
+// between releases. CLAUDE.md explicitly warns against deep-importing
+// hashed filenames; producing them is the same anti-pattern.
 export default defineConfig([
   {
     entry,
@@ -19,6 +25,7 @@ export default defineConfig([
     dts: false,
     sourcemap: true,
     clean: true,
+    splitting: false,
     target: "es2020",
     treeshake: true,
   },
@@ -30,6 +37,7 @@ export default defineConfig([
     dts: true,
     sourcemap: true,
     clean: false,
+    splitting: false,
     target: "es2020",
     treeshake: true,
   },
