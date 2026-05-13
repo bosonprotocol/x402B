@@ -48,7 +48,7 @@ const server = createX402bServer({
 });
 
 const requirements = await server.buildPaymentRequirements({
-  offer: { unsigned: { /* UnsignedFullOffer */ } },
+  offer: { unsigned: { /* UnsignedFullOffer — see `@bosonprotocol/x402-core/eip712` */ } },
   asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", // USDC on Base
   amount: "1000000", // 1 USDC (6 decimals)
   tokenAuthStrategies: ["erc3009"],

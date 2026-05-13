@@ -167,4 +167,48 @@ describe("createX402bServer", () => {
       }),
     ).toThrow();
   });
+
+  it("rejects config when chainId doesn't match the network's CAIP-2 chainId", () => {
+    const seller = privateKeyToAccount(TEST_SELLER_PK);
+    expect(() =>
+      createX402bServer({
+        network: "eip155:8453",
+        chainId: 1,
+        escrow: ESCROW,
+        signer: seller,
+        facilitator: { url: "https://facilitator.example" },
+        channelRegistry: makeRegistry(),
+      }),
+    ).toThrow(/chainId \(1\) must match network \(eip155:8453\)/);
+  });
+
+  it("normalises trailing slashes and URL-encodes action ids in facilitator endpoints", async () => {
+    const seller = privateKeyToAccount(TEST_SELLER_PK);
+    const server = createX402bServer({
+      network: NETWORK,
+      chainId: CHAIN_ID,
+      escrow: ESCROW,
+      signer: seller,
+      facilitator: { url: "https://facilitator.example///" },
+      channelRegistry: makeRegistry(),
+    });
+
+    const requirements = await server.buildPaymentRequirements({
+      offer: { unsigned: { ...baseOffer, offerCreator: seller.address } },
+      asset: TOKEN,
+      amount: "1000000",
+      tokenAuthStrategies: ["erc3009"],
+      recipientId: RECIPIENT_ID,
+      maxTimeoutSeconds: 300,
+    });
+
+    for (const entry of requirements.actions.next) {
+      // No double-slash anywhere after the protocol.
+      expect(entry.endpoints?.facilitator).not.toMatch(/[^:]\/\//);
+      // Commit-time actions route to /settle; future post-commit
+      // actions advertised here would route to /perform-action?action=
+      // with the id URL-encoded.
+      expect(entry.endpoints?.facilitator).toBe("https://facilitator.example/settle");
+    }
+  });
 });

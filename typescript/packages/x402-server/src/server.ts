@@ -51,10 +51,11 @@ const COMMIT_ACTION_IDS = new Set([
 ]);
 
 function facilitatorEndpointFor(actionId: string, facilitatorUrl: string): string {
+  const base = facilitatorUrl.replace(/\/+$/, "");
   if (COMMIT_ACTION_IDS.has(actionId)) {
-    return `${facilitatorUrl}/settle`;
+    return `${base}/settle`;
   }
-  return `${facilitatorUrl}/perform-action?action=${actionId}`;
+  return `${base}/perform-action?action=${encodeURIComponent(actionId)}`;
 }
 
 function withFacilitatorEndpoints(

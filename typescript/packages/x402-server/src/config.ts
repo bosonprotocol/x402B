@@ -91,7 +91,21 @@ export const x402bServerConfigSchema = z
       .strict(),
     channelRegistry: channelRegistryZodSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((cfg, ctx) => {
+    // CAIP-2 `eip155:<chainId>` carries the chainId; assert it matches
+    // the explicit `chainId` field so the EIP-712 salt and the
+    // wire-level network advertisement agree. Catches the easy
+    // copy-paste mistake of pairing `eip155:8453` with `chainId: 1`.
+    const networkChainId = Number(cfg.network.split(":")[1]);
+    if (networkChainId !== cfg.chainId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["chainId"],
+        message: `chainId (${cfg.chainId}) must match network (${cfg.network})`,
+      });
+    }
+  });
 
 /**
  * Cross-field invariant: `config.escrow` and
