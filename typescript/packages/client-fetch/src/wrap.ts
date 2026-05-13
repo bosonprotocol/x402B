@@ -33,7 +33,10 @@ export function wrapFetchWithPayment(
   client: X402bClient,
 ): typeof fetch {
   return async function fetchWithPayment(input, init) {
-    const initial = await originalFetch(input, init);
+    const initialRequest = new Request(input, init);
+    const retryBase = initialRequest.clone();
+
+    const initial = await originalFetch(initialRequest);
     if (initial.status !== 402) {
       return initial;
     }
@@ -45,11 +48,11 @@ export function wrapFetchWithPayment(
 
     const headerValue = await client.handle402(escrowEntry);
 
-    const headers = new Headers(init?.headers);
+    const headers = new Headers(retryBase.headers);
     headers.set(X_PAYMENT_HEADER, headerValue);
-    const retryInit: RequestInit = { ...init, headers };
+    const retryRequest = new Request(retryBase, { headers });
 
-    return originalFetch(input, retryInit);
+    return originalFetch(retryRequest);
   };
 }
 

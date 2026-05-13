@@ -82,9 +82,8 @@ describe("wrapFetchWithPayment", () => {
     expect(client.handle402).toHaveBeenCalledTimes(1);
     expect(client.handle402.mock.calls[0][0]).toMatchObject({ scheme: "escrow" });
 
-    const retryInit = fakeFetch.mock.calls[1][1] as RequestInit;
-    const retryHeaders = new Headers(retryInit.headers);
-    expect(retryHeaders.get("X-PAYMENT")).toBe("hdr-base64");
+    const retryRequest = fakeFetch.mock.calls[1][0] as Request;
+    expect(retryRequest.headers.get("X-PAYMENT")).toBe("hdr-base64");
   });
 
   it("preserves the request URL, method, and existing headers/body on the retry", async () => {
@@ -101,13 +100,44 @@ describe("wrapFetchWithPayment", () => {
       body: '{"foo":1}',
     });
 
-    expect(fakeFetch.mock.calls[1][0]).toBe("https://example/resource");
-    const retryInit = fakeFetch.mock.calls[1][1] as RequestInit;
-    expect(retryInit.method).toBe("POST");
-    expect(retryInit.body).toBe('{"foo":1}');
-    const retryHeaders = new Headers(retryInit.headers);
-    expect(retryHeaders.get("x-trace-id")).toBe("abc");
-    expect(retryHeaders.get("X-PAYMENT")).toBe("hdr");
+    const retryRequest = fakeFetch.mock.calls[1][0] as Request;
+    expect(retryRequest.url).toBe("https://example/resource");
+    expect(retryRequest.method).toBe("POST");
+    expect(await retryRequest.text()).toBe('{"foo":1}');
+    expect(retryRequest.headers.get("x-trace-id")).toBe("abc");
+    expect(retryRequest.headers.get("X-PAYMENT")).toBe("hdr");
+  });
+
+  it("can retry a Request input after the initial fetch consumes its body", async () => {
+    const client = makeClient("hdr");
+    const bodies: string[] = [];
+    const retryHeaders: string[] = [];
+    const fakeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : new Request(input);
+      bodies.push(await request.text());
+      retryHeaders.push(request.headers.get("X-PAYMENT") ?? "");
+
+      if (bodies.length === 1) {
+        return jsonResponse(escrow402Body(), { status: 402 });
+      }
+      return new Response("ok", { status: 200 });
+    });
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client);
+    const request = new Request("https://example/resource", {
+      method: "POST",
+      headers: { "x-trace-id": "abc" },
+      body: "streamed-payload",
+    });
+
+    const res = await wrapped(request);
+
+    expect(res.status).toBe(200);
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+    expect(bodies).toEqual(["streamed-payload", "streamed-payload"]);
+    expect(retryHeaders).toEqual(["", "hdr"]);
+    const retryRequest = fakeFetch.mock.calls[1][0] as Request;
+    expect(retryRequest.headers.get("x-trace-id")).toBe("abc");
   });
 
   it("passes a 402 through unchanged when no accepts[] entry has scheme='escrow'", async () => {
