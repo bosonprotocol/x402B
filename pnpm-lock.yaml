@@ -212,6 +212,12 @@ importers:
 
   typescript/packages/x402-server:
     dependencies:
+      '@bosonprotocol/common':
+        specifier: ^1.32.2
+        version: 1.32.2
+      '@bosonprotocol/core-sdk':
+        specifier: 1.47.1-alpha.0
+        version: 1.47.1-alpha.0
       '@bosonprotocol/x402-actions':
         specifier: workspace:^
         version: link:../actions
