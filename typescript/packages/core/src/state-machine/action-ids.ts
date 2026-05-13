@@ -84,3 +84,38 @@ export const ACTION_POST_STATE: Record<ActionId, ActionPostState> = {
     dispute: DisputeState.RETRACTED,
   },
 };
+
+/**
+ * Boson Diamond facet that exposes the on-chain primitive for each
+ * `ActionId`. Used by `@bosonprotocol/x402-actions` to populate the
+ * `fallback.onchainHints.actionFacets` block of a `nextActions`
+ * envelope so buyers can reach the underlying contract method directly
+ * via the `onchain` channel.
+ *
+ * Mapping rationale:
+ * - `boson-createOfferAndCommit` lives on `ExchangeCommitFacet` (the
+ *   deferred-redeem entry point per spec doc 04).
+ * - `boson-createOfferCommitAndRedeem` lives on
+ *   `OrchestrationHandlerFacet2` (the atomic-redeem entry point added
+ *   in boson-protocol-contracts PR #1105).
+ * - `boson-redeem`, `boson-cancelVoucher`, `boson-revokeVoucher`, and
+ *   `boson-completeExchange` are exchange-lifecycle methods on
+ *   `ExchangeHandlerFacet`.
+ * - All four dispute transitions (`raise` / `resolve` / `escalate` /
+ *   `retract`) live on `DisputeHandlerFacet`.
+ *
+ * The keys are intentionally exhaustive over `ActionId` so adding a
+ * new action id at compile time forces a paired facet entry.
+ */
+export const ACTION_FACETS: Record<ActionId, string> = {
+  "boson-createOfferAndCommit": "ExchangeCommitFacet",
+  "boson-createOfferCommitAndRedeem": "OrchestrationHandlerFacet2",
+  "boson-redeem": "ExchangeHandlerFacet",
+  "boson-cancelVoucher": "ExchangeHandlerFacet",
+  "boson-revokeVoucher": "ExchangeHandlerFacet",
+  "boson-completeExchange": "ExchangeHandlerFacet",
+  "boson-raiseDispute": "DisputeHandlerFacet",
+  "boson-resolveDispute": "DisputeHandlerFacet",
+  "boson-escalateDispute": "DisputeHandlerFacet",
+  "boson-retractDispute": "DisputeHandlerFacet",
+};

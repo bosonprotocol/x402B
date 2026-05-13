@@ -85,7 +85,7 @@ describe("@bosonprotocol/x402-actions public types", () => {
     expectTypeOf<Parameters<Adapter["describe"]>[1]>().toEqualTypeOf<ServerCfg>();
   });
 
-  it("ChannelRegistry types channel order and per-action server endpoints", () => {
+  it("ChannelRegistry types channel order, endpoints, and discrete fallback fields", () => {
     expectTypeOf(REGISTRY).toMatchTypeOf<ChannelRegistry>();
     expectTypeOf(REGISTRY.channels).toMatchTypeOf<readonly Channel[]>();
   });

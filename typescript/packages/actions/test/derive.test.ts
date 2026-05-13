@@ -46,14 +46,60 @@ describe("deriveInitialNextActions (PRE_COMMIT)", () => {
     ).toBeUndefined();
   });
 
-  it("emits the fallback block when populated", () => {
+  it("emits xmtp/mcp from the registry into fallback", () => {
     const envelope = deriveInitialNextActions(REGISTRY);
-    expect(envelope.fallback).toEqual(REGISTRY.fallback);
+    expect(envelope.fallback?.xmtp).toBe("0xSellerXMTP");
+    expect(envelope.fallback?.mcp).toBe("boson://seller/12345");
   });
 
-  it("always emits the on-chain fallback block", () => {
+  it("auto-stamps onchainHints from the registry's escrow + emitted actions", () => {
     const envelope = deriveInitialNextActions(REGISTRY);
-    expect(envelope.fallback?.onchainHints).toEqual(REGISTRY.fallback.onchainHints);
+    expect(envelope.fallback?.onchainHints).toEqual({
+      escrow: "0x0000000000000000000000000000000000000001",
+      metaTxFacet: "MetaTransactionsHandlerFacet",
+      metaTxEntrypoints: {
+        none: "executeMetaTransaction",
+        erc3009: "executeMetaTransactionWithTokenTransferAuthorization",
+        permit: "executeMetaTransactionWithTokenTransferAuthorization",
+        permit2: "executeMetaTransactionWithTokenTransferAuthorization",
+      },
+      actionFacets: {
+        "boson-createOfferAndCommit": "ExchangeCommitFacet",
+        "boson-createOfferCommitAndRedeem": "OrchestrationHandlerFacet2",
+      },
+    });
+  });
+
+  it("emits mandatory onchainHints even when no optional fallback fields are configured", () => {
+    const envelope = deriveInitialNextActions({
+      channels: ["onchain"],
+      escrow: "0x0000000000000000000000000000000000000001",
+    });
+    expect(envelope.fallback?.onchainHints).toEqual({
+      escrow: "0x0000000000000000000000000000000000000001",
+      metaTxFacet: "MetaTransactionsHandlerFacet",
+      metaTxEntrypoints: {
+        none: "executeMetaTransaction",
+        erc3009: "executeMetaTransactionWithTokenTransferAuthorization",
+        permit: "executeMetaTransactionWithTokenTransferAuthorization",
+        permit2: "executeMetaTransactionWithTokenTransferAuthorization",
+      },
+      actionFacets: {
+        "boson-createOfferAndCommit": "ExchangeCommitFacet",
+        "boson-createOfferCommitAndRedeem": "OrchestrationHandlerFacet2",
+      },
+    });
+  });
+
+  it("adds the mandatory onchain channel when omitted from preferred order", () => {
+    const envelope = deriveInitialNextActions({
+      channels: ["mcp"],
+      mcp: "boson://seller/12345",
+      escrow: "0x0000000000000000000000000000000000000001",
+    });
+    for (const entry of envelope.next) {
+      expect(entry.channels).toEqual(["mcp", "onchain"]);
+    }
   });
 });
 
@@ -89,30 +135,7 @@ describe("deriveNextActions — non-DISPUTED states", () => {
       { exchangeId: "12345", exchangeState: ExchangeState.REDEEMED },
       {
         channels: ["server", "facilitator", "onchain", "mcp", "xmtp"],
-        fallback: {
-          onchainHints: {
-            escrow: "0x0000000000000000000000000000000000000001",
-            metaTxFacet: "MetaTransactionsHandlerFacet",
-            metaTxEntrypoints: {
-              none: "executeMetaTransaction",
-              erc3009: "executeMetaTransactionWithTokenTransferAuthorization",
-              permit: "executeMetaTransactionWithTokenTransferAuthorization",
-              permit2: "executeMetaTransactionWithTokenTransferAuthorization",
-            },
-            actionFacets: {
-              "boson-createOfferAndCommit": "ExchangeCommitFacet",
-              "boson-createOfferCommitAndRedeem": "OrchestrationHandlerFacet2",
-              "boson-redeem": "ExchangeHandlerFacet",
-              "boson-cancelVoucher": "ExchangeHandlerFacet",
-              "boson-revokeVoucher": "ExchangeHandlerFacet",
-              "boson-completeExchange": "ExchangeHandlerFacet",
-              "boson-raiseDispute": "DisputeHandlerFacet",
-              "boson-resolveDispute": "DisputeHandlerFacet",
-              "boson-escalateDispute": "DisputeHandlerFacet",
-              "boson-retractDispute": "DisputeHandlerFacet",
-            },
-          },
-        },
+        escrow: "0x0000000000000000000000000000000000000001",
       },
     );
 
@@ -141,18 +164,25 @@ describe("deriveNextActions — non-DISPUTED states", () => {
 });
 
 describe("deriveNextActions — unusable actions", () => {
-  it("throws when no configured channel can be used for a legal action", () => {
-    expect(() =>
-      deriveNextActions(
-        { exchangeId: "12345", exchangeState: ExchangeState.REDEEMED },
-        {
-          channels: ["server", "mcp", "xmtp"],
-          fallback: {
-            onchainHints: REGISTRY.fallback.onchainHints,
-          },
-        },
-      ),
-    ).toThrow("No usable channel configured for action boson-completeExchange");
+  it("uses mandatory onchain fallback when no optional configured channel can be used", () => {
+    const envelope = deriveNextActions(
+      { exchangeId: "12345", exchangeState: ExchangeState.REDEEMED },
+      {
+        channels: ["server", "mcp", "xmtp"],
+        escrow: "0x0000000000000000000000000000000000000001",
+      },
+    );
+
+    expect(envelope.next).toEqual([
+      {
+        id: "boson-completeExchange",
+        channels: ["onchain"],
+      },
+      {
+        id: "boson-raiseDispute",
+        channels: ["onchain"],
+      },
+    ]);
   });
 });
 
