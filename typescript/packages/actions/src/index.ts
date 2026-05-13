@@ -22,6 +22,13 @@ export type { Channel, ChannelAdapter } from "./channels/index.js";
 export { CHANNEL_IDS } from "./channels/index.js";
 
 export type { ChannelRegistry } from "./registry/index.js";
+export {
+  BUYER_ONCHAIN_FALLBACK,
+  buildChannelRegistry,
+  channelRegistryZodSchema,
+  hasBuyerOnchainFallback,
+  isBuyerOnchainResilient,
+} from "./registry/index.js";
 
 export type { DeriveDecorations, DeriveNextActionsInput } from "./derive.js";
 export { deriveInitialNextActions, deriveNextActions } from "./derive.js";
