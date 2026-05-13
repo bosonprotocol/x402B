@@ -6,7 +6,7 @@ This package wraps a `fetch` implementation so a request that gets a `402` carry
 
 ## Status
 
-Pre-release skeleton. MVP exposes only the wrapper; channel fallback, response-header decoding, and per-action retry remain on the [`@bosonprotocol/x402-client`](https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/client) surface.
+Pre-release skeleton. The only adapter-specific export is `wrapFetchWithPayment`; the rest of the public API — `createX402bClient`, the signer adapters, error classes, `client.handle402`, `client.signAction`, `client.parsePaymentResponse`, and the configuration types — is re-exported verbatim from [`@bosonprotocol/x402-client`](https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/client), so a single install of this package covers the common case.
 
 ## Install
 
@@ -14,8 +14,6 @@ Pre-release skeleton. MVP exposes only the wrapper; channel fallback, response-h
 pnpm add @bosonprotocol/x402-client-fetch
 # or: npm install @bosonprotocol/x402-client-fetch
 ```
-
-`@bosonprotocol/x402-client`'s public API is re-exported from this package, so a single install covers the common case.
 
 ## Usage
 
