@@ -13,6 +13,7 @@ import { channelRegistryZodSchema, type ChannelRegistry } from "@bosonprotocol/x
 import {
   addressSchema,
   evmNetworkSchema,
+  hexSchema,
   type Address,
   type EvmNetwork,
 } from "@bosonprotocol/x402-core/schemes/escrow";
@@ -68,10 +69,11 @@ const httpUrlSchema = z
 const sellerSignerSchema = z
   .object({
     address: addressSchema,
-    signTypedData: z
-      .function()
-      .args(z.unknown())
-      .returns(z.union([z.string(), z.promise(z.string())])),
+    // `SellerSigner.signTypedData` is typed `Promise<Hex>` in the TS
+    // interface — tighten the zod return wrapper to match so a signer
+    // that resolves to a non-hex string fails loudly at call time
+    // rather than silently producing a bad `BosonOfferRef.sellerSig`.
+    signTypedData: z.function().args(z.unknown()).returns(z.promise(hexSchema)),
   })
   .passthrough();
 
