@@ -54,10 +54,6 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
-  
-  typescript/packages/actions/dist/cjs: {}
-
-  typescript/packages/actions/dist/esm: {}
 
   typescript/packages/core:
     dependencies:
