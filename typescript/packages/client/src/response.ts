@@ -39,18 +39,33 @@ export function parsePaymentResponse(response: ResponseLike): ExchangeSummary | 
     summary.exchangeId = exchangeId;
   }
 
-  // `ClientState` is `"PRE_COMMIT"` (string literal) OR an
-  // `{ exchange, dispute? }` object, so accept either shape and reject
-  // numbers / booleans / `null` rather than letting them flow into a
-  // field typed as the union. The `as` cast stays permissive because the
-  // server-side header contract isn't pinned yet — callers needing
-  // stronger guarantees can read `raw` directly.
   const state = (parsed as { state?: unknown }).state;
-  if (typeof state === "string" || (typeof state === "object" && state !== null)) {
-    summary.state = state as ExchangeSummary["state"];
+  if (isClientStateShape(state)) {
+    summary.state = state;
   }
 
   return summary;
+}
+
+/**
+ * Shape gate for `state` arriving from the permissive server header. We
+ * keep the file-header promise of permissiveness — `ClientState` is
+ * `"PRE_COMMIT"` or an `{ exchange, dispute? }` record today, but the
+ * wire contract isn't pinned, so any non-empty string (e.g. raw
+ * `ExchangeState` value) or non-array `{ exchange }`-shaped record is
+ * surfaced verbatim. Numbers, booleans, `null`, empty strings, arrays,
+ * and records missing a string `exchange` field are rejected so garbage
+ * payloads can't masquerade as a typed `ClientState`.
+ */
+function isClientStateShape(v: unknown): v is NonNullable<ExchangeSummary["state"]> {
+  if (typeof v === "string") return v.length > 0;
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const rec = v as Record<string, unknown>;
+  if (typeof rec.exchange !== "string") return false;
+  if ("dispute" in rec && rec.dispute !== undefined && typeof rec.dispute !== "string") {
+    return false;
+  }
+  return true;
 }
 
 function decodeBase64(value: string): string {
