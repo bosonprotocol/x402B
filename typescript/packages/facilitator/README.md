@@ -23,7 +23,7 @@ three library functions (`verify`, `settle`, `performAction`) throw
 Library-shaped facilitator. Three async functions mirror the wire-level
 endpoints described in `docs/boson-impl-07-facilitator.md`:
 
-```
+```text
 verify(input, config)         -> { ok }              | { ok: false, code, reason }
 settle(input, config)         -> { ok, exchangeId, txHash } | { ok: false, code, reason }
 performAction(input, config)  -> { ok, txHash, newExchangeState, newDisputeState? }

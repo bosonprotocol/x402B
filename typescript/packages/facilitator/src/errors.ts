@@ -32,11 +32,24 @@ export class NotImplementedError extends FacilitatorError {
 
 /**
  * Normalize an unknown thrown value into the `{ ok: false, code, reason }`
- * branch of a facilitator result. Useful at HTTP handler boundaries.
+ * branch of a facilitator result.
  *
  * - `FacilitatorError` preserves its `code` / `reason`.
  * - Any other `Error` collapses to `INTERNAL_ERROR` with its `message`.
  * - Non-Error throws collapse to `INTERNAL_ERROR` with `String(err)`.
+ *
+ * ⚠️ **Information disclosure note.** For the `INTERNAL_ERROR` branches
+ * (non-`FacilitatorError` `Error` instances and non-`Error` throws) the
+ * `reason` field carries the underlying error's `message` / `String(err)`
+ * verbatim. That message may contain provider URLs, RPC stack frames,
+ * library internals, or other implementation details that are useful for
+ * debugging but should not be exposed to untrusted HTTP clients.
+ *
+ * If you are wrapping these results in an HTTP response, sanitize the
+ * `reason` field on the `code === "INTERNAL_ERROR"` branch before
+ * returning to the client — e.g. replace with a generic
+ * `"internal server error"` and log the verbose message server-side. The
+ * other (typed) error codes are safe to surface as-is.
  */
 export function toResult(err: unknown): { ok: false; code: FacilitatorErrorCode; reason: string } {
   if (err instanceof FacilitatorError) {

@@ -43,7 +43,7 @@ implementation lands. The intended submit path is selected by the buyer's
 For `tokenAuthStrategy = "none"`, the facilitator wraps the signed
 meta-transaction with the existing Boson entrypoint:
 
-```
+```solidity
 MetaTransactionsHandlerFacet.executeMetaTransaction(
   userAddress,
   functionName,
@@ -56,7 +56,7 @@ MetaTransactionsHandlerFacet.executeMetaTransaction(
 For `tokenAuthStrategy = "erc3009" | "permit" | "permit2"`, the planned
 BPIP-12 path is:
 
-```
+```solidity
 MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization(
   metaTxParams,                  // built from payload.metaTx
   tokenTransferAuthorizations,   // bytes[] queue, one entry encoding payload.tokenAuth
