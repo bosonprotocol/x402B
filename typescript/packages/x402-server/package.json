@@ -43,6 +43,16 @@
       "types": "./dist/cjs/facilitator/index.d.ts",
       "import": "./dist/esm/facilitator/index.js",
       "require": "./dist/cjs/facilitator/index.js"
+    },
+    "./handlers": {
+      "types": "./dist/cjs/handlers/index.d.ts",
+      "import": "./dist/esm/handlers/index.js",
+      "require": "./dist/cjs/handlers/index.js"
+    },
+    "./onchain": {
+      "types": "./dist/cjs/onchain/index.d.ts",
+      "import": "./dist/esm/onchain/index.js",
+      "require": "./dist/cjs/onchain/index.js"
     }
   },
   "files": [
