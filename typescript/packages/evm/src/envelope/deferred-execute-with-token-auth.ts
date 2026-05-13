@@ -3,7 +3,7 @@
 // authorization payloads (ERC-3009 / EIP-2612 / Permit2) alongside the
 // meta-tx ([docs/boson-impl-01-escrow-scheme.md §4.3]).
 //
-// `@bosonprotocol/core-sdk@1.46.1` does not yet ship this ABI nor a
+// `@bosonprotocol/core-sdk` does not yet ship this ABI nor a
 // calldata helper for it. Once BPIP-12 lands in
 // `IBosonMetaTransactionsHandlerABI`, swap the body to mirror
 // `./execute-meta-transaction.ts` — same shape plus a `bytes[]

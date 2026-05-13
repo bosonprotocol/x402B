@@ -2,7 +2,7 @@
 // the atomic commit-and-redeem Boson action (Flow B in
 // docs/boson-impl-02-flows.md, gated on contracts PR #1105).
 //
-// `@bosonprotocol/core-sdk@1.46.1` does not yet ship a
+// `@bosonprotocol/core-sdk` does not yet ship a
 // `signMetaTxCreateOfferCommitAndRedeem` helper nor an
 // `exchanges.iface.encodeCreateOfferCommitAndRedeem`. Until that lands,
 // this builder throws loudly so callers can't accidentally invoke an

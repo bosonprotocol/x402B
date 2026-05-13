@@ -9,20 +9,21 @@
 // This package ships no JSON schemas, so unlike core/fulfillment there is
 // no `dist/schemas/` step.
 
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const distRoot = join(here, "..", "dist");
+const esmDir = join(distRoot, "esm");
+const cjsDir = join(distRoot, "cjs");
 
-await writeFile(
-  join(distRoot, "esm", "package.json"),
-  JSON.stringify({ type: "module" }, null, 2) + "\n",
-);
-await writeFile(
-  join(distRoot, "cjs", "package.json"),
-  JSON.stringify({ type: "commonjs" }, null, 2) + "\n",
-);
+// Ensure both dialect subtrees exist before writing markers. `tsup`
+// creates them today, but a future config change (e.g. dropping one
+// format) shouldn't make postbuild crash with ENOENT.
+await Promise.all([mkdir(esmDir, { recursive: true }), mkdir(cjsDir, { recursive: true })]);
+
+await writeFile(join(esmDir, "package.json"), JSON.stringify({ type: "module" }, null, 2) + "\n");
+await writeFile(join(cjsDir, "package.json"), JSON.stringify({ type: "commonjs" }, null, 2) + "\n");
 
 console.log("postbuild: wrote module-type markers in dist/{esm,cjs}/package.json");

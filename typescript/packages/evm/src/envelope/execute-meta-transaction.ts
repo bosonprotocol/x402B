@@ -58,14 +58,29 @@ export function buildExecuteMetaTransactionTx(args: BuildExecuteMetaTransactionA
 
 /**
  * Pack a split ECDSA signature into the 65-byte `r ++ s ++ v` form the
- * contract's `LibSignature.recover` slices. `v` must be 27 or 28 — the
- * legacy Ethereum form; we don't accept the 0/1 variant since the on-chain
- * recover doesn't normalise.
+ * contract's `LibSignature.recover` slices. `r` and `s` must each be exactly
+ * a 32-byte hex word (no shortened representations — `LibSignature.recover`
+ * does fixed-offset slicing and a malformed input would silently produce
+ * revert-prone calldata). `v` must be 27 or 28 — the legacy Ethereum form;
+ * we don't accept the 0/1 variant since the on-chain recover doesn't
+ * normalise.
  */
 function packEcdsaSignature(sig: { r: Hex; s: Hex; v: number }): Hex {
+  assert32ByteHex(sig.r, "r");
+  assert32ByteHex(sig.s, "s");
   if (sig.v !== 27 && sig.v !== 28) {
     throw new Error(`@bosonprotocol/x402-evm: meta-tx signature v must be 27 or 28, got ${sig.v}`);
   }
   const vHex = `0x${sig.v.toString(16).padStart(2, "0")}` as Hex;
   return concat([sig.r, sig.s, vHex]);
+}
+
+const WORD32_RE = /^0x[0-9a-fA-F]{64}$/;
+
+function assert32ByteHex(value: Hex, field: "r" | "s"): void {
+  if (!WORD32_RE.test(value)) {
+    throw new Error(
+      `@bosonprotocol/x402-evm: meta-tx signature ${field} must be a 32-byte hex value (0x-prefixed, 64 hex chars), got ${value}`,
+    );
+  }
 }

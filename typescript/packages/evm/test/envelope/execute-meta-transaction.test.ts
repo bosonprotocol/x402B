@@ -66,4 +66,38 @@ describe("buildExecuteMetaTransactionTx", () => {
       buildExecuteMetaTransactionTx({ ...args, sig: { r: SIG_R, s: SIG_S, v: 1 } }),
     ).toThrow(/v must be 27 or 28/);
   });
+
+  it("rejects r/s that aren't exactly 32-byte hex words", () => {
+    // shortened
+    expect(() =>
+      buildExecuteMetaTransactionTx({
+        ...args,
+        sig: { r: `0x${"aa".repeat(31)}`, s: SIG_S, v: 27 },
+      }),
+    ).toThrow(/signature r must be a 32-byte hex value/);
+
+    // over-long
+    expect(() =>
+      buildExecuteMetaTransactionTx({
+        ...args,
+        sig: { r: SIG_R, s: `0x${"bb".repeat(33)}`, v: 27 },
+      }),
+    ).toThrow(/signature s must be a 32-byte hex value/);
+
+    // missing 0x prefix
+    expect(() =>
+      buildExecuteMetaTransactionTx({
+        ...args,
+        sig: { r: "aa".repeat(32) as `0x${string}`, s: SIG_S, v: 27 },
+      }),
+    ).toThrow(/signature r must be a 32-byte hex value/);
+
+    // non-hex character
+    expect(() =>
+      buildExecuteMetaTransactionTx({
+        ...args,
+        sig: { r: SIG_R, s: `0x${"zz".repeat(32)}`, v: 27 },
+      }),
+    ).toThrow(/signature s must be a 32-byte hex value/);
+  });
 });
