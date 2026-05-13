@@ -12,6 +12,10 @@ This package ships **only** what the x402B escrow scheme needs beyond
 what [`@bosonprotocol/core-sdk`](https://github.com/bosonprotocol/core-components)
 already provides:
 
+This release intentionally depends on `@bosonprotocol/core-sdk@1.47.1-alpha.0`.
+That alpha is the first published SDK line used here that exposes
+`signMetaTxCreateOfferAndCommit` on both `metaTx.handler` and `CoreSDK`.
+
 | Subpath | Purpose |
 |---|---|
 | `./actions` | Inner-action ABI encoding for the commit step. `buildCreateOfferAndCommitCalldata` returns the `{ functionName, functionSignature }` pair that feeds the meta-tx typed-data the buyer signs. |

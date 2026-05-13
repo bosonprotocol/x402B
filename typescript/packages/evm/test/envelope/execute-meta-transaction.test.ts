@@ -58,6 +58,15 @@ describe("buildExecuteMetaTransactionTx", () => {
     expect((signature as string).slice(-2)).toBe("1c");
   });
 
+  it("accepts bigint v values returned by viem parseSignature", () => {
+    const tx = buildExecuteMetaTransactionTx({ ...args, sig: { r: SIG_R, s: SIG_S, v: 28n } });
+    const [, , , , signature] = metaTx.iface.metaTransactionsHandlerIface.decodeFunctionData(
+      "executeMetaTransaction",
+      tx.data,
+    );
+    expect((signature as string).slice(-2)).toBe("1c");
+  });
+
   it("rejects v values other than 27/28 to avoid the 0/1 normalization trap", () => {
     expect(() =>
       buildExecuteMetaTransactionTx({ ...args, sig: { r: SIG_R, s: SIG_S, v: 0 } }),

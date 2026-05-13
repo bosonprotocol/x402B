@@ -39,7 +39,7 @@ export interface BuildExecuteMetaTransactionArgs {
   /** `MetaTransactionsHandlerFacet.usedNonce[from][nonce]` replay-protection slot. */
   nonce: bigint;
   /** Buyer EIP-712 signature over the meta-tx typed-data — split form. */
-  sig: { r: Hex; s: Hex; v: number };
+  sig: { r: Hex; s: Hex; v: number | bigint };
 }
 
 /**
@@ -65,17 +65,22 @@ export function buildExecuteMetaTransactionTx(args: BuildExecuteMetaTransactionA
  * we don't accept the 0/1 variant since the on-chain recover doesn't
  * normalise.
  */
-function packEcdsaSignature(sig: { r: Hex; s: Hex; v: number }): Hex {
+function packEcdsaSignature(sig: { r: Hex; s: Hex; v: number | bigint }): Hex {
   assert32ByteHex(sig.r, "r");
   assert32ByteHex(sig.s, "s");
-  if (sig.v !== 27 && sig.v !== 28) {
+  const v = normalizeRecoveryId(sig.v);
+  if (v !== 27 && v !== 28) {
     throw new Error(`@bosonprotocol/x402-evm: meta-tx signature v must be 27 or 28, got ${sig.v}`);
   }
-  const vHex = `0x${sig.v.toString(16).padStart(2, "0")}` as Hex;
+  const vHex = `0x${v.toString(16).padStart(2, "0")}` as Hex;
   return concat([sig.r, sig.s, vHex]);
 }
 
 const WORD32_RE = /^0x[0-9a-fA-F]{64}$/;
+
+function normalizeRecoveryId(v: number | bigint): number {
+  return typeof v === "bigint" ? Number(v) : v;
+}
 
 function assert32ByteHex(value: Hex, field: "r" | "s"): void {
   if (!WORD32_RE.test(value)) {

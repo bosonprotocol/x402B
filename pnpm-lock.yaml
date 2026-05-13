@@ -54,10 +54,6 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
-  
-  typescript/packages/actions/dist/cjs: {}
-
-  typescript/packages/actions/dist/esm: {}
 
   typescript/packages/core:
     dependencies:
@@ -65,8 +61,8 @@ importers:
         specifier: ^1.32.2
         version: 1.32.2
       '@bosonprotocol/core-sdk':
-        specifier: 1.46.1
-        version: 1.46.1
+        specifier: 1.47.1-alpha.0
+        version: 1.47.1-alpha.0
       '@x402/core':
         specifier: ^2.11.0
         version: 2.11.0
@@ -105,8 +101,8 @@ importers:
         specifier: ^1.32.2
         version: 1.32.2
       '@bosonprotocol/core-sdk':
-        specifier: 1.46.1
-        version: 1.46.1
+        specifier: 1.47.1-alpha.0
+        version: 1.47.1-alpha.0
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../core
@@ -155,10 +151,6 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
 
-  typescript/packages/fulfillment/dist/cjs: {}
-
-  typescript/packages/fulfillment/dist/esm: {}
-
 packages:
 
   '@adraffy/ens-normalize@1.10.1':
@@ -174,8 +166,11 @@ packages:
   '@bosonprotocol/common@1.32.2':
     resolution: {integrity: sha512-SXaUvMIEHT1yGxcTNlbxoWzyPUqoacrKSIYXpIUJVVOU/5uLYrojULx2htZlqF5OKl6XDxXHSPLyjUxuIEe5lg==}
 
-  '@bosonprotocol/core-sdk@1.46.1':
-    resolution: {integrity: sha512-T8DlfmWJNrD5vAosvjoZcvEiRWRj81NQRGQtStpEOAVHycsbHAO3zuiHK8Csz4yYeitzHZKMauLUP58Xef3p1g==}
+  '@bosonprotocol/common@1.33.0-alpha.0':
+    resolution: {integrity: sha512-ud4/u7o3CnncfoOPQaalauiSQsNvouYFhzbLUNf70H63m6iUfUGCYAsvQRhb8V+jtICvLLQJtkPlQqdDn/HtmA==}
+
+  '@bosonprotocol/core-sdk@1.47.1-alpha.0':
+    resolution: {integrity: sha512-iX32xUM1w8XpuyyGR8bVJzHAkbsWdOqK3VWJ71NMU0Co4JNL8Ca6aXPHMHStMVLm+ZoNMClfBXEZgnuQp47nzg==}
 
   '@bosonprotocol/metadata-storage@1.0.1':
     resolution: {integrity: sha512-f2W2SQAvY5IKD6L9JwaiNye7gGRIIPd/HOB0i+otWLzMPBlwQtbN4JeWSuKeJvuaqu8tyMy7CHzN8EkhrJDB+A==}
@@ -2164,9 +2159,18 @@ snapshots:
       '@ethersproject/constants': 5.8.0
       '@ethersproject/units': 5.8.0
 
-  '@bosonprotocol/core-sdk@1.46.1':
+  '@bosonprotocol/common@1.33.0-alpha.0':
     dependencies:
-      '@bosonprotocol/common': 1.32.2
+      '@bosonprotocol/metadata': 1.16.3
+      '@ethersproject/abi': 5.8.0
+      '@ethersproject/address': 5.8.0
+      '@ethersproject/bignumber': 5.8.0
+      '@ethersproject/constants': 5.8.0
+      '@ethersproject/units': 5.8.0
+
+  '@bosonprotocol/core-sdk@1.47.1-alpha.0':
+    dependencies:
+      '@bosonprotocol/common': 1.33.0-alpha.0
       '@ethersproject/abi': 5.8.0
       '@ethersproject/address': 5.8.0
       '@ethersproject/bignumber': 5.8.0

@@ -5,7 +5,9 @@
 
 Initial release of `@bosonprotocol/x402-evm` — EVM-specific calldata
 helpers for the x402B `escrow` scheme that are **not already covered by
-`@bosonprotocol/core-sdk`**. Subpaths:
+`@bosonprotocol/core-sdk`**. This release pins
+`@bosonprotocol/core-sdk@1.47.1-alpha.0` because that alpha exposes
+`signMetaTxCreateOfferAndCommit`. Subpaths:
 
 - `./actions` — `buildCreateOfferAndCommitCalldata` for the commit-step
   inner action. Returns the `{ functionName, functionSignature }` pair
