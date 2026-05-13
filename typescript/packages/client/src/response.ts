@@ -31,17 +31,23 @@ export function parsePaymentResponse(response: ResponseLike): ExchangeSummary | 
   }
 
   const json = decodeBase64(raw);
-  const parsed = JSON.parse(json) as Record<string, unknown>;
+  const parsed: unknown = JSON.parse(json);
   const summary: ExchangeSummary = { raw: parsed };
 
-  const exchangeId = pickString(parsed, ["exchangeId", "exchange_id"]);
-  if (exchangeId !== undefined) {
-    summary.exchangeId = exchangeId;
-  }
+  // Only walk into the payload when it's actually a plain record. A valid
+  // JSON value can be `null`, an array, or a primitive — touching keys on
+  // those would crash, defeating the file-header permissive promise.
+  if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+    const obj = parsed as Record<string, unknown>;
 
-  const state = (parsed as { state?: unknown }).state;
-  if (isClientStateShape(state)) {
-    summary.state = state;
+    const exchangeId = pickString(obj, ["exchangeId", "exchange_id"]);
+    if (exchangeId !== undefined) {
+      summary.exchangeId = exchangeId;
+    }
+
+    if (isClientStateShape(obj.state)) {
+      summary.state = obj.state;
+    }
   }
 
   return summary;
