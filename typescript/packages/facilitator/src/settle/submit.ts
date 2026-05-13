@@ -74,7 +74,8 @@ export async function submit(args: SubmitArgs): Promise<SubmitResult> {
 }
 
 function classifySendError(e: unknown): Exclude<SubmitResult, { ok: true }> {
-  const reason = e instanceof Error ? `sendTransaction failed: ${e.message}` : "sendTransaction failed";
+  const reason =
+    e instanceof Error ? `sendTransaction failed: ${e.message}` : "sendTransaction failed";
 
   if (hasViemCause(e, InsufficientFundsError)) {
     return { ok: false, code: "INSUFFICIENT_FUNDS_FOR_GAS", reason };

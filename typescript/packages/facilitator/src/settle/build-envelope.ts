@@ -11,10 +11,7 @@
 // `UNSUPPORTED_TOKEN_AUTH_STRATEGY` instead of ever building incomplete
 // calldata.
 
-import {
-  buildExecuteMetaTransactionTx,
-  type TxRequest,
-} from "@bosonprotocol/x402-evm/envelope";
+import { buildExecuteMetaTransactionTx, type TxRequest } from "@bosonprotocol/x402-evm/envelope";
 import type {
   Address,
   BosonMetaTx,
