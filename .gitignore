@@ -28,3 +28,6 @@ coverage/
 
 # misc
 .pnpm-store/
+
+# claude worktrees — ephemeral, never committed
+.claude/worktrees/
