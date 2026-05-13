@@ -41,7 +41,7 @@ app.get("/datafeed", expressMiddleware(requireEscrow));
 
 ## Endpoints exposed (optional convenience)
 
-- `POST /x402B/commit` — accepts `X-PAYMENT` with `action=boson-createOfferAndCommit`, relays the meta-tx + token-auth to the facilitator (or directly to `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`), returns 200.
+- `POST /x402B/commit` — accepts `X-PAYMENT` with `action=boson-createOfferAndCommit`, relays the meta-tx + optional token-auth to the facilitator (or directly to the matching `MetaTransactionsHandlerFacet` meta-tx entrypoint), returns 200.
 - `POST /x402B/commit-and-redeem` — same, with `action=boson-createOfferCommitAndRedeem` (atomic on-chain redeem; the actual delivery may be sync or async per `fulfillment.option`).
 - `POST /x402B/redeem` — server-side wrapper for `redeemVoucher`.
 - `POST /x402B/complete` — wrapper for `completeExchange`.
