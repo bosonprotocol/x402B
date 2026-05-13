@@ -39,8 +39,14 @@ export function parsePaymentResponse(response: ResponseLike): ExchangeSummary | 
     summary.exchangeId = exchangeId;
   }
 
+  // `ClientState` is `"PRE_COMMIT"` (string literal) OR an
+  // `{ exchange, dispute? }` object, so accept either shape and reject
+  // numbers / booleans / `null` rather than letting them flow into a
+  // field typed as the union. The `as` cast stays permissive because the
+  // server-side header contract isn't pinned yet — callers needing
+  // stronger guarantees can read `raw` directly.
   const state = (parsed as { state?: unknown }).state;
-  if (state !== undefined) {
+  if (typeof state === "string" || (typeof state === "object" && state !== null)) {
     summary.state = state as ExchangeSummary["state"];
   }
 
