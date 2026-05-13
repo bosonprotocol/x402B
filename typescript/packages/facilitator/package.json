@@ -1,0 +1,78 @@
+{
+  "name": "@bosonprotocol/x402-facilitator",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Boson Protocol facilitator (verify/settle/perform-action relayer) for the x402 escrow scheme — submits buyer meta-tx via MetaTransactionsHandlerFacet on the Boson Diamond.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosonprotocol/x402B.git",
+    "directory": "typescript/packages/facilitator"
+  },
+  "homepage": "https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/facilitator",
+  "bugs": {
+    "url": "https://github.com/bosonprotocol/x402B/issues"
+  },
+  "keywords": [
+    "x402",
+    "boson-protocol",
+    "facilitator",
+    "meta-transaction",
+    "relayer",
+    "escrow"
+  ],
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./verify": {
+      "types": "./dist/cjs/verify/index.d.ts",
+      "import": "./dist/esm/verify/index.js",
+      "require": "./dist/cjs/verify/index.js"
+    },
+    "./settle": {
+      "types": "./dist/cjs/settle/index.d.ts",
+      "import": "./dist/esm/settle/index.js",
+      "require": "./dist/cjs/settle/index.js"
+    },
+    "./perform-action": {
+      "types": "./dist/cjs/perform-action/index.d.ts",
+      "import": "./dist/esm/perform-action/index.js",
+      "require": "./dist/cjs/perform-action/index.js"
+    },
+    "./channels/facilitator": {
+      "types": "./dist/cjs/channels/facilitator/index.d.ts",
+      "import": "./dist/esm/channels/facilitator/index.js",
+      "require": "./dist/cjs/channels/facilitator/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup && node scripts/postbuild.mjs",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src --max-warnings 0",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@bosonprotocol/x402-core": "workspace:^",
+    "@bosonprotocol/x402-actions": "workspace:^",
+    "viem": "^2.39.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

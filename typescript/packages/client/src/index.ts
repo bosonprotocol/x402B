@@ -20,6 +20,7 @@ export type {
 
 export {
   FulfillmentValidationError,
+  MaxAmountExceededError,
   NoCompatibleActionError,
   NotImplementedError,
   UnsupportedSchemeError,

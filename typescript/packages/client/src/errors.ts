@@ -36,3 +36,10 @@ export class FulfillmentValidationError extends Error {
     this.name = "FulfillmentValidationError";
   }
 }
+
+export class MaxAmountExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MaxAmountExceededError";
+  }
+}

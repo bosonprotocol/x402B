@@ -153,7 +153,7 @@ A **channel** is a transport for invoking an action. The standard registry:
 | Channel | What it means | Invocation shape |
 |---|---|---|
 | `server` | The seller's HTTP server exposes a convenience endpoint that wraps the on-chain call (and may notify the seller for context). | `POST <endpoints.server>` with action-specific body. |
-| `facilitator` | A third-party facilitator that submits on-chain on the buyer's behalf (gas-paying meta-tx). | `POST <facilitator>/x402B/<action>` per the facilitator's API (see [boson-impl-07-facilitator.md](./boson-impl-07-facilitator.md)). |
+| `facilitator` | A third-party facilitator that submits on-chain on the buyer's behalf (gas-paying meta-tx). | Commit-time actions use `POST <facilitator>/settle`; post-commit actions use `POST <facilitator>/perform-action?action=<action>` per the facilitator's API (see [boson-impl-07-facilitator.md](./boson-impl-07-facilitator.md)). |
 | `onchain` | Direct on-chain submission. The buyer signs and submits the raw tx themselves. | `<facet>.<method>(...)` per `onchainHints`. |
 | `mcp` | The buyer's agent dispatches against the **escrow's** MCP server (the Boson Protocol MCP, currently [`bosonprotocol/agentic-commerce`](https://github.com/bosonprotocol/agentic-commerce)) — one shared server across every Boson seller, not a per-seller endpoint. The seller-specific routing lives in `fallback.mcp` as a Boson-namespaced identifier the BosonMCP resolves. | MCP tool invocation against BosonMCP; identifier from `fallback.mcp`. |
 | `xmtp` | Out-of-band: the buyer messages the seller's XMTP inbox; the seller can act on behalf of the buyer for some actions, or simply acknowledge. | XMTP message to `fallback.xmtp` with structured payload. |

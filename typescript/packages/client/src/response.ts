@@ -31,27 +31,59 @@ export function parsePaymentResponse(response: ResponseLike): ExchangeSummary | 
   }
 
   const json = decodeBase64(raw);
-  const parsed = JSON.parse(json) as Record<string, unknown>;
+  const parsed: unknown = JSON.parse(json);
   const summary: ExchangeSummary = { raw: parsed };
 
-  const exchangeId = pickString(parsed, ["exchangeId", "exchange_id"]);
-  if (exchangeId !== undefined) {
-    summary.exchangeId = exchangeId;
-  }
+  // Only walk into the payload when it's actually a plain record. A valid
+  // JSON value can be `null`, an array, or a primitive — touching keys on
+  // those would crash, defeating the file-header permissive promise.
+  if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+    const obj = parsed as Record<string, unknown>;
 
-  const state = (parsed as { state?: unknown }).state;
-  if (state !== undefined) {
-    summary.state = state as ExchangeSummary["state"];
+    const exchangeId = pickString(obj, ["exchangeId", "exchange_id"]);
+    if (exchangeId !== undefined) {
+      summary.exchangeId = exchangeId;
+    }
+
+    if (isClientStateShape(obj.state)) {
+      summary.state = obj.state;
+    }
   }
 
   return summary;
+}
+
+/**
+ * Shape gate for `state` arriving from the permissive server header. We
+ * keep the file-header promise of permissiveness — `ClientState` is
+ * `"PRE_COMMIT"` or an `{ exchange, dispute? }` record today, but the
+ * wire contract isn't pinned, so any non-empty string (e.g. raw
+ * `ExchangeState` value) or non-array `{ exchange }`-shaped record is
+ * surfaced verbatim. Numbers, booleans, `null`, empty strings, arrays,
+ * and records missing a string `exchange` field are rejected so garbage
+ * payloads can't masquerade as a typed `ClientState`.
+ */
+function isClientStateShape(v: unknown): v is NonNullable<ExchangeSummary["state"]> {
+  if (typeof v === "string") return v.length > 0;
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const rec = v as Record<string, unknown>;
+  if (typeof rec.exchange !== "string") return false;
+  if ("dispute" in rec && rec.dispute !== undefined && typeof rec.dispute !== "string") {
+    return false;
+  }
+  return true;
 }
 
 function decodeBase64(value: string): string {
   if (typeof Buffer !== "undefined") {
     return Buffer.from(value, "base64").toString("utf8");
   }
-  return atob(value);
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {

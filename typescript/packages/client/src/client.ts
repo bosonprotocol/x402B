@@ -25,6 +25,7 @@ import { signCreateOfferAndCommitMetaTx } from "./pre-commit.js";
 import { signPostCommitAction, type SignActionArgs } from "./post-commit.js";
 import { parsePaymentResponse } from "./response.js";
 import { buildAndSignTokenAuth } from "./token-auth/index.js";
+import { MaxAmountExceededError } from "./errors.js";
 import type { ExchangeSummary, TokenDomainResolver, X402bClientConfig } from "./types.js";
 
 export interface X402bClient {
@@ -76,6 +77,7 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
 
       const action = pickAction(requirements, config.policy);
       const fulfillment = resolveFulfillment(requirements, config);
+      enforceMaxAmount(requirements.amount, config.policy?.maxAmount);
       const buyer = await getBuyerAddress();
 
       if (!tokenDomainResolver) {
@@ -119,4 +121,18 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
       return parsePaymentResponse(response);
     },
   };
+}
+
+function enforceMaxAmount(amount: string, maxAmount?: string): void {
+  if (maxAmount === undefined) {
+    return;
+  }
+
+  const amountBigInt = BigInt(amount);
+  const maxAmountBigInt = BigInt(maxAmount);
+  if (amountBigInt > maxAmountBigInt) {
+    throw new MaxAmountExceededError(
+      `x402-client: requirements.amount ${amount} exceeds policy.maxAmount ${maxAmount}`,
+    );
+  }
 }

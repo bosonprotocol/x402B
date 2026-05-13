@@ -9,6 +9,13 @@ import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 
 import type { Channel } from "../channels/index.js";
 
+export {
+  BUYER_ONCHAIN_FALLBACK,
+  hasBuyerOnchainFallback,
+  isBuyerOnchainResilient,
+} from "./buyer-fallback.js";
+export { buildChannelRegistry, channelRegistryZodSchema } from "./builder.js";
+
 /**
  * Per-seller channel configuration.
  *
