@@ -141,7 +141,10 @@ export function validateMetaTxCalldataMatchesRequirements(input: {
   requirements: EscrowPaymentRequirements;
 }): StepResult {
   const inner = input.payload.payload;
-  const fullOffer = withSellerSignature(input.requirements.offer.fullOffer, input.requirements.offer.sellerSig);
+  const fullOffer = withSellerSignature(
+    input.requirements.offer.fullOffer,
+    input.requirements.offer.sellerSig,
+  );
 
   try {
     const expected =
@@ -185,7 +188,10 @@ export function validateMetaTxCalldataMatchesRequirements(input: {
     return {
       ok: false,
       code: "INVALID_PAYLOAD",
-      reason: e instanceof Error ? `failed to validate meta-tx calldata: ${e.message}` : "failed to validate meta-tx calldata",
+      reason:
+        e instanceof Error
+          ? `failed to validate meta-tx calldata: ${e.message}`
+          : "failed to validate meta-tx calldata",
     };
   }
 }
@@ -249,7 +255,10 @@ export function parseChainId(
   return { ok: true, chainId: Number(m[1]) };
 }
 
-function withSellerSignature(fullOffer: Record<string, unknown>, sellerSig: string): Record<string, unknown> {
+function withSellerSignature(
+  fullOffer: Record<string, unknown>,
+  sellerSig: string,
+): Record<string, unknown> {
   return { ...fullOffer, signature: sellerSig };
 }
 

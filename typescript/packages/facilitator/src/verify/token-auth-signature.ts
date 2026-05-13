@@ -173,7 +173,11 @@ async function verifyErc3009(
       reason: `ERC-3009 value ${data.value} != requirements.amount ${args.amount}`,
     };
   }
-  const timeout = validateDeadlineWindow(data.validBefore, args.maxTimeoutSeconds, "ERC-3009 validBefore");
+  const timeout = validateDeadlineWindow(
+    data.validBefore,
+    args.maxTimeoutSeconds,
+    "ERC-3009 validBefore",
+  );
   if (!timeout.ok) return timeout;
 
   const domain = await fetchTokenDomain(args.publicClient, args.asset, args.chainId);
@@ -339,7 +343,11 @@ async function verifyPermit2(
   return { ok: true };
 }
 
-function validateDeadlineWindow(deadlineSeconds: number, maxTimeoutSeconds: number, label: string): StepResult {
+function validateDeadlineWindow(
+  deadlineSeconds: number,
+  maxTimeoutSeconds: number,
+  label: string,
+): StepResult {
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (deadlineSeconds - nowSeconds > maxTimeoutSeconds) {
     return {
