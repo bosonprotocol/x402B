@@ -4,8 +4,11 @@ import type {
   EscrowPaymentPayload,
   EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm/actions";
 import { describe, expect, it } from "vitest";
 import {
+  BaseError,
+  RawContractError,
   encodeAbiParameters,
   encodeEventTopics,
   keccak256,
@@ -31,13 +34,62 @@ const ESCROW: Address = "0xdddddddddddddddddddddddddddddddddddddddd";
 const ASSET: Address = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const CHAIN_ID = 1;
 const NETWORK = `eip155:${CHAIN_ID}`;
-const FUNCTION_NAME = "createOfferAndCommit(...)";
-const FUNCTION_SIGNATURE: Hex = "0xdeadbeef";
 const NONCE = "1";
+const SELLER: Address = "0x1111111111111111111111111111111111111111";
+const SELLER_SIG: Hex = `0x${"33".repeat(65)}`;
+const AMOUNT = "1000000";
 const TX_HASH: Hex = `0x${"ab".repeat(32)}`;
 const EXPECTED_EXCHANGE_ID = 42n;
 
+// Mirrors verify.test.ts's fullOffer shape so the verify step inside
+// settle()'s pipeline accepts the calldata as consistent with the
+// advertised offer.
+const fullOffer = {
+  price: AMOUNT,
+  sellerDeposit: "0",
+  agentId: "0",
+  buyerCancelPenalty: "0",
+  quantityAvailable: "1",
+  validFromDateInMS: "1900000000000",
+  validUntilDateInMS: "1900003600000",
+  voucherRedeemableFromDateInMS: "1900000000000",
+  voucherRedeemableUntilDateInMS: "1900003600000",
+  disputePeriodDurationInMS: "86400000",
+  voucherValidDurationInMS: "0",
+  resolutionPeriodDurationInMS: "604800000",
+  exchangeToken: ASSET,
+  disputeResolverId: "1",
+  metadataUri: "ipfs://QmDeadBeef",
+  metadataHash: "QmDeadBeef",
+  collectionIndex: "0",
+  feeLimit: "0",
+  offerCreator: SELLER,
+  committer: buyer.address,
+  condition: {
+    method: 0,
+    tokenType: 0,
+    tokenAddress: "0x0000000000000000000000000000000000000000",
+    gatingType: 0,
+    minTokenId: "0",
+    threshold: "0",
+    maxCommits: "0",
+    maxTokenId: "0",
+  },
+  useDepositedFunds: false,
+  signature: SELLER_SIG,
+  sellerId: "12345",
+  buyerId: "0",
+  sellerOfferParams: {
+    collectionIndex: "0",
+    royaltyInfo: { recipients: [], bps: [] },
+    mutualizerAddress: "0x0000000000000000000000000000000000000000",
+  },
+};
+
 async function buildValidPayload(): Promise<EscrowPaymentPayload> {
+  const calldata = buildCreateOfferAndCommitCalldata({
+    fullOffer: fullOffer as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
+  });
   const typedData = await metaTransactionTypedData({
     chainId: CHAIN_ID,
     verifyingContract: ESCROW,
@@ -45,8 +97,8 @@ async function buildValidPayload(): Promise<EscrowPaymentPayload> {
       nonce: BigInt(NONCE),
       from: buyer.address,
       contractAddress: ESCROW,
-      functionName: FUNCTION_NAME,
-      functionSignature: FUNCTION_SIGNATURE,
+      functionName: calldata.functionName,
+      functionSignature: calldata.functionSignature,
     },
   });
   const sig = await buyer.signTypedData({
@@ -64,13 +116,13 @@ async function buildValidPayload(): Promise<EscrowPaymentPayload> {
     payload: {
       action: "boson-createOfferAndCommit",
       tokenAuthStrategy: "none",
-      offerRef: { fullOffer: {}, sellerSig: "0x00" },
+      offerRef: { fullOffer, sellerSig: SELLER_SIG },
       buyer: buyer.address,
       metaTx: {
         from: buyer.address,
         nonce: NONCE,
-        functionName: FUNCTION_NAME,
-        functionSignature: FUNCTION_SIGNATURE,
+        functionName: calldata.functionName,
+        functionSignature: calldata.functionSignature,
         sig: { v, r: parsed.r, s: parsed.s },
       },
     },
@@ -82,14 +134,14 @@ function buildValidRequirements(): EscrowPaymentRequirements {
     scheme: "escrow",
     network: NETWORK,
     asset: ASSET,
-    amount: "1000000",
+    amount: AMOUNT,
     escrowAddress: ESCROW,
     recipientId: "did:boson:seller:42",
     maxTimeoutSeconds: 3600,
     offer: {
-      fullOffer: {},
-      sellerSig: "0x00",
-      creator: "0x1111111111111111111111111111111111111111",
+      fullOffer,
+      sellerSig: SELLER_SIG,
+      creator: SELLER,
     },
     tokenAuthStrategies: ["none"],
     actions: {
@@ -198,7 +250,12 @@ function buildPublicClient(
   return {
     call: async () => {
       if (opts.callBehavior === "revert") {
-        throw new Error("execution reverted: simulated revert");
+        // Match viem's actual error shape: a BaseError whose cause
+        // chain contains a RawContractError. simulate.ts's
+        // isOnChainRevert walks the chain looking for this marker to
+        // distinguish a real revert from a transport-layer failure.
+        const cause = new RawContractError({ message: "execution reverted: simulated revert" });
+        throw new BaseError("Execution reverted", { cause });
       }
       return { data: "0x" };
     },
