@@ -33,8 +33,12 @@ export const validRequirements: EscrowPaymentRequirements = {
   fulfillment: {
     required: true,
     options: [
-      { id: "atomic-http", schema: null },
-      { id: "email", schema: { type: "object", required: ["email"] } },
+      { id: "inline", schema: null },
+      {
+        id: "email",
+        schema: { type: "object", required: ["email"] },
+        metadata: { hint: "Use a monitored delivery address" },
+      },
     ],
   },
   actions: {
@@ -94,6 +98,7 @@ export const validPayloadNone: EscrowPaymentPayload = {
   scheme: "escrow",
   network: "eip155:8453",
   payload: { ...baseInner, tokenAuthStrategy: "none" },
+  fulfillment: { option: "inline", data: null },
 };
 
 export const validPayloadErc3009: EscrowPaymentPayload = {

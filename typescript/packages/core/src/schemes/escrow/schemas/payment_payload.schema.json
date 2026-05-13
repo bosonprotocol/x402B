@@ -147,7 +147,9 @@
       "required": ["option", "data"],
       "properties": {
         "option": { "type": "string", "minLength": 1 },
-        "data": { "type": "object" }
+        "data": {
+          "oneOf": [{ "type": "object" }, { "type": "null" }]
+        }
       }
     }
   }

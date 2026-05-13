@@ -58,8 +58,10 @@ export interface BosonOfferRef {
 
 export interface FulfillmentOption {
   id: string;
-  /** JSON-Schema-shaped `type: object` description of the data the buyer must supply, or `null` for atomic. */
+  /** JSON-Schema-shaped `type: object` description of the data the buyer must supply, or `null` for schemaless channels. */
   schema: Record<string, unknown> | null;
+  /** Channel-specific hints advertised to the client, such as endpoint URLs or public keys. */
+  metadata?: unknown;
 }
 
 export interface FulfillmentRequirements {

@@ -11,10 +11,10 @@ for the design and wire-format spec.
 
 ## Status
 
-Skeleton package. Ships the `FulfillmentChannel` interface and
-`FulfillmentResult` type so consumers can begin to type against the
-contract. Built-in channels (`atomic-http`, `email`, `xmtp`, `webhook`,
-`ipfs-pointer`), the registry, and the client-side `negotiateFulfillment`
+Skeleton package. Ships the `FulfillmentChannel` interface,
+`FulfillmentResult` type, and server-side registry so consumers can begin
+to type against the contract. Built-in channels (`inline`, `email`, `xmtp`,
+`webhook`, `ipfs-pointer`) and the client-side `negotiateFulfillment`
 helper land separately.
 
 ## Install

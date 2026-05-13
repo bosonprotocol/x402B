@@ -112,7 +112,7 @@ export interface EscrowPaymentPayload {
   scheme: "escrow";
   network: EvmNetwork;
   payload: EscrowPaymentPayloadInner;
-  fulfillment?: { option: string; data: Record<string, unknown> };
+  fulfillment?: { option: string; data: Record<string, unknown> | null };
 }
 
 /**
@@ -144,7 +144,7 @@ export const escrowPaymentPayloadSchema = z
     fulfillment: z
       .object({
         option: z.string().min(1),
-        data: z.record(z.unknown()),
+        data: z.union([z.record(z.unknown()), z.null()]),
       })
       .strict()
       .optional(),

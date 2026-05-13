@@ -48,6 +48,12 @@ describe("EscrowPaymentPayload — happy path", () => {
       expect(ok).toBe(true);
     });
   }
+
+  it("accepts null fulfillment data for schemaless options", () => {
+    const parsed = parseEscrowPaymentPayload(validPayloadNone);
+    expect(parsed.fulfillment).toEqual({ option: "inline", data: null });
+    expect(ajvValidate(validPayloadNone)).toBe(true);
+  });
 });
 
 describe("EscrowPaymentPayload — rejection cases", () => {
