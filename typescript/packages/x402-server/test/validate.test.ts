@@ -183,6 +183,34 @@ describe("validatePaymentPayload — rule failures", () => {
     expect(result).toMatchObject({ ok: false, rule: 8, code: "BAD_META_TX_SIGNATURE" });
   });
 
+  it("rule 8 — returns a structured failure for unrecoverable signatures", async () => {
+    const fx = await makePaymentFixture();
+    const tampered = {
+      ...fx.payload,
+      payload: {
+        ...fx.payload.payload,
+        metaTx: {
+          ...fx.payload.payload.metaTx,
+          sig: {
+            ...fx.payload.payload.metaTx.sig,
+            v: 999,
+          },
+        },
+      },
+    };
+    const result = await validatePaymentPayload({
+      payload: tampered,
+      requirements: fx.requirements,
+      chainId: CHAIN_ID,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      rule: 8,
+      code: "BAD_META_TX_SIGNATURE",
+      field: "payload.metaTx.sig",
+    });
+  });
+
   it("rule 9 — rejects erc3009 amount mismatch", async () => {
     const fx = await makePaymentFixture({ tokenAuthStrategy: "erc3009" });
     const tampered = JSON.parse(JSON.stringify(fx.payload)) as typeof fx.payload;
@@ -290,8 +318,8 @@ describe("validatePaymentPayload — rule failures", () => {
   });
 });
 
-describe("validatePaymentPayload — warnings", () => {
-  it("rule 7 — flags `boson-createOfferCommitAndRedeem` as skipped (builder pending)", async () => {
+describe("validatePaymentPayload — unsupported calldata builders", () => {
+  it("rule 7 — fails closed for `boson-createOfferCommitAndRedeem` until its builder lands", async () => {
     const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
     // Patch requirements to advertise the atomic action so rule 5 passes.
     const requirements = {
@@ -312,15 +340,7 @@ describe("validatePaymentPayload — warnings", () => {
       requirements: requirements as typeof fx.requirements,
       chainId: CHAIN_ID,
     });
-    // Rule 8 will still fail because buyer signed against createOfferAndCommit
-    // calldata — that's fine: we only assert here that rule 7 issued the skip
-    // warning rather than blowing up.
-    if (result.ok) {
-      expect(result.warnings?.some((w) => w.rule === 7 && w.code === "RULE_SKIPPED")).toBe(true);
-    } else {
-      // Allowed: subsequent rule fails. We just care rule 7 didn't.
-      expect(result.rule).not.toBe(7);
-    }
+    expect(result).toMatchObject({ ok: false, rule: 7, code: "CALLDATA_MISMATCH" });
   });
 });
 

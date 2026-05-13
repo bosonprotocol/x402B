@@ -14,8 +14,8 @@
 // calldata reconstructed from `payload.offerRef`. The reconstruction
 // path for `boson-createOfferCommitAndRedeem` (Flow B) is gated on
 // `@bosonprotocol/x402-evm`'s atomic builder which still throws
-// `NotYetSupportedError` pending contracts PR #1105; for that action
-// id rule 7 is a no-op and is documented as such in the result.
+// `NotYetSupportedError` pending contracts PR #1105; until that builder
+// exists, Flow B fails closed rather than accepting unchecked calldata.
 
 import { recoverMetaTransactionSigner } from "@bosonprotocol/x402-core/eip712";
 import type {
@@ -81,16 +81,12 @@ export interface ValidatePaymentPayloadArgs {
 }
 
 /**
- * Run all 13 rules. Short-circuits at the first failure. On success,
- * may include non-fatal warnings (e.g. rule 7 being skipped for the
- * atomic Flow B action until contracts PR #1105 ships).
+ * Run all 13 rules. Short-circuits at the first failure.
  */
 export async function validatePaymentPayload(
   args: ValidatePaymentPayloadArgs,
 ): Promise<ValidatePaymentPayloadResult> {
   const { payload, requirements } = args;
-  const warnings: ValidationWarning[] = [];
-
   // Rule 1 — scheme equality on both sides.
   if (payload.scheme !== "escrow" || requirements.scheme !== "escrow") {
     return failure(1, "SCHEME_MISMATCH", "scheme", "escrow", payload.scheme);
@@ -149,7 +145,7 @@ export async function validatePaymentPayload(
   // Rule 7 — functionSignature byte-equals the calldata reconstructed
   // from offerRef. Only enforced for `boson-createOfferAndCommit`
   // (Flow A); Flow B's builder still throws `NotYetSupportedError`.
-  const rule7 = checkRule7(payload, warnings);
+  const rule7 = checkRule7(payload);
   if (rule7 !== null) return rule7;
 
   // Rule 8 — meta-tx signer recovers to payload.buyer === metaTx.from.
@@ -162,18 +158,30 @@ export async function validatePaymentPayload(
       payload.payload.metaTx.from,
     );
   }
-  const recovered = await recoverMetaTransactionSigner({
-    chainId: args.chainId,
-    verifyingContract: requirements.escrowAddress as ViemAddress,
-    message: {
-      nonce: BigInt(payload.payload.metaTx.nonce),
-      from: payload.payload.metaTx.from as ViemAddress,
-      contractAddress: requirements.escrowAddress as ViemAddress,
-      functionName: payload.payload.metaTx.functionName,
-      functionSignature: payload.payload.metaTx.functionSignature as ViemHex,
-    },
-    signature: encodeRsv(payload.payload.metaTx.sig) as ViemHex,
-  });
+  let recovered: ViemAddress;
+  try {
+    recovered = await recoverMetaTransactionSigner({
+      chainId: args.chainId,
+      verifyingContract: requirements.escrowAddress as ViemAddress,
+      message: {
+        nonce: BigInt(payload.payload.metaTx.nonce),
+        from: payload.payload.metaTx.from as ViemAddress,
+        contractAddress: requirements.escrowAddress as ViemAddress,
+        functionName: payload.payload.metaTx.functionName,
+        functionSignature: payload.payload.metaTx.functionSignature as ViemHex,
+      },
+      signature: encodeRsv(payload.payload.metaTx.sig) as ViemHex,
+    });
+  } catch (e) {
+    return failure(
+      8,
+      "BAD_META_TX_SIGNATURE",
+      "payload.metaTx.sig",
+      "recoverable ECDSA signature",
+      payload.payload.metaTx.sig,
+      (e as Error).message,
+    );
+  }
   if (recovered.toLowerCase() !== payload.payload.buyer.toLowerCase()) {
     return failure(
       8,
@@ -196,13 +204,10 @@ export async function validatePaymentPayload(
   const fulfillmentResult = checkFulfillment(payload, requirements, args.validateFulfillmentData);
   if (fulfillmentResult !== null) return fulfillmentResult;
 
-  return warnings.length > 0 ? { ok: true, warnings } : { ok: true };
+  return { ok: true };
 }
 
-function checkRule7(
-  payload: EscrowPaymentPayload,
-  warnings: ValidationWarning[],
-): ValidatePaymentPayloadResult | null {
+function checkRule7(payload: EscrowPaymentPayload): ValidatePaymentPayloadResult | null {
   const action = payload.payload.action;
   if (action === "boson-createOfferAndCommit") {
     const fullOfferWithSig = {
@@ -248,13 +253,14 @@ function checkRule7(
     return null;
   }
   if (action === "boson-createOfferCommitAndRedeem") {
-    warnings.push({
-      rule: 7,
-      code: "RULE_SKIPPED",
-      reason:
-        "calldata reconstruction for boson-createOfferCommitAndRedeem is gated on contracts PR #1105 (NotYetSupportedError in @bosonprotocol/x402-evm)",
-    });
-    return null;
+    return failure(
+      7,
+      "CALLDATA_MISMATCH",
+      "payload.action",
+      "supported calldata reconstruction",
+      action,
+      "calldata reconstruction for boson-createOfferCommitAndRedeem is gated on contracts PR #1105 (NotYetSupportedError in @bosonprotocol/x402-evm)",
+    );
   }
   // Other actions (boson-redeem, dispute/*, etc.) aren't commit-time;
   // they have their own meta-tx encodings outside this scheme's
@@ -489,9 +495,13 @@ function deepEqual(a: unknown, b: unknown): boolean {
  * defend in depth).
  */
 function encodeRsv(sig: { v: number; r: string; s: string }): string {
+  if (sig.v !== 0 && sig.v !== 1 && sig.v !== 27 && sig.v !== 28) {
+    throw new Error("signature v must be 0, 1, 27, or 28");
+  }
   const r = sig.r.replace(/^0x/, "").padStart(64, "0");
   const s = sig.s.replace(/^0x/, "").padStart(64, "0");
-  const v = sig.v.toString(16).padStart(2, "0");
+  const normalizedV = sig.v === 0 || sig.v === 1 ? sig.v + 27 : sig.v;
+  const v = normalizedV.toString(16).padStart(2, "0");
   return `0x${r}${s}${v}`;
 }
 
