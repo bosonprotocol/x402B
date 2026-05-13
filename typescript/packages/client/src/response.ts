@@ -51,7 +51,12 @@ function decodeBase64(value: string): string {
   if (typeof Buffer !== "undefined") {
     return Buffer.from(value, "base64").toString("utf8");
   }
-  return atob(value);
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {

@@ -19,7 +19,11 @@ import { recoverTypedDataAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { createX402bClient } from "../src/client.js";
-import { NotImplementedError, UnsupportedTokenAuthError } from "../src/errors.js";
+import {
+  MaxAmountExceededError,
+  NotImplementedError,
+  UnsupportedTokenAuthError,
+} from "../src/errors.js";
 import { viemAccountSigner } from "../src/signer/index.js";
 
 const TEST_KEY = `0x${"42".repeat(32)}` as const;
@@ -223,5 +227,16 @@ describe("handle402 — round-trip", () => {
     requirements.tokenAuthStrategies = ["none", "permit"];
     const client = makeClient();
     await expect(client.handle402(requirements)).rejects.toThrow(UnsupportedTokenAuthError);
+  });
+
+  it("rejects requirements whose amount exceeds policy.maxAmount before signing", async () => {
+    const requirements = baseRequirements();
+    requirements.amount = "1000001";
+    const client = createX402bClient({
+      signer: viemAccountSigner(BUYER_ACCOUNT),
+      policy: { maxAmount: "1000000" },
+    });
+
+    await expect(client.handle402(requirements)).rejects.toThrow(MaxAmountExceededError);
   });
 });
