@@ -69,7 +69,12 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
           "onchainHints": {
             "escrow":           "0xDiamond...",
             "metaTxFacet":      "MetaTransactionsHandlerFacet",
-            "metaTxEntrypoint": "executeMetaTransactionWithTokenTransferAuthorization",
+            "metaTxEntrypoints": {
+              "none":    "executeMetaTransaction",
+              "erc3009": "executeMetaTransactionWithTokenTransferAuthorization",
+              "permit":  "executeMetaTransactionWithTokenTransferAuthorization",
+              "permit2": "executeMetaTransactionWithTokenTransferAuthorization"
+            },
             "actionFacets": {
               "boson-createOfferAndCommit":         "ExchangeCommitFacet",
               "boson-createOfferCommitAndRedeem":   "OrchestrationHandlerFacet2"
@@ -240,7 +245,12 @@ type:    MetaTransaction(
 
 `functionSignature` is the ABI encoding of the function parameters — including the `FullOffer` and the seller's signature, which echoes `requirements.offer.fullOffer` and `requirements.offer.sellerSig`.
 
-The protocol's existing meta-tx replay protection (`MetaTransactionsHandlerFacet.usedNonce[from][nonce]`) applies. The relayer (facilitator) submits via `executeMetaTransactionWithTokenTransferAuthorization`, which reuses this nonce scheme and additionally accepts a queue of token-transfer authorizations.
+The protocol's existing meta-tx replay protection (`MetaTransactionsHandlerFacet.usedNonce[from][nonce]`) applies. The relayer (facilitator) picks the entry point on `MetaTransactionsHandlerFacet` that matches the buyer's chosen `tokenAuthStrategy`:
+
+- `tokenAuthStrategy = "none"` — submit via the legacy `executeMetaTransaction` (BPIP-9). No token-transfer authorization queue is needed because the buyer has pre-approved the Diamond.
+- `tokenAuthStrategy = "erc3009"` / `"permit"` / `"permit2"` — submit via `executeMetaTransactionWithTokenTransferAuthorization` (BPIP-12), which reuses the same nonce scheme and additionally accepts a queue of token-transfer authorizations.
+
+Both entry points are advertised on the wire via `onchainHints.metaTxEntrypoints`, keyed by strategy.
 
 ### 4.3 Buyer — token-transfer authorization (BPIP-12)
 

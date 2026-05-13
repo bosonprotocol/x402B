@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 import Ajv, { type ValidateFunction } from "ajv";
+import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -24,7 +25,9 @@ const schemaPath = join(
   "payment_requirements.schema.json",
 );
 const jsonSchema = JSON.parse(readFileSync(schemaPath, "utf8"));
-const ajv = new Ajv({ allErrors: true, strict: false });
+// Register the standard JSON Schema string formats (notably `date-time`)
+// so Ajv actually enforces them — Ajv v8 ignores formats by default.
+const ajv = addFormats(new Ajv({ allErrors: true, strict: false }));
 const ajvValidate: ValidateFunction = ajv.compile(jsonSchema);
 
 const cloneFixture = (): typeof validRequirements => JSON.parse(JSON.stringify(validRequirements));
@@ -115,6 +118,22 @@ describe("EscrowPaymentRequirements — rejection cases", () => {
   it("rejects empty actions.next", () => {
     const bad = cloneFixture();
     bad.actions.next = [];
+    expect(escrowPaymentRequirementsSchema.safeParse(bad).success).toBe(false);
+    expect(ajvValidate(bad)).toBe(false);
+  });
+});
+
+describe("EscrowPaymentRequirements — actions.next[].deadline", () => {
+  it("accepts an ISO 8601 deadline on an action entry", () => {
+    const ok = cloneFixture();
+    ok.actions.next[0].deadline = "2026-05-15T00:00:00Z";
+    expect(escrowPaymentRequirementsSchema.safeParse(ok).success).toBe(true);
+    expect(ajvValidate(ok)).toBe(true);
+  });
+
+  it("rejects a malformed deadline", () => {
+    const bad = cloneFixture();
+    bad.actions.next[0].deadline = "not-a-date";
     expect(escrowPaymentRequirementsSchema.safeParse(bad).success).toBe(false);
     expect(ajvValidate(bad)).toBe(false);
   });

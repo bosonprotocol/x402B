@@ -10,6 +10,7 @@ import {
   type ChannelRegistry,
   type NextActionsEnvelope,
 } from "../src/index.js";
+import { REGISTRY } from "./fixtures/registry.js";
 
 describe("@bosonprotocol/x402-actions public types", () => {
   it("CHANNEL_IDS includes the five standard channels in stable order", () => {
@@ -48,10 +49,10 @@ describe("@bosonprotocol/x402-actions public types", () => {
     expect(DisputeState.RESOLVING).toBe("RESOLVING");
   });
 
-  it("NextActionsEnvelope has a post-commit shape with exchangeId+state", () => {
+  it("NextActionsEnvelope has a post-commit shape with exchangeId+exchangeState", () => {
     const postCommit: NextActionsEnvelope = {
       exchangeId: "12345",
-      state: ExchangeState.REDEEMED,
+      exchangeState: ExchangeState.REDEEMED,
       next: [
         {
           id: "boson-completeExchange",
@@ -65,7 +66,7 @@ describe("@bosonprotocol/x402-actions public types", () => {
   it("NextActionsEnvelope's DISPUTED variant requires disputeState", () => {
     const disputed: NextActionsEnvelope = {
       exchangeId: "12345",
-      state: ExchangeState.DISPUTED,
+      exchangeState: ExchangeState.DISPUTED,
       disputeState: DisputeState.RESOLVING,
       next: [
         {
@@ -85,16 +86,7 @@ describe("@bosonprotocol/x402-actions public types", () => {
   });
 
   it("ChannelRegistry types channel order and per-action server endpoints", () => {
-    const registry: ChannelRegistry = {
-      channels: ["server", "facilitator", "onchain", "mcp"],
-      endpoints: {
-        "boson-redeem": "https://seller.example/x402B/redeem",
-      },
-      fallback: {
-        xmtp: "0xSellerXMTP",
-        mcp: "boson://seller/12345",
-      },
-    };
-    expectTypeOf(registry.channels).toMatchTypeOf<readonly Channel[]>();
+    expectTypeOf(REGISTRY).toMatchTypeOf<ChannelRegistry>();
+    expectTypeOf(REGISTRY.channels).toMatchTypeOf<readonly Channel[]>();
   });
 });

@@ -4,6 +4,7 @@
 export * from "./types.js";
 export * from "./payment-requirements.js";
 export * from "./payment-payload.js";
+export * from "./next-actions.js";
 export * from "./validators.js";
 
 /** Stable identifier for the scheme. Use this in place of the raw string `"escrow"` to avoid typos. */

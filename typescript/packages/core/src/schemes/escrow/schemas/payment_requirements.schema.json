@@ -89,6 +89,10 @@
               "endpoints": {
                 "type": "object",
                 "additionalProperties": { "type": "string" }
+              },
+              "deadline": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           }
@@ -102,11 +106,21 @@
             "onchainHints": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["escrow", "metaTxFacet", "metaTxEntrypoint", "actionFacets"],
+              "required": ["escrow", "metaTxFacet", "metaTxEntrypoints", "actionFacets"],
               "properties": {
                 "escrow": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
                 "metaTxFacet": { "type": "string", "minLength": 1 },
-                "metaTxEntrypoint": { "type": "string", "minLength": 1 },
+                "metaTxEntrypoints": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["none", "erc3009", "permit", "permit2"],
+                  "properties": {
+                    "none": { "type": "string", "minLength": 1 },
+                    "erc3009": { "type": "string", "minLength": 1 },
+                    "permit": { "type": "string", "minLength": 1 },
+                    "permit2": { "type": "string", "minLength": 1 }
+                  }
+                },
                 "actionFacets": {
                   "type": "object",
                   "additionalProperties": { "type": "string" }

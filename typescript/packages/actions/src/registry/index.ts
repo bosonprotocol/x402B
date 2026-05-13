@@ -7,7 +7,7 @@
 // lands in a follow-up PR; this module ships only the configuration
 // type so the server SDK can begin to type against it.
 
-import type { ActionsFallback } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { ActionsFallback, OnchainHints } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 
 import type { Channel } from "../channels/index.js";
@@ -22,9 +22,9 @@ import type { Channel } from "../channels/index.js";
  *   *hint*, not a constraint.
  * - `endpoints` — per-action HTTP endpoint overrides for the `server`
  *   channel. Actions absent from this map have no `server` endpoint.
- * - `fallback` — the `xmtp` / `mcp` / `onchainHints` block that ends
- *   up at `nextActions.fallback`. Always present even when only some
- *   sub-fields are populated, so clients can rely on its shape.
+ * - `fallback` — the `xmtp` / `mcp` / required `onchainHints` block
+ *   that ends up at `nextActions.fallback`. On-chain fallback is always
+ *   present so every advertised action has a censorship-resistant path.
  */
 export interface ChannelRegistry {
   /** The seller's preferred channel order. */
@@ -37,6 +37,16 @@ export interface ChannelRegistry {
    */
   endpoints?: Partial<Record<ActionId, string>>;
 
-  /** Fallback hints embedded in the envelope's `fallback` field. */
-  fallback: ActionsFallback;
+  /**
+   * Fallback hints embedded in the envelope's `fallback` field. The
+   * `actionFacets` map is `Partial` because a seller is not obliged to
+   * advertise every `ActionId` — actions absent from the map are
+   * effectively excluded from the `onchain` channel for that exchange
+   * (see `isUsableChannel` in `derive.ts`).
+   */
+  fallback: Omit<ActionsFallback, "onchainHints"> & {
+    onchainHints: Omit<OnchainHints, "actionFacets"> & {
+      actionFacets: Partial<Record<ActionId, string>>;
+    };
+  };
 }
