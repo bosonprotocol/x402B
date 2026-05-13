@@ -10,7 +10,12 @@
 // `./challenge/build-requirements.ts`.
 
 import { channelRegistryZodSchema, type ChannelRegistry } from "@bosonprotocol/x402-actions";
-import type { Address, EvmNetwork } from "@bosonprotocol/x402-core/schemes/escrow";
+import {
+  addressSchema,
+  evmNetworkSchema,
+  type Address,
+  type EvmNetwork,
+} from "@bosonprotocol/x402-core/schemes/escrow";
 import type { Hex } from "viem";
 import { z } from "zod";
 
@@ -53,8 +58,6 @@ export interface X402bServerConfig {
   channelRegistry: ChannelRegistry;
 }
 
-const ADDRESS = /^0x[a-fA-F0-9]{40}$/;
-const EVM_NETWORK = /^eip155:[1-9][0-9]*$/;
 const httpUrlSchema = z
   .string()
   .url()
@@ -64,7 +67,7 @@ const httpUrlSchema = z
 
 const sellerSignerSchema = z
   .object({
-    address: z.string().regex(ADDRESS),
+    address: addressSchema,
     signTypedData: z
       .function()
       .args(z.unknown())
@@ -80,9 +83,9 @@ const sellerSignerSchema = z
  */
 export const x402bServerConfigSchema = z
   .object({
-    network: z.string().regex(EVM_NETWORK),
+    network: evmNetworkSchema,
     chainId: z.number().int().positive(),
-    escrow: z.string().regex(ADDRESS),
+    escrow: addressSchema,
     signer: sellerSignerSchema,
     facilitator: z
       .object({
