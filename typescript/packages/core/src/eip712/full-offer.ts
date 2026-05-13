@@ -9,16 +9,19 @@
 //
 // In `returnTypedDataToSign: true` mode, core-sdk's `prepareDataSignatureParameters`
 // returns the StructuredData immediately and never invokes any method on
-// `web3Lib`. We therefore pass a stub adapter whose methods all throw if
-// called — making any future use of web3Lib loud rather than silent.
+// `web3Lib`. We therefore pass the shared throwing stub from
+// `internal/web3lib-stub.ts` — any future use of web3Lib is loud rather than
+// silent.
 //
 // The result hashes against the same Boson EIP-712 domain that
 // `verifyOffer` uses on-chain (salt-based, "Boson Protocol" name) — the
 // shape comes straight from core-sdk so we don't redefine it here.
 
 import { exchanges } from "@bosonprotocol/core-sdk";
-import type { FullOfferArgs, Web3LibAdapter } from "@bosonprotocol/common";
+import type { FullOfferArgs } from "@bosonprotocol/common";
 import { hashTypedData, recoverTypedDataAddress, type Address, type Hex } from "viem";
+
+import { createThrowingWeb3LibAdapter } from "../internal/web3lib-stub.js";
 
 /** Unsigned FullOffer payload — same shape core-sdk accepts. */
 export type UnsignedFullOffer = Omit<FullOfferArgs, "signature">;
@@ -47,33 +50,7 @@ export interface FullOfferArgsForBuilder {
   chainId: number;
 }
 
-/**
- * Stub `Web3LibAdapter`. core-sdk's `signFullOffer` requires this argument
- * even when `returnTypedDataToSign: true`, but never calls any method in
- * that branch. If any method does end up invoked, throw loudly rather than
- * fall through with a default.
- */
-const STUB_WEB3LIB: Web3LibAdapter = {
-  uuid: "x402-core:stub",
-  getSignerAddress: () => Promise.reject(unreachable("getSignerAddress")),
-  isSignerContract: () => Promise.reject(unreachable("isSignerContract")),
-  getChainId: () => Promise.reject(unreachable("getChainId")),
-  getBalance: () => Promise.reject(unreachable("getBalance")),
-  estimateGas: () => Promise.reject(unreachable("estimateGas")),
-  sendTransaction: () => Promise.reject(unreachable("sendTransaction")),
-  call: () => Promise.reject(unreachable("call")),
-  send: () => Promise.reject(unreachable("send")),
-  getTransactionReceipt: () => Promise.reject(unreachable("getTransactionReceipt")),
-  getCurrentTimeMs: () => Promise.reject(unreachable("getCurrentTimeMs")),
-};
-
-function unreachable(method: string): Error {
-  return new Error(
-    `@bosonprotocol/x402-core: stub Web3LibAdapter.${method}() should never be called when ` +
-      `returnTypedDataToSign is true. If you see this, either core-sdk changed its ` +
-      `behaviour or the stub leaked into a non-signing-only path — file a bug.`,
-  );
-}
+const STUB_CALLER_TAG = "@bosonprotocol/x402-core:full-offer";
 
 /**
  * Build EIP-712 typed-data for a FullOffer that the seller will sign.
@@ -90,7 +67,7 @@ export async function fullOfferTypedData({
     fullOfferArgsUnsigned: fullOffer,
     contractAddress: verifyingContract,
     chainId,
-    web3Lib: STUB_WEB3LIB,
+    web3Lib: createThrowingWeb3LibAdapter(STUB_CALLER_TAG),
     returnTypedDataToSign: true,
   });
 
