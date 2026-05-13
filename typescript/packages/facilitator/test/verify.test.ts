@@ -1,8 +1,10 @@
 import { metaTransactionTypedData } from "@bosonprotocol/x402-core/eip712";
+import { permit2TypedData } from "@bosonprotocol/x402-core/eip712/token-auth";
 import type {
   EscrowPaymentPayload,
   EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm/actions";
 import { describe, expect, it } from "vitest";
 import { parseSignature, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -20,12 +22,58 @@ const ESCROW: Address = "0xdddddddddddddddddddddddddddddddddddddddd";
 const ASSET: Address = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const CHAIN_ID = 1;
 const NETWORK = `eip155:${CHAIN_ID}`;
-const FUNCTION_NAME = "createOfferAndCommit(...)";
-const FUNCTION_SIGNATURE: Hex = "0xdeadbeef";
 const NONCE = "1";
+const SELLER: Address = "0x1111111111111111111111111111111111111111";
+const SELLER_SIG: Hex = `0x${"33".repeat(65)}`;
+const AMOUNT = "1000000";
+
+const fullOffer = {
+  price: AMOUNT,
+  sellerDeposit: "0",
+  agentId: "0",
+  buyerCancelPenalty: "0",
+  quantityAvailable: "1",
+  validFromDateInMS: "1900000000000",
+  validUntilDateInMS: "1900003600000",
+  voucherRedeemableFromDateInMS: "1900000000000",
+  voucherRedeemableUntilDateInMS: "1900003600000",
+  disputePeriodDurationInMS: "86400000",
+  voucherValidDurationInMS: "0",
+  resolutionPeriodDurationInMS: "604800000",
+  exchangeToken: ASSET,
+  disputeResolverId: "1",
+  metadataUri: "ipfs://QmDeadBeef",
+  metadataHash: "QmDeadBeef",
+  collectionIndex: "0",
+  feeLimit: "0",
+  offerCreator: SELLER,
+  committer: buyer.address,
+  condition: {
+    method: 0,
+    tokenType: 0,
+    tokenAddress: "0x0000000000000000000000000000000000000000",
+    gatingType: 0,
+    minTokenId: "0",
+    threshold: "0",
+    maxCommits: "0",
+    maxTokenId: "0",
+  },
+  useDepositedFunds: false,
+  signature: SELLER_SIG,
+  sellerId: "12345",
+  buyerId: "0",
+  sellerOfferParams: {
+    collectionIndex: "0",
+    royaltyInfo: { recipients: [], bps: [] },
+    mutualizerAddress: "0x0000000000000000000000000000000000000000",
+  },
+};
 
 /** Build a fully-signed EscrowPaymentPayload for `tokenAuthStrategy: "none"`. */
 async function buildValidPayload(): Promise<EscrowPaymentPayload> {
+  const calldata = buildCreateOfferAndCommitCalldata({
+    fullOffer: fullOffer as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
+  });
   const typedData = await metaTransactionTypedData({
     chainId: CHAIN_ID,
     verifyingContract: ESCROW,
@@ -33,8 +81,8 @@ async function buildValidPayload(): Promise<EscrowPaymentPayload> {
       nonce: BigInt(NONCE),
       from: buyer.address,
       contractAddress: ESCROW,
-      functionName: FUNCTION_NAME,
-      functionSignature: FUNCTION_SIGNATURE,
+      functionName: calldata.functionName,
+      functionSignature: calldata.functionSignature,
     },
   });
   const sig = await buyer.signTypedData({
@@ -55,13 +103,13 @@ async function buildValidPayload(): Promise<EscrowPaymentPayload> {
     payload: {
       action: "boson-createOfferAndCommit",
       tokenAuthStrategy: "none",
-      offerRef: { fullOffer: {}, sellerSig: "0x00" },
+      offerRef: { fullOffer, sellerSig: SELLER_SIG },
       buyer: buyer.address,
       metaTx: {
         from: buyer.address,
         nonce: NONCE,
-        functionName: FUNCTION_NAME,
-        functionSignature: FUNCTION_SIGNATURE,
+        functionName: calldata.functionName,
+        functionSignature: calldata.functionSignature,
         sig: { v, r: parsed.r, s: parsed.s },
       },
     },
@@ -74,14 +122,14 @@ function buildValidRequirements(): EscrowPaymentRequirements {
     scheme: "escrow",
     network: NETWORK,
     asset: ASSET,
-    amount: "1000000",
+    amount: AMOUNT,
     escrowAddress: ESCROW,
     recipientId: "did:boson:seller:42",
     maxTimeoutSeconds: 3600,
     offer: {
-      fullOffer: {},
-      sellerSig: "0x00",
-      creator: "0x1111111111111111111111111111111111111111",
+      fullOffer,
+      sellerSig: SELLER_SIG,
+      creator: SELLER,
     },
     tokenAuthStrategies: ["none"],
     actions: {
@@ -126,6 +174,27 @@ function buildConfig(opts: { client?: PublicClient } = {}): FacilitatorConfig {
     supportedNetworks: [NETWORK],
     walletClient,
     publicClient: opts.client ?? buildPublicClient({ callBehavior: "pass" }),
+  };
+}
+
+async function buildValidPermit2TokenAuth(deadline: number = Math.floor(Date.now() / 1000) + 300) {
+  const message = {
+    permitted: { token: ASSET, amount: BigInt(AMOUNT) },
+    spender: ESCROW,
+    nonce: 0n,
+    deadline: BigInt(deadline),
+  };
+  const typedData = permit2TypedData({ chainId: CHAIN_ID, message });
+  const signature = await buyer.signTypedData(typedData);
+  return {
+    kind: "permit2" as const,
+    data: {
+      permitted: { token: ASSET, amount: AMOUNT },
+      spender: ESCROW,
+      nonce: "0",
+      deadline,
+      signature,
+    },
   };
 }
 
@@ -187,6 +256,28 @@ describe("verify()", () => {
       buildConfig(),
     );
     expect(result).toMatchObject({ ok: false, code: "TOKEN_AUTH_NOT_IN_REQUIREMENTS" });
+  });
+
+  it("rejects when payload.offerRef does not match requirements.offer", async () => {
+    const payload = await buildValidPayload();
+    payload.payload.offerRef.fullOffer = { ...fullOffer, price: "2" };
+    const requirements = buildValidRequirements();
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("rejects when meta-tx calldata does not encode the required offer", async () => {
+    const payload = await buildValidPayload();
+    payload.payload.metaTx.functionSignature = "0xdeadbeef";
+    const requirements = buildValidRequirements();
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
   });
 
   it("rejects when meta-tx signature was produced by a different signer", async () => {
@@ -270,5 +361,44 @@ describe("verify()", () => {
       buildConfig(),
     );
     expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("rejects token-auth when the signed amount does not match requirements.amount", async () => {
+    const payload = await buildValidPayload();
+    payload.payload.tokenAuthStrategy = "permit2";
+    payload.payload.tokenAuth = await buildValidPermit2TokenAuth();
+    payload.payload.tokenAuth.data.permitted.amount = "1";
+    const requirements = { ...buildValidRequirements(), tokenAuthStrategies: ["permit2" as const] };
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "BAD_TOKEN_AUTH_SIGNATURE" });
+  });
+
+  it("rejects token-auth when the deadline exceeds maxTimeoutSeconds", async () => {
+    const payload = await buildValidPayload();
+    payload.payload.tokenAuthStrategy = "permit2";
+    payload.payload.tokenAuth = await buildValidPermit2TokenAuth(
+      Math.floor(Date.now() / 1000) + 7200,
+    );
+    const requirements = { ...buildValidRequirements(), tokenAuthStrategies: ["permit2" as const] };
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "BAD_TOKEN_AUTH_SIGNATURE" });
+  });
+
+  it("returns UNSUPPORTED_TOKEN_AUTH_STRATEGY for valid token-auth while BPIP-12 simulation is deferred", async () => {
+    const payload = await buildValidPayload();
+    payload.payload.tokenAuthStrategy = "permit2";
+    payload.payload.tokenAuth = await buildValidPermit2TokenAuth();
+    const requirements = { ...buildValidRequirements(), tokenAuthStrategies: ["permit2" as const] };
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY" });
   });
 });

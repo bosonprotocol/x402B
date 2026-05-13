@@ -1,6 +1,6 @@
 # 07 — Facilitator
 
-> **Status:** stub (v0.1, 2026-05-04). API surface only; details to be filled during implementation.
+> **Status:** partial implementation (v0.1, 2026-05-04). `verify()` is implemented; `settle()` and `performAction()` remain relayer stubs.
 
 ## Goals
 
@@ -35,10 +35,11 @@ POST /perform-action?action=<ActionId>     // optional, for the "facilitator" ch
 
 ## Settle path
 
-The v0.1 package is a TypeScript surface scaffold: `verify`, `settle`, and
-`performAction` throw `NotImplementedError` until the relayer
-implementation lands. The intended submit path is selected by the buyer's
-`tokenAuthStrategy`.
+In v0.1, `verify()` performs structural validation, offer/calldata
+consistency checks, signature recovery, token-auth constraints, and
+simulation pre-flight. `settle()` and `performAction()` throw
+`NotImplementedError` until the relayer implementation lands. The intended
+submit path is selected by the buyer's `tokenAuthStrategy`.
 
 For `tokenAuthStrategy = "none"`, the facilitator wraps the signed
 meta-transaction with the existing Boson entrypoint:

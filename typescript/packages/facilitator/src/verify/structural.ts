@@ -8,6 +8,11 @@ import {
   type EscrowPaymentRequirements,
   type EvmNetwork,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+import {
+  buildCreateOfferAndCommitCalldata,
+  buildCreateOfferCommitAndRedeemCalldata,
+  NotYetSupportedError,
+} from "@bosonprotocol/x402-evm/actions";
 
 import type { FacilitatorErrorCode } from "../types.js";
 
@@ -105,6 +110,86 @@ export function validateActionInRequirements(input: {
   return { ok: true };
 }
 
+/** Confirm the payload's echoed offer reference matches the requirements. */
+export function validateOfferRefMatchesRequirements(input: {
+  payload: EscrowPaymentPayload;
+  requirements: EscrowPaymentRequirements;
+}): StepResult {
+  const payloadOffer = input.payload.payload.offerRef;
+  const requirementsOffer = input.requirements.offer;
+
+  if (canonicalJson(payloadOffer.fullOffer) !== canonicalJson(requirementsOffer.fullOffer)) {
+    return {
+      ok: false,
+      code: "INVALID_PAYLOAD",
+      reason: "payload.offerRef.fullOffer does not match requirements.offer.fullOffer",
+    };
+  }
+  if (payloadOffer.sellerSig.toLowerCase() !== requirementsOffer.sellerSig.toLowerCase()) {
+    return {
+      ok: false,
+      code: "INVALID_PAYLOAD",
+      reason: "payload.offerRef.sellerSig does not match requirements.offer.sellerSig",
+    };
+  }
+  return { ok: true };
+}
+
+/** Confirm the signed inner calldata matches the action + offer requirements. */
+export function validateMetaTxCalldataMatchesRequirements(input: {
+  payload: EscrowPaymentPayload;
+  requirements: EscrowPaymentRequirements;
+}): StepResult {
+  const inner = input.payload.payload;
+  const fullOffer = withSellerSignature(input.requirements.offer.fullOffer, input.requirements.offer.sellerSig);
+
+  try {
+    const expected =
+      inner.action === "boson-createOfferAndCommit"
+        ? buildCreateOfferAndCommitCalldata({ fullOffer })
+        : inner.action === "boson-createOfferCommitAndRedeem"
+          ? buildCreateOfferCommitAndRedeemCalldata({ fullOffer })
+          : undefined;
+
+    if (!expected) {
+      return {
+        ok: false,
+        code: "UNSUPPORTED_ACTION",
+        reason: `verify() only supports commit-time payment actions, got "${inner.action}"`,
+      };
+    }
+
+    if (inner.metaTx.functionName !== expected.functionName) {
+      return {
+        ok: false,
+        code: "INVALID_PAYLOAD",
+        reason: "payload.metaTx.functionName does not match the expected action selector",
+      };
+    }
+    if (inner.metaTx.functionSignature.toLowerCase() !== expected.functionSignature.toLowerCase()) {
+      return {
+        ok: false,
+        code: "INVALID_PAYLOAD",
+        reason: "payload.metaTx.functionSignature does not encode the required offer",
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof NotYetSupportedError) {
+      return {
+        ok: false,
+        code: "UNSUPPORTED_ACTION",
+        reason: e.message,
+      };
+    }
+    return {
+      ok: false,
+      code: "INVALID_PAYLOAD",
+      reason: e instanceof Error ? `failed to validate meta-tx calldata: ${e.message}` : "failed to validate meta-tx calldata",
+    };
+  }
+}
+
 /** Confirm the payload's token-auth strategy is one the requirements advertised. */
 export function validateTokenAuthStrategyInRequirements(input: {
   payload: EscrowPaymentPayload;
@@ -162,4 +247,26 @@ export function parseChainId(
     };
   }
   return { ok: true, chainId: Number(m[1]) };
+}
+
+function withSellerSignature(fullOffer: Record<string, unknown>, sellerSig: string): Record<string, unknown> {
+  return { ...fullOffer, signature: sellerSig };
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(sortJson(value));
+}
+
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortJson);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, entry]) => [key, sortJson(entry)]),
+    );
+  }
+  return value;
 }

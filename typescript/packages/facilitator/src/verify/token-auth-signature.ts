@@ -29,6 +29,10 @@ export interface VerifyTokenAuthSignatureArgs {
   chainId: number;
   /** Asset (ERC-20 token) address from the requirements. */
   asset: Address;
+  /** Expected token amount from the requirements, in atomic units. */
+  amount: string;
+  /** Maximum allowed validity window, in seconds. */
+  maxTimeoutSeconds: number;
   /** Buyer EOA from the payload — the recovered signer must match this. */
   buyer: Address;
   /** Boson escrow (Diamond) address — the expected `to` / `spender`. */
@@ -162,6 +166,16 @@ async function verifyErc3009(
       reason: `ERC-3009 to ${data.to} != escrowAddress ${args.escrowAddress}`,
     };
   }
+  if (data.value !== args.amount) {
+    return {
+      ok: false,
+      code: "BAD_TOKEN_AUTH_SIGNATURE",
+      reason: `ERC-3009 value ${data.value} != requirements.amount ${args.amount}`,
+    };
+  }
+  const timeout = validateDeadlineWindow(data.validBefore, args.maxTimeoutSeconds, "ERC-3009 validBefore");
+  if (!timeout.ok) return timeout;
+
   const domain = await fetchTokenDomain(args.publicClient, args.asset, args.chainId);
   const signature = packRsv(data.r as Hex, data.s as Hex, data.v);
   let recovered: Address;
@@ -221,6 +235,16 @@ async function verifyPermit(
       reason: `Permit spender ${data.spender} != escrowAddress ${args.escrowAddress}`,
     };
   }
+  if (data.value !== args.amount) {
+    return {
+      ok: false,
+      code: "BAD_TOKEN_AUTH_SIGNATURE",
+      reason: `Permit value ${data.value} != requirements.amount ${args.amount}`,
+    };
+  }
+  const timeout = validateDeadlineWindow(data.deadline, args.maxTimeoutSeconds, "Permit deadline");
+  if (!timeout.ok) return timeout;
+
   const domain = await fetchTokenDomain(args.publicClient, args.asset, args.chainId);
   const signature = packRsv(data.r as Hex, data.s as Hex, data.v);
   let recovered: Address;
@@ -272,6 +296,16 @@ async function verifyPermit2(
       reason: `Permit2 spender ${data.spender} != escrowAddress ${args.escrowAddress}`,
     };
   }
+  if (data.permitted.amount !== args.amount) {
+    return {
+      ok: false,
+      code: "BAD_TOKEN_AUTH_SIGNATURE",
+      reason: `Permit2 permitted.amount ${data.permitted.amount} != requirements.amount ${args.amount}`,
+    };
+  }
+  const timeout = validateDeadlineWindow(data.deadline, args.maxTimeoutSeconds, "Permit2 deadline");
+  if (!timeout.ok) return timeout;
+
   let recovered: Address;
   try {
     recovered = await recoverPermit2Signer({
@@ -300,6 +334,18 @@ async function verifyPermit2(
       ok: false,
       code: "BAD_TOKEN_AUTH_SIGNATURE",
       reason: `Permit2 recovered signer ${recovered} != payload.buyer ${args.buyer}`,
+    };
+  }
+  return { ok: true };
+}
+
+function validateDeadlineWindow(deadlineSeconds: number, maxTimeoutSeconds: number, label: string): StepResult {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (deadlineSeconds - nowSeconds > maxTimeoutSeconds) {
+    return {
+      ok: false,
+      code: "BAD_TOKEN_AUTH_SIGNATURE",
+      reason: `${label} exceeds requirements.maxTimeoutSeconds (${maxTimeoutSeconds})`,
     };
   }
   return { ok: true };

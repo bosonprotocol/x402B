@@ -2,19 +2,31 @@
 //
 // We don't reach for `publicClient.simulateContract` (which would require
 // us to mirror or import the meta-tx handler's full viem-shaped ABI) —
-// instead we lean on `@bosonprotocol/x402-evm`'s
-// `buildExecuteMetaTransactionTx` to encode the outer envelope (the same
-// calldata `settle()` will broadcast), then submit it via
-// `publicClient.call` from the relayer's address. viem throws a
+// instead we lean on `@bosonprotocol/x402-evm`'s envelope builders to
+// encode the outer envelope (the same calldata `settle()` will
+// broadcast), then submit it via `publicClient.call` from the relayer's
+// address. viem throws a
 // structured `CallExecutionError` on revert; we map the revert reason
 // into a `SIMULATION_REVERT` result so the caller can surface it.
 //
-// This catches protocol-level reverts (duplicate nonce, expired
-// token-auth, insufficient buyer balance, paused contract, …) before
-// `settle()` spends a single wei of gas.
+// This catches protocol-level reverts (duplicate nonce, insufficient
+// buyer balance, paused contract, …) before `settle()` spends a single
+// wei of gas. The BPIP-12 token-auth envelope is still deferred in
+// `@bosonprotocol/x402-evm`, so non-`none` strategies map to
+// `UNSUPPORTED_TOKEN_AUTH_STRATEGY` until that builder ships.
 
-import { buildExecuteMetaTransactionTx } from "@bosonprotocol/x402-evm/envelope";
-import type { Address, BosonMetaTx, Hex } from "@bosonprotocol/x402-core/schemes/escrow";
+import {
+  buildExecuteMetaTransactionTx,
+  buildExecuteMetaTransactionWithTokenAuthTx,
+  NotYetSupportedError,
+  type TxRequest,
+} from "@bosonprotocol/x402-evm/envelope";
+import type {
+  Address,
+  BosonMetaTx,
+  Hex,
+  TokenAuthStrategy,
+} from "@bosonprotocol/x402-core/schemes/escrow";
 import { type PublicClient } from "viem";
 
 import type { StepResult } from "./structural.js";
@@ -23,6 +35,7 @@ export interface SimulateExecuteMetaTransactionArgs {
   escrowAddress: Address;
   buyer: Address;
   metaTx: BosonMetaTx;
+  tokenAuthStrategy: TokenAuthStrategy;
   publicClient: PublicClient;
   /** Relayer's EOA — used as `msg.sender` for the `eth_call` simulation. */
   relayerAddress: Address;
@@ -31,7 +44,7 @@ export interface SimulateExecuteMetaTransactionArgs {
 export async function simulateExecuteMetaTransaction(
   args: SimulateExecuteMetaTransactionArgs,
 ): Promise<StepResult> {
-  const tx = buildExecuteMetaTransactionTx({
+  const common = {
     escrowAddress: args.escrowAddress as `0x${string}`,
     userAddress: args.buyer as `0x${string}`,
     functionName: args.metaTx.functionName,
@@ -42,7 +55,30 @@ export async function simulateExecuteMetaTransaction(
       s: args.metaTx.sig.s as `0x${string}`,
       v: args.metaTx.sig.v,
     },
-  });
+  };
+  let tx: TxRequest;
+  try {
+    tx =
+      args.tokenAuthStrategy === "none"
+        ? buildExecuteMetaTransactionTx(common)
+        : buildExecuteMetaTransactionWithTokenAuthTx({
+            ...common,
+            tokenTransferAuthorizations: [],
+          });
+  } catch (e) {
+    if (e instanceof NotYetSupportedError) {
+      return {
+        ok: false,
+        code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY",
+        reason: e.message,
+      };
+    }
+    return {
+      ok: false,
+      code: "INTERNAL_ERROR",
+      reason: e instanceof Error ? e.message : String(e),
+    };
+  }
   try {
     await args.publicClient.call({
       account: args.relayerAddress as `0x${string}`,
