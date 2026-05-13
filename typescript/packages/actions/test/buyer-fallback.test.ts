@@ -73,4 +73,13 @@ describe("isBuyerOnchainResilient", () => {
     expect(isBuyerOnchainResilient("boson-unknown")).toBe(false);
     expect(isBuyerOnchainResilient("not-a-boson-id")).toBe(false);
   });
+
+  it("returns false for `Object.prototype` keys (no prototype-chain leak)", () => {
+    // Regression: a naive `in` check would short-circuit to truthy on
+    // these (since they're inherited) and return `undefined` from the
+    // lookup, which is neither `true` nor `false`.
+    expect(isBuyerOnchainResilient("toString")).toBe(false);
+    expect(isBuyerOnchainResilient("constructor")).toBe(false);
+    expect(isBuyerOnchainResilient("hasOwnProperty")).toBe(false);
+  });
 });

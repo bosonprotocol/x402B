@@ -6,6 +6,7 @@
 // Source of truth: docs/boson-impl-04-state-machine-and-next-actions.md
 // §"Channels".
 
+import { addressSchema } from "@bosonprotocol/x402-core/schemes/escrow";
 import { ACTION_IDS, type ActionId } from "@bosonprotocol/x402-core/state-machine";
 import { z } from "zod";
 
@@ -22,10 +23,6 @@ const httpsUrlSchema = z
   .refine((u) => u.startsWith("http://") || u.startsWith("https://"), {
     message: "must be an http(s) URL",
   });
-
-const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/, {
-  message: "must be a 0x-prefixed 40-char hex address",
-});
 
 const channelRegistrySchema = z
   .object({

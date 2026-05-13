@@ -62,5 +62,9 @@ export function hasBuyerOnchainFallback(entry: ActionEntry): boolean {
  * could otherwise have been censorship-resistant).
  */
 export function isBuyerOnchainResilient(id: string): boolean {
-  return id in BUYER_ONCHAIN_FALLBACK ? BUYER_ONCHAIN_FALLBACK[id as ActionId] : false;
+  // Use `hasOwnProperty` rather than `in` so prototype keys like
+  // `"toString"` / `"constructor"` don't accidentally read as resilient.
+  return Object.prototype.hasOwnProperty.call(BUYER_ONCHAIN_FALLBACK, id)
+    ? BUYER_ONCHAIN_FALLBACK[id as ActionId]
+    : false;
 }
