@@ -45,6 +45,42 @@ export interface X402bServer {
   buildPaymentRequirements(input: BuildRequirementsInput): Promise<EscrowPaymentRequirements>;
 }
 
+const COMMIT_ACTION_IDS = new Set([
+  "boson-createOfferAndCommit",
+  "boson-createOfferCommitAndRedeem",
+]);
+
+function facilitatorEndpointFor(actionId: string, facilitatorUrl: string): string {
+  if (COMMIT_ACTION_IDS.has(actionId)) {
+    return `${facilitatorUrl}/settle`;
+  }
+  return `${facilitatorUrl}/perform-action?action=${actionId}`;
+}
+
+function withFacilitatorEndpoints(
+  requirements: EscrowPaymentRequirements,
+  facilitatorUrl: string,
+): EscrowPaymentRequirements {
+  return {
+    ...requirements,
+    actions: {
+      ...requirements.actions,
+      next: requirements.actions.next.map((entry) => {
+        if (!entry.channels.includes("facilitator")) {
+          return entry;
+        }
+        return {
+          ...entry,
+          endpoints: {
+            ...entry.endpoints,
+            facilitator: facilitatorEndpointFor(entry.id, facilitatorUrl),
+          },
+        };
+      }),
+    },
+  };
+}
+
 /**
  * Validate a config and return a `X402bServer` whose methods are
  * bound to the validated context. Throws synchronously (`ZodError`)
@@ -68,7 +104,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
     signOffer,
     async buildPaymentRequirements(input) {
       const offer = "unsigned" in input.offer ? await signOffer(input.offer.unsigned) : input.offer;
-      return buildPaymentRequirements({
+      const requirements = buildPaymentRequirements({
         offer,
         asset: input.asset,
         amount: input.amount,
@@ -80,6 +116,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
         escrow: validated.escrow,
         channelRegistry: validated.channelRegistry,
       });
+      return withFacilitatorEndpoints(requirements, validated.facilitator.url);
     },
   };
 }

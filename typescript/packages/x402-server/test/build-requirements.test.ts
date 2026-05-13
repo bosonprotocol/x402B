@@ -106,6 +106,33 @@ describe("createX402bServer", () => {
     expect(() => escrowPaymentRequirementsSchema.parse(requirements)).not.toThrow();
   });
 
+  it("advertises facilitator endpoints for facilitator-channel commit actions", async () => {
+    const seller = privateKeyToAccount(TEST_SELLER_PK);
+    const server = createX402bServer({
+      network: NETWORK,
+      chainId: CHAIN_ID,
+      escrow: ESCROW,
+      signer: seller,
+      facilitator: { url: "https://facilitator.example" },
+      channelRegistry: makeRegistry(),
+    });
+
+    const requirements = await server.buildPaymentRequirements({
+      offer: { unsigned: { ...baseOffer, offerCreator: seller.address } },
+      asset: TOKEN,
+      amount: "1000000",
+      tokenAuthStrategies: ["erc3009"],
+      recipientId: RECIPIENT_ID,
+      maxTimeoutSeconds: 300,
+    });
+
+    for (const entry of requirements.actions.next) {
+      expect(entry.channels).toContain("facilitator");
+      expect(entry.endpoints?.facilitator).toBe("https://facilitator.example/settle");
+    }
+    expect(() => escrowPaymentRequirementsSchema.parse(requirements)).not.toThrow();
+  });
+
   it("rejects config when escrow and channelRegistry.escrow disagree", () => {
     const seller = privateKeyToAccount(TEST_SELLER_PK);
     const otherDiamond = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -122,5 +149,22 @@ describe("createX402bServer", () => {
         }),
       }),
     ).toThrow(/does not match channelRegistry.escrow/);
+  });
+
+  it("rejects malformed channel registries at server creation", () => {
+    const seller = privateKeyToAccount(TEST_SELLER_PK);
+    expect(() =>
+      createX402bServer({
+        network: NETWORK,
+        chainId: CHAIN_ID,
+        escrow: ESCROW,
+        signer: seller,
+        facilitator: { url: "https://facilitator.example" },
+        channelRegistry: {
+          channels: ["facilitator", "unknown-channel"],
+          escrow: ESCROW,
+        } as never,
+      }),
+    ).toThrow();
   });
 });

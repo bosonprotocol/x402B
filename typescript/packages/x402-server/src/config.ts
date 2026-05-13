@@ -9,7 +9,7 @@
 // the per-request `buildPaymentRequirements` call instead — see
 // `./challenge/build-requirements.ts`.
 
-import type { ChannelRegistry } from "@bosonprotocol/x402-actions";
+import { channelRegistryZodSchema, type ChannelRegistry } from "@bosonprotocol/x402-actions";
 import type { Address, EvmNetwork } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { Hex } from "viem";
 import { z } from "zod";
@@ -55,7 +55,12 @@ export interface X402bServerConfig {
 
 const ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const EVM_NETWORK = /^eip155:[1-9][0-9]*$/;
-const HTTPS_URL = /^https?:\/\//;
+const httpUrlSchema = z
+  .string()
+  .url()
+  .refine((url) => url.startsWith("http://") || url.startsWith("https://"), {
+    message: "must be an http(s) URL",
+  });
 
 const sellerSignerSchema = z
   .object({
@@ -67,18 +72,11 @@ const sellerSignerSchema = z
   })
   .passthrough();
 
-const channelRegistryShallowSchema = z
-  .object({
-    channels: z.array(z.string()).min(1),
-    escrow: z.string().regex(ADDRESS),
-  })
-  .passthrough();
-
 /**
  * zod validator for `X402bServerConfig`. Shallow on the signer +
- * channel registry (those bring their own structural validators —
- * `buildChannelRegistry` for the registry, viem's account types for
- * the signer); strict on the scalar fields we own here.
+ * signer (viem account types bring their own structural validators);
+ * strict on the scalar fields we own here and on the channel registry
+ * via `@bosonprotocol/x402-actions`.
  */
 export const x402bServerConfigSchema = z
   .object({
@@ -88,10 +86,10 @@ export const x402bServerConfigSchema = z
     signer: sellerSignerSchema,
     facilitator: z
       .object({
-        url: z.string().regex(HTTPS_URL),
+        url: httpUrlSchema,
       })
       .strict(),
-    channelRegistry: channelRegistryShallowSchema,
+    channelRegistry: channelRegistryZodSchema,
   })
   .strict();
 
