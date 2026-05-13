@@ -33,7 +33,13 @@ export function parseChainId(network: string): number {
       `x402-client: unsupported network '${network}' (expected CAIP-2 'eip155:<chainId>')`,
     );
   }
-  return Number(match[1]);
+  const chainId = Number(match[1]);
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) {
+    throw new Error(
+      `x402-client: unsupported network '${network}' (chainId must be a positive safe integer)`,
+    );
+  }
+  return chainId;
 }
 
 /**

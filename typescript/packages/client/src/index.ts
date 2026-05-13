@@ -1,8 +1,12 @@
 // Public surface for `@bosonprotocol/x402-client`.
 //
-// MVP: ERC-3009 token-auth, server-channel submission only,
-// `boson-createOfferAndCommit` action only. Signing routes through
-// `CoreSDK.signMetaTxCreateOfferAndCommit` directly.
+// MVP: ERC-3009 token-auth and server-channel submission only. The
+// commit-time `boson-createOfferAndCommit` action is signed via
+// `CoreSDK.signMetaTxCreateOfferAndCommit` inside `handle402`; buyer-side
+// post-commit transitions (`boson-redeem`, `boson-cancelVoucher`,
+// `boson-completeExchange`, and the dispute family — `raiseDispute`,
+// `retractDispute`, `escalateDispute`, `resolveDispute`) are signed via
+// the matching `CoreSDK.signMetaTx*` mixin behind `client.signAction`.
 
 export type {
   ExchangeSummary,

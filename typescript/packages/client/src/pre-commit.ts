@@ -7,8 +7,6 @@
 // against; we re-shape it into the escrow scheme's wire-format
 // `BosonMetaTx` for the X-PAYMENT payload.
 
-import { randomBytes } from "node:crypto";
-
 import type { CoreSDK } from "@bosonprotocol/core-sdk";
 import type { FullOfferArgs } from "@bosonprotocol/common";
 import type {
@@ -16,6 +14,8 @@ import type {
   EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { Address, Hex } from "viem";
+
+import { randomUint256 } from "./utils/crypto.js";
 
 export interface SignCreateOfferAndCommitMetaTxArgs {
   requirements: EscrowPaymentRequirements;
@@ -66,13 +66,4 @@ export async function signCreateOfferAndCommitMetaTx({
       s: signed.s as Hex,
     },
   };
-}
-
-function randomUint256(): bigint {
-  const bytes = randomBytes(32);
-  let n = 0n;
-  for (const byte of bytes) {
-    n = (n << 8n) | BigInt(byte);
-  }
-  return n;
 }

@@ -8,8 +8,6 @@
 // signature is split into wire-format `{ v, r, s }` via viem's
 // `parseSignature`.
 
-import { randomBytes } from "node:crypto";
-
 import {
   erc3009TypedData,
   type TokenEip712Domain,
@@ -18,10 +16,11 @@ import type {
   Erc3009AuthData,
   EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
-import { parseSignature, type Address, type Hex } from "viem";
+import { parseSignature, type Address } from "viem";
 
 import { parseChainId } from "../core-sdk-factory.js";
 import type { Signer, TokenDomainResolver } from "../types.js";
+import { randomBytes32 } from "../utils/crypto.js";
 
 export interface SignErc3009Args {
   requirements: EscrowPaymentRequirements;
@@ -91,8 +90,4 @@ export async function signErc3009({
     r,
     s,
   };
-}
-
-function randomBytes32(): Hex {
-  return `0x${randomBytes(32).toString("hex")}`;
 }

@@ -15,12 +15,12 @@
 // meta-tx with a token-auth payload — that wrapper lives outside MVP. Here
 // we only sign the meta-tx itself; the deposit flow is a later PR.
 
-import { randomBytes } from "node:crypto";
-
 import type { CoreSDK } from "@bosonprotocol/core-sdk";
 import type { BosonMetaTx } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 import type { Address, Hex } from "viem";
+
+import { randomUint256 } from "./utils/crypto.js";
 
 // Matches the subset of ethers' `BigNumberish` core-sdk actually accepts at
 // runtime, without pulling `@ethersproject/bignumber` into this package's
@@ -136,14 +136,15 @@ async function callSignMetaTx(
         buyerPercent: args.buyerPercent,
         counterpartySig: args.counterpartySig,
       });
+    default: {
+      // The discriminated union makes this unreachable at the type level;
+      // the `never` annotation enforces exhaustiveness at compile time, and
+      // the throw guarantees a clear error if a runtime value ever slips
+      // past the type checker.
+      const _exhaustive: never = args;
+      throw new Error(
+        `x402-client: unsupported post-commit action '${(_exhaustive as { actionId: string }).actionId}'`,
+      );
+    }
   }
-}
-
-function randomUint256(): bigint {
-  const bytes = randomBytes(32);
-  let n = 0n;
-  for (const byte of bytes) {
-    n = (n << 8n) | BigInt(byte);
-  }
-  return n;
 }
