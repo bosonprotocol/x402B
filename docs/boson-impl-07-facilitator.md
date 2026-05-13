@@ -4,9 +4,9 @@
 
 ## Goals
 
-`@bosonprotocol/x402-facilitator` is the reference verify + settle service for the `escrow` scheme. It:
+`@bosonprotocol/x402-facilitator` is the reference verify + settle + perform-action surface for the `escrow` scheme. It:
 
-1. Exposes `/verify` and `/settle` endpoints compatible with x402's facilitator API.
+1. Exposes `/verify` and `/settle` endpoints compatible with x402's facilitator API, plus `/perform-action` for the `"facilitator"` `nextActions` channel.
 2. Routes `escrow`-scheme payloads to the appropriate Boson on-chain entrypoint.
 3. Submits transactions and pays gas.
 
@@ -23,25 +23,53 @@ POST /settle
   body: { scheme: "escrow", network, payload, requirements }
   -> { ok: true, exchangeId, txHash } | { ok: false, code, reason }
 
-POST /perform-action     // optional, for the "facilitator" channel in nextActions
+POST /perform-action?action=<ActionId>     // optional, for the "facilitator" channel in nextActions
   body: { exchangeId, action, signedPayload }
-  -> { ok: true, txHash } | { ok: false, code, reason }
+  -> { ok: true, txHash, newExchangeState, newDisputeState? } | { ok: false, code, reason }
 ```
+
+`FacilitatorChannelAdapter` stamps `endpoints.facilitator` with:
+
+- `${url}/settle` for commit-time actions (`boson-createOfferAndCommit`, `boson-createOfferCommitAndRedeem`).
+- `${url}/perform-action?action=${action}` for post-commit actions.
 
 ## Settle path
 
-Every `escrow` settle is the same single on-chain call:
+The v0.1 package is a TypeScript surface scaffold: `verify`, `settle`, and
+`performAction` throw `NotImplementedError` until the relayer
+implementation lands. The intended submit path is selected by the buyer's
+`tokenAuthStrategy`.
+
+For `tokenAuthStrategy = "none"`, the facilitator wraps the signed
+meta-transaction with the existing Boson entrypoint:
+
+```
+MetaTransactionsHandlerFacet.executeMetaTransaction(
+  userAddress,
+  functionName,
+  functionSignature,
+  nonce,
+  packedSig
+)
+```
+
+For `tokenAuthStrategy = "erc3009" | "permit" | "permit2"`, the planned
+BPIP-12 path is:
 
 ```
 MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization(
   metaTxParams,                  // built from payload.metaTx
   tokenTransferAuthorizations,   // bytes[] queue, one entry encoding payload.tokenAuth
-                                 // (empty array when tokenAuthStrategy = "none")
   r, s, v                        // payload.metaTx.sig
 )
 ```
 
-The inner `metaTxParams.functionName` selects which protocol facet runs:
+That BPIP-12 builder is currently represented by a throwing
+`buildExecuteMetaTransactionWithTokenAuthTx` stub in `@bosonprotocol/x402-evm`.
+Facilitator implementation should map that unsupported path to
+`UNSUPPORTED_TOKEN_AUTH_STRATEGY` until the ABI support ships.
+
+The inner `payload.metaTx.functionName` selects which protocol facet runs:
 
 | `payload.action` | Inner function called by the meta-tx |
 |---|---|
