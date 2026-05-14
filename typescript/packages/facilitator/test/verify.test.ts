@@ -4,7 +4,6 @@ import {
   BaseError,
   RawContractError,
   type Address,
-  type Hex,
   type PublicClient,
   type WalletClient,
 } from "viem";
@@ -22,7 +21,6 @@ import {
   ESCROW,
   fullOffer,
   NETWORK,
-  NONCE,
   relayer,
 } from "./fixtures.js";
 
