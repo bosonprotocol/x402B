@@ -8,7 +8,7 @@ Adapters for specific HTTP clients will be published as sibling packages — e.g
 
 ## Status
 
-Pre-release skeleton. The public API surface lands incrementally; the package currently exports types, errors, the signer adapter interface, and pure-function utilities (action picker, fulfillment resolver). Signing and the `handle402` entrypoint land in the next iteration.
+Pre-release skeleton. The public API surface lands incrementally; the package currently exports types, errors, the client factory, and pure-function utilities (action picker, fulfillment resolver).
 
 ## Install
 

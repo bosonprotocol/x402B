@@ -6,7 +6,7 @@ This package wraps a `fetch` implementation so a request that gets a `402` carry
 
 ## Status
 
-Pre-release skeleton. The only adapter-specific export is `wrapFetchWithPayment`; the rest of the public API — `createX402bClient`, the signer adapters, error classes, `client.handle402`, `client.signAction`, `client.parsePaymentResponse`, and the configuration types — is re-exported verbatim from [`@bosonprotocol/x402-client`](https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/client), so a single install of this package covers the common case.
+Pre-release skeleton. The only adapter-specific export is `wrapFetchWithPayment`; the rest of the public API — `createX402bClient`, error classes, `client.handle402`, `client.signAction`, `client.parsePaymentResponse`, and the configuration types — is re-exported verbatim from [`@bosonprotocol/x402-client`](https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/client), so a single install of this package covers the common case.
 
 ## Install
 
@@ -18,15 +18,16 @@ pnpm add @bosonprotocol/x402-client-fetch
 ## Usage
 
 ```ts
-import {
-  createX402bClient,
-  viemAccountSigner,
-  wrapFetchWithPayment,
-} from "@bosonprotocol/x402-client-fetch";
+import { createX402bClient, wrapFetchWithPayment } from "@bosonprotocol/x402-client-fetch";
 import { privateKeyToAccount } from "viem/accounts";
 
+const account = privateKeyToAccount("0x...");
+
 const client = createX402bClient({
-  signer: viemAccountSigner(privateKeyToAccount("0x...")),
+  signer: {
+    getAddress: async () => account.address,
+    signTypedData: (args) => account.signTypedData(args),
+  },
   tokenDomainResolver: async (asset, chainId) => ({
     name: "USD Coin",
     version: "2",

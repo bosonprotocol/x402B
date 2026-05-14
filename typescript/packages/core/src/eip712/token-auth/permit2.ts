@@ -6,13 +6,18 @@
 // pins the recipient inside the witness — Boson doesn't need that since
 // the escrow contract is the only valid recipient anyway).
 //
-// `@x402/evm@2.11.0`'s public `./exact/client` exposes
-// `createPermit2ApprovalTx` and `getPermit2AllowanceReadParams` (which we
-// re-export below) but not the Permit2 typed-data type-list nor the
-// canonical contract address — so the `PERMIT2_ADDRESS` constant and the
-// type-list are hand-defined here. Both are immutable Permit2 protocol
-// values: the address is a CREATE2 vanity address present on every chain,
-// and the type-list is fixed by Permit2's deployed contract.
+// `@bosonprotocol/core-sdk` exposes the same type-list internally inside
+// `signReceiveWithPermit2`, but routes the Permit2 contract address through
+// `_contracts.permit2` (or `overrides.permit2Address`) on the configured
+// SDK instance. The verification path needs a stable canonical address
+// without an SDK round-trip, and the type-list is fixed by Permit2's
+// deployed contract — so this module keeps the canonical address +
+// type-list hand-defined as Uniswap protocol constants. A KAT
+// cross-validation test (`sdk-parity.test.ts`) asserts the type-list
+// matches the SDK's internal one, catching drift.
+//
+// `@x402/evm`'s public `./exact/client` exposes `createPermit2ApprovalTx`
+// and `getPermit2AllowanceReadParams` (re-exported below).
 
 import { createPermit2ApprovalTx, getPermit2AllowanceReadParams } from "@x402/evm/exact/client";
 import {
