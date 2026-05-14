@@ -7,4 +7,4 @@
 // this package is a thin HTTP wrapper, mirroring the
 // `server` / `server-express` split.
 
-export { mountFacilitator, type MountFacilitatorOptions } from "./mount.js";
+export { mountFacilitator } from "./mount.js";

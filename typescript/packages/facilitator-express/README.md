@@ -15,5 +15,11 @@ app.use(mountFacilitator(facilitatorConfig));
 app.listen(3000);
 ```
 
+To mount under a prefix, use Express's normal router mounting:
+
+```ts
+app.use("/v1", mountFacilitator(facilitatorConfig));
+```
+
 Routes follow the spec in [`docs/boson-impl-07-facilitator.md`](../../../docs/boson-impl-07-facilitator.md);
 this package adds no protocol logic of its own.

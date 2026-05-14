@@ -5,8 +5,9 @@
 //   POST /settle          — relay a commit-time meta-transaction
 //   POST /perform-action  — relay a post-commit meta-transaction
 //
-// The router is mountable at any path (default `/`); the trailing path
-// segments are fixed by the spec. Routing here is intentionally thin —
+// Mount the router at a prefix with Express itself, e.g.
+// `app.use("/v1", mountFacilitator(config))`. The route paths inside
+// this router are fixed by the spec. Routing here is intentionally thin —
 // `verify`, `settle`, and `performAction` from `@bosonprotocol/x402-facilitator`
 // already validate the request body via Zod schemas, so each handler
 // just forwards `req.body`, awaits the discriminated-union result, and
@@ -24,25 +25,16 @@ import {
 } from "@bosonprotocol/x402-facilitator";
 import { Router, type RequestHandler } from "express";
 
-export interface MountFacilitatorOptions {
-  /** Optional mount path. Defaults to `/`. */
-  basePath?: string;
-}
-
 /**
  * Build the Express router. Apply with
- * `app.use(mountFacilitator(config, opts))`.
+ * `app.use(mountFacilitator(config))`, or with a prefix via
+ * `app.use("/v1", mountFacilitator(config))`.
  */
-export function mountFacilitator(
-  config: FacilitatorConfig,
-  opts: MountFacilitatorOptions = {},
-): Router {
+export function mountFacilitator(config: FacilitatorConfig): Router {
   const router = Router();
-  const basePath = opts.basePath ?? "";
-
-  router.post(`${basePath}/verify`, verifyRoute(config));
-  router.post(`${basePath}/settle`, settleRoute(config));
-  router.post(`${basePath}/perform-action`, performActionRoute(config));
+  router.post("/verify", verifyRoute(config));
+  router.post("/settle", settleRoute(config));
+  router.post("/perform-action", performActionRoute(config));
 
   return router;
 }

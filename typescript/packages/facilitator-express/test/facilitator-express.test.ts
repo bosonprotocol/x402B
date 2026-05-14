@@ -97,15 +97,16 @@ describe("mountFacilitator — routing", () => {
     expect(res.body.code).toMatch(/NETWORK_MISMATCH|INVALID_PAYLOAD/);
   });
 
-  it("mounts at a custom basePath", async () => {
+  it("mounts under a custom Express path prefix", async () => {
     const app = express();
     app.use(express.json());
-    app.use(mountFacilitator(buildConfig(), { basePath: "/v1" }));
+    app.use("/v1", mountFacilitator(buildConfig()));
 
     const ok = await supertest(app).post("/v1/verify").send({});
     expect(ok.status).toBe(400); // routed; returns the same body shape
 
-    // The default mount path no longer matches at the custom base.
+    // The default mount path no longer matches when the router is
+    // mounted at an Express prefix.
     const miss = await supertest(app).post("/verify").send({});
     expect(miss.status).toBe(404);
   });
