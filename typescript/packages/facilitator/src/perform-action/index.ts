@@ -6,7 +6,8 @@
 //   1. Decode signedPayload (ABI-encoded BosonMetaTx) — INVALID_PAYLOAD
 //      on malformed bytes.
 //   2. supportedNetworks gate.
-//   3. Validate action is in ACTION_IDS — UNSUPPORTED_ACTION otherwise.
+//   3. Validate action is a post-commit action and that signed calldata
+//      matches `input.action` + `input.exchangeId`.
 //   4. Recover the meta-tx signer and confirm it matches metaTx.from.
 //      The facilitator is signer-agnostic: it doesn't care if the role
 //      is buyer or seller — the protocol enforces that on-chain.
@@ -24,8 +25,6 @@
 // for revoke, by either for cancel / complete / resolve-dispute (the
 // last needs both signatures pre-aggregated in the metaTx.functionSignature).
 
-import { ACTION_IDS } from "@bosonprotocol/x402-core/state-machine";
-
 import { toResult } from "../errors.js";
 import { buildSettleEnvelope } from "../settle/build-envelope.js";
 import { submit } from "../settle/submit.js";
@@ -38,6 +37,7 @@ import { recoverMetaTxSigner } from "../verify/meta-tx-signature.js";
 import { simulateExecuteMetaTransaction } from "../verify/simulate.js";
 import { parseChainId } from "../verify/structural.js";
 
+import { validatePerformActionMetaTx } from "./action-calldata.js";
 import { decodeSignedPayload } from "./codec.js";
 import { deriveNewState } from "./new-state.js";
 
@@ -70,14 +70,14 @@ export async function performAction(
       };
     }
 
-    // 3. Action validation.
-    if (!(ACTION_IDS as readonly string[]).includes(input.action)) {
-      return {
-        ok: false,
-        code: "UNSUPPORTED_ACTION",
-        reason: `action "${input.action}" is not a known Boson action id`,
-      };
-    }
+    // 3. Action/calldata validation. The request body is only metadata; the
+    //    signed payload decides what the relayer will actually submit.
+    const action = validatePerformActionMetaTx({
+      action: input.action,
+      exchangeId: input.exchangeId,
+      metaTx,
+    });
+    if (!action.ok) return action;
 
     // 4. Parse chain id.
     const chain = parseChainId(input.network);

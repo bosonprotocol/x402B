@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   BaseError,
   RawContractError,
+  encodeFunctionData,
+  parseAbi,
   parseSignature,
   type Address,
   type Hex,
@@ -30,18 +32,86 @@ const NETWORK = `eip155:${CHAIN_ID}`;
 const TX_HASH: Hex = `0x${"ab".repeat(32)}`;
 const EXCHANGE_ID = "42";
 
+const POST_COMMIT_ABI = parseAbi([
+  "function redeemVoucher(uint256 exchangeId)",
+  "function cancelVoucher(uint256 exchangeId)",
+  "function revokeVoucher(uint256 exchangeId)",
+  "function completeExchange(uint256 exchangeId)",
+  "function raiseDispute(uint256 exchangeId)",
+  "function resolveDispute(uint256 exchangeId, uint256 buyerPercent, bytes counterpartySig)",
+  "function escalateDispute(uint256 exchangeId)",
+  "function retractDispute(uint256 exchangeId)",
+]);
+
+function buildPostCommitCalldata(functionName: string, exchangeId = EXCHANGE_ID): Hex {
+  switch (functionName) {
+    case "redeemVoucher(uint256)":
+      return encodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        functionName: "redeemVoucher",
+        args: [BigInt(exchangeId)],
+      });
+    case "cancelVoucher(uint256)":
+      return encodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        functionName: "cancelVoucher",
+        args: [BigInt(exchangeId)],
+      });
+    case "revokeVoucher(uint256)":
+      return encodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        functionName: "revokeVoucher",
+        args: [BigInt(exchangeId)],
+      });
+    case "completeExchange(uint256)":
+      return encodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        functionName: "completeExchange",
+        args: [BigInt(exchangeId)],
+      });
+    case "raiseDispute(uint256)":
+      return encodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        functionName: "raiseDispute",
+        args: [BigInt(exchangeId)],
+      });
+    case "resolveDispute(uint256,uint256,bytes)":
+      return encodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        functionName: "resolveDispute",
+        args: [BigInt(exchangeId), 5000n, "0x"],
+      });
+    case "escalateDispute(uint256)":
+      return encodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        functionName: "escalateDispute",
+        args: [BigInt(exchangeId)],
+      });
+    case "retractDispute(uint256)":
+      return encodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        functionName: "retractDispute",
+        args: [BigInt(exchangeId)],
+      });
+    default:
+      throw new Error(`unsupported test functionName ${functionName}`);
+  }
+}
+
 /** Sign a BosonMetaTx for the given action against the Diamond domain. */
 async function buildSignedPayload(
   opts: {
     signer?: ReturnType<typeof privateKeyToAccount>;
     functionName?: string;
     functionSignature?: Hex;
+    exchangeId?: string;
     nonce?: string;
   } = {},
 ): Promise<Hex> {
   const signer = opts.signer ?? buyer;
   const functionName = opts.functionName ?? "redeemVoucher(uint256)";
-  const functionSignature: Hex = opts.functionSignature ?? "0xcafebabe";
+  const functionSignature: Hex =
+    opts.functionSignature ?? buildPostCommitCalldata(functionName, opts.exchangeId);
   const nonce = opts.nonce ?? "7";
   const typedData = await metaTransactionTypedData({
     chainId: CHAIN_ID,
@@ -187,6 +257,69 @@ describe("performAction()", () => {
       buildConfig(),
     );
     expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_ACTION" });
+  });
+
+  it("rejects commit-time actions on the post-commit endpoint", async () => {
+    const signedPayload = await buildSignedPayload();
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-createOfferAndCommit",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_ACTION" });
+  });
+
+  it("rejects when action does not match the signed functionName", async () => {
+    const signedPayload = await buildSignedPayload({ functionName: "redeemVoucher(uint256)" });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-completeExchange",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("rejects when exchangeId does not match the signed calldata", async () => {
+    const signedPayload = await buildSignedPayload({ exchangeId: "43" });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-redeem",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("rejects when functionSignature encodes a different post-commit action", async () => {
+    const signedPayload = await buildSignedPayload({
+      functionName: "redeemVoucher(uint256)",
+      functionSignature: buildPostCommitCalldata("completeExchange(uint256)"),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-redeem",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
   });
 
   it("rejects when meta-tx signature was produced by a different signer", async () => {
