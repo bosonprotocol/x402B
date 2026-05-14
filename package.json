@@ -37,14 +37,5 @@
     "turbo": "^2.3.3",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
-  },
-  "pnpm": {
-    "packageExtensions": {
-      "@bosonprotocol/core-sdk": {
-        "dependencies": {
-          "@ethersproject/random": "^5.8.0"
-        }
-      }
-    }
   }
 }
