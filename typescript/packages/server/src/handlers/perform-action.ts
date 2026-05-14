@@ -113,6 +113,7 @@ export async function handlePerformAction(
             disputeState: postState.dispute,
           },
           ctx.config.channelRegistry,
+          ctx.config.facilitator.url,
         )
       : emitNextActions(
           {
@@ -123,6 +124,7 @@ export async function handlePerformAction(
             >,
           },
           ctx.config.channelRegistry,
+          ctx.config.facilitator.url,
         );
 
   return handlerOk({ txHash: result.txHash, nextActions });
