@@ -51,6 +51,21 @@ describe("validatePaymentPayload — happy paths", () => {
 });
 
 describe("validatePaymentPayload — rule failures", () => {
+  it("rule 1 — rejects scheme mismatch", async () => {
+    const fx = await makePaymentFixture();
+    // `payload.scheme` is a literal `"escrow"` in the wire-format type,
+    // so the type narrowing wouldn't allow another value at compile
+    // time. Cast through `unknown` to exercise the runtime guard a
+    // hand-crafted malformed header would trigger.
+    const tampered = { ...fx.payload, scheme: "non-escrow" } as unknown as typeof fx.payload;
+    const result = await validatePaymentPayload({
+      payload: tampered,
+      requirements: fx.requirements,
+      chainId: CHAIN_ID,
+    });
+    expect(result).toMatchObject({ ok: false, rule: 1, code: "SCHEME_MISMATCH" });
+  });
+
   it("rule 2 — rejects network mismatch", async () => {
     const fx = await makePaymentFixture();
     const result = await validatePaymentPayload({
@@ -388,6 +403,16 @@ describe("decodeXPaymentHeader", () => {
     expect(decodeXPaymentHeader(header)).toMatchObject({
       ok: false,
       code: "INVALID_PAYLOAD",
+    });
+  });
+
+  it("returns INVALID_JSON for base64 that decodes to malformed JSON", () => {
+    // base64 is well-formed, but the inner UTF-8 isn't valid JSON
+    // (truncated object). Exercises the `JSON.parse` failure path.
+    const header = Buffer.from('{"foo": "bar"', "utf8").toString("base64");
+    expect(decodeXPaymentHeader(header)).toMatchObject({
+      ok: false,
+      code: "INVALID_JSON",
     });
   });
 
