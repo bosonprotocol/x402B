@@ -396,6 +396,40 @@ describe("decodeXPaymentHeader", () => {
       code: "INVALID_PAYLOAD",
     });
   });
+
+  it("preserves non-ASCII UTF-8 in fulfillment.data through the atob path", () => {
+    // Buyer-provided fulfilment data can carry non-ASCII bytes — names,
+    // addresses, locale-specific strings. Round-trip a valid payload
+    // whose `fulfillment.data.name` carries multi-byte characters and
+    // assert the decoder recovers UTF-8 rather than Latin-1 mojibake.
+    const wirePayload = {
+      x402Version: 2,
+      scheme: "escrow",
+      network: NETWORK,
+      payload: {
+        action: "boson-createOfferAndCommit",
+        tokenAuthStrategy: "none",
+        offerRef: { fullOffer: {}, sellerSig: "0x00" },
+        buyer: "0x1111111111111111111111111111111111111111",
+        metaTx: {
+          from: "0x1111111111111111111111111111111111111111",
+          nonce: "1",
+          functionName: "createOfferAndCommit(...)",
+          functionSignature: "0xdeadbeef",
+          sig: { v: 27, r: `0x${"00".repeat(32)}`, s: `0x${"00".repeat(32)}` },
+        },
+      },
+      fulfillment: { option: "email", data: { name: "Bär ✓ — 你好" } },
+    };
+    const header = Buffer.from(JSON.stringify(wirePayload), "utf8").toString("base64");
+    const result = decodeXPaymentHeader(header);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect((result.payload.fulfillment?.data as { name?: string } | null | undefined)?.name).toBe(
+        "Bär ✓ — 你好",
+      );
+    }
+  });
 });
 
 // Silence unused-import linter — TOKEN is exported from fixtures for

@@ -32,14 +32,22 @@ export function decodeXPaymentHeader(header: string | undefined | null): DecodeX
     return { ok: false, code: "MISSING_HEADER", reason: "X-PAYMENT header is missing" };
   }
 
-  // base64url → base64 (RFC 4648 §5) then decode. atob is available on
-  // both modern Node (≥16) and every supported runtime; we don't depend
-  // on Buffer here so the validator stays edge-runtime compatible.
+  // base64url → base64 (RFC 4648 §5) then decode. We prefer `atob` so
+  // the validator stays edge-runtime compatible; `atob` returns a
+  // Latin-1 binary string though, so we re-encode through `TextDecoder`
+  // to recover the original UTF-8 (a buyer's `fulfillment.data` may
+  // legitimately carry non-ASCII bytes — names, addresses, etc.).
   const padded = base64UrlToBase64(header);
   let decoded: string;
   try {
-    decoded =
-      typeof atob === "function" ? atob(padded) : Buffer.from(padded, "base64").toString("utf8");
+    if (typeof atob === "function") {
+      const binary = atob(padded);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      decoded = new TextDecoder().decode(bytes);
+    } else {
+      decoded = Buffer.from(padded, "base64").toString("utf8");
+    }
   } catch (e) {
     return { ok: false, code: "INVALID_BASE64", reason: (e as Error).message };
   }
