@@ -51,15 +51,15 @@ export function signerFromEthersAdapter(adapter: Web3LibAdapterLike): Signer {
       const from = await adapter.getSignerAddress();
       const typedData = {
         domain,
-        types: { EIP712Domain: deriveEip712DomainType(domain), ...types },
+        types: { ...types, EIP712Domain: deriveEip712DomainType(domain) },
         primaryType,
         message,
       };
       const json = serializeTypedData(typedData as unknown as TypedDataDefinition);
       const sig = await adapter.send("eth_signTypedData_v4", [from, json]);
-      if (typeof sig !== "string" || !sig.startsWith("0x")) {
+      if (typeof sig !== "string" || !/^0x[0-9a-fA-F]+$/.test(sig)) {
         throw new Error(
-          "signerFromEthersAdapter: adapter.send did not return a 0x-prefixed signature string",
+          "signerFromEthersAdapter: adapter.send did not return a hex signature string",
         );
       }
       return sig as Hex;

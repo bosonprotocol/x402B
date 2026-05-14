@@ -188,7 +188,7 @@ describe("signerFromEthersAdapter", () => {
     expect(parsed.message.amount).toBe("123");
   });
 
-  it("rejects when adapter.send returns a non-hex value", async () => {
+  it("rejects when adapter.send returns a non-string value", async () => {
     const adapter: Web3LibAdapterLike = {
       getSignerAddress: async () => account.address,
       send: async () => 42,
@@ -196,6 +196,41 @@ describe("signerFromEthersAdapter", () => {
     const signer = signerFromEthersAdapter(adapter);
     await expect(
       signer.signTypedData({ domain: fullDomain, types, primaryType: "Mail", message }),
-    ).rejects.toThrow(/0x-prefixed signature string/);
+    ).rejects.toThrow(/hex signature string/);
+  });
+
+  it("rejects when adapter.send returns a 0x-prefixed string with non-hex chars", async () => {
+    const adapter: Web3LibAdapterLike = {
+      getSignerAddress: async () => account.address,
+      send: async () => "0xzz",
+    };
+    const signer = signerFromEthersAdapter(adapter);
+    await expect(
+      signer.signTypedData({ domain: fullDomain, types, primaryType: "Mail", message }),
+    ).rejects.toThrow(/hex signature string/);
+  });
+
+  it("derived EIP712Domain wins over a caller-supplied entry of the same name", async () => {
+    const { adapter, calls } = buildMockAdapter();
+    const signer = signerFromEthersAdapter(adapter);
+    const hostileTypes = {
+      EIP712Domain: [{ name: "name", type: "string" }],
+      Mail: types.Mail,
+    } as const;
+    await signer.signTypedData({
+      domain: fullDomain,
+      types: hostileTypes,
+      primaryType: "Mail",
+      message,
+    });
+    const parsed = JSON.parse(calls[0]!.params[1] as string) as {
+      types: { EIP712Domain: { name: string; type: string }[] };
+    };
+    expect(parsed.types.EIP712Domain).toEqual([
+      { name: "name", type: "string" },
+      { name: "version", type: "string" },
+      { name: "chainId", type: "uint256" },
+      { name: "verifyingContract", type: "address" },
+    ]);
   });
 });
