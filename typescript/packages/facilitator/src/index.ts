@@ -14,6 +14,7 @@ export * from "./errors.js";
 export { verify } from "./verify/index.js";
 export { settle } from "./settle/index.js";
 export { performAction } from "./perform-action/index.js";
+export { decodeSignedPayload, encodeSignedPayload } from "./perform-action/codec.js";
 
 export {
   FacilitatorChannelAdapter,

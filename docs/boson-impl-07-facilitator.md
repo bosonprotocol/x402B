@@ -24,8 +24,31 @@ POST /settle
   -> { ok: true, exchangeId, txHash } | { ok: false, code, reason }
 
 POST /perform-action?action=<ActionId>     // optional, for the "facilitator" channel in nextActions
-  body: { exchangeId, action, signedPayload }
+  body: {
+    network, escrowAddress, exchangeId, action, signedPayload,
+    // Only when targeting a `payable` post-commit action (see below):
+    tokenAuthStrategy?, tokenAuth?, asset?, amount?, maxTimeoutSeconds?
+  }
   -> { ok: true, txHash, newExchangeState, newDisputeState? } | { ok: false, code, reason }
+
+  `signedPayload` is the ABI-encoded tuple
+    (address from, string functionName, bytes functionSignature,
+     uint256 nonce, uint8 v, bytes32 r, bytes32 s)
+  — a serialised `BosonMetaTx` ready to be wrapped in
+  `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
+
+  `newExchangeState` / `newDisputeState` are looked up from the static
+  `ACTION_POST_STATE` table in `@bosonprotocol/x402-core/state-machine`
+  so clients can update local state without a subgraph round-trip.
+
+  Most post-commit actions are non-payable: `tokenAuthStrategy` defaults
+  to `"none"` and the additional fields MUST be omitted. The exception
+  today is `boson-escalateDispute`, which is `payable` on the Diamond —
+  it carries the dispute resolver's escalation deposit. The BPIP-12
+  post-commit token-auth envelope is not wired yet, so
+  `tokenAuthStrategy !== "none"` returns
+  `UNSUPPORTED_TOKEN_AUTH_STRATEGY` until the
+  `executeMetaTransactionWithTokenTransferAuthorization` encoder ships.
 ```
 
 `FacilitatorChannelAdapter` stamps `endpoints.facilitator` with:

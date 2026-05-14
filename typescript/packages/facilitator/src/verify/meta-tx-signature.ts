@@ -23,14 +23,23 @@ export interface VerifyMetaTxSignatureArgs {
   buyer: Address;
 }
 
+export type RecoverMetaTxSignerResult =
+  | { ok: true; recovered: Address }
+  | { ok: false; code: "BAD_META_TX_SIGNATURE"; reason: string };
+
 /**
- * Recover the meta-tx signer and confirm it matches `buyer`. The on-chain
- * `MetaTransactionsHandlerFacet.executeMetaTransaction` recovers signatures
- * with `LibSignature.recover`, which accepts only the legacy `v ∈ {27, 28}`
- * form — reject `v ∈ {0, 1}` upfront with a clear error rather than letting
- * the simulation fail later.
+ * Recover the meta-tx signer from the EIP-712 typed-data. Does **not**
+ * check who the signer should be — that's the caller's job. The on-chain
+ * `MetaTransactionsHandlerFacet.executeMetaTransaction` recovers
+ * signatures with `LibSignature.recover`, which accepts only the legacy
+ * `v ∈ {27, 28}` form — reject `v ∈ {0, 1}` upfront with a clear error
+ * rather than letting the simulation fail later.
  */
-export async function verifyMetaTxSignature(args: VerifyMetaTxSignatureArgs): Promise<StepResult> {
+export async function recoverMetaTxSigner(args: {
+  chainId: number;
+  escrowAddress: Address;
+  metaTx: BosonMetaTx;
+}): Promise<RecoverMetaTxSignerResult> {
   const { v, r, s } = args.metaTx.sig;
   if (v !== 27 && v !== 28) {
     return {
@@ -51,15 +60,15 @@ export async function verifyMetaTxSignature(args: VerifyMetaTxSignatureArgs): Pr
     },
   });
   const signature = packRsv(r as Hex, s as Hex, v);
-  let recovered: Address;
   try {
-    recovered = await recoverTypedDataAddress({
+    const recovered = await recoverTypedDataAddress({
       domain: typedData.domain,
       types: typedData.types,
       primaryType: typedData.primaryType,
       message: typedData.message,
       signature: signature as `0x${string}`,
     });
+    return { ok: true, recovered };
   } catch (e) {
     return {
       ok: false,
@@ -67,11 +76,25 @@ export async function verifyMetaTxSignature(args: VerifyMetaTxSignatureArgs): Pr
       reason: e instanceof Error ? `recovery failed: ${e.message}` : "recovery failed",
     };
   }
-  if (recovered.toLowerCase() !== args.buyer.toLowerCase()) {
+}
+
+/**
+ * Recover the meta-tx signer and confirm it matches `buyer`. Used by the
+ * `verify()` / `settle()` commit path where `metaTx.from === payload.buyer`
+ * is enforced.
+ */
+export async function verifyMetaTxSignature(args: VerifyMetaTxSignatureArgs): Promise<StepResult> {
+  const recovery = await recoverMetaTxSigner({
+    chainId: args.chainId,
+    escrowAddress: args.escrowAddress,
+    metaTx: args.metaTx,
+  });
+  if (!recovery.ok) return recovery;
+  if (recovery.recovered.toLowerCase() !== args.buyer.toLowerCase()) {
     return {
       ok: false,
       code: "BAD_META_TX_SIGNATURE",
-      reason: `recovered signer ${recovered} != payload.buyer ${args.buyer}`,
+      reason: `recovered signer ${recovery.recovered} != payload.buyer ${args.buyer}`,
     };
   }
   // The protocol uses `metaTx.from` as the from-address recovered from the

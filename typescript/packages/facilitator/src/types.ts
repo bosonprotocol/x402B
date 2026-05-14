@@ -10,10 +10,13 @@
 // stay framework-neutral.
 
 import type {
+  Address,
+  BosonTokenAuth,
   EscrowPaymentPayload,
   EscrowPaymentRequirements,
   EvmNetwork,
   Hex,
+  TokenAuthStrategy,
 } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 import { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
@@ -70,12 +73,54 @@ export type FacilitatorSettleResult =
   | { ok: true; exchangeId: string; txHash: Hex }
   | { ok: false; code: FacilitatorErrorCode; reason: string };
 
-/** Body of `POST /perform-action` (per spec §"Endpoints"). */
+/** Body of `POST /perform-action` (per spec §"Endpoints").
+ *
+ * Carries enough context for the facilitator to dispatch a post-commit
+ * meta-tx without re-fetching protocol state: `network` selects which
+ * relayer wallet / RPC to use, and `escrowAddress` is the Boson Diamond
+ * the signed meta-tx was bound to (its EIP-712 verifyingContract).
+ *
+ * `signedPayload` is the ABI-encoded `BosonMetaTx` tuple
+ * `(address from, string functionName, bytes functionSignature,
+ *   uint256 nonce, uint8 v, bytes32 r, bytes32 s)` —
+ * the buyer / seller's pre-signed envelope ready to be wrapped in
+ * `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
+ *
+ * Most post-commit actions are non-payable: the relayer just submits
+ * the meta-tx and `tokenAuthStrategy` defaults to `"none"`. The one
+ * exception today is `boson-escalateDispute`, which is `payable` on
+ * the Diamond. The BPIP-12 post-commit token-auth envelope is not wired
+ * yet, so `performAction()` returns `UNSUPPORTED_TOKEN_AUTH_STRATEGY`
+ * for `tokenAuthStrategy !== "none"` until that encoder ships.
+ */
 export interface FacilitatorPerformActionInput {
+  network: EvmNetwork;
+  escrowAddress: Address;
   exchangeId: string;
   action: ActionId;
-  /** Fully signed meta-tx envelope, as a 0x-prefixed hex blob. */
   signedPayload: Hex;
+  /**
+   * Defaults to `"none"`. Only `boson-escalateDispute` accepts non-`"none"`
+   * once the BPIP-12 post-commit envelope is wired.
+   */
+  tokenAuthStrategy?: TokenAuthStrategy;
+  /** Reserved for the future BPIP-12 post-commit envelope. Omit while strategy is `"none"`. */
+  tokenAuth?: BosonTokenAuth;
+  /**
+   * Reserved for the future BPIP-12 post-commit envelope. Omit while
+   * strategy is `"none"`.
+   */
+  asset?: Address;
+  /**
+   * Reserved for the future BPIP-12 post-commit envelope. Omit while
+   * strategy is `"none"`.
+   */
+  amount?: string;
+  /**
+   * Reserved for the future BPIP-12 post-commit envelope. Omit while
+   * strategy is `"none"`.
+   */
+  maxTimeoutSeconds?: number;
 }
 
 export type FacilitatorPerformActionResult =
@@ -99,6 +144,23 @@ export interface FacilitatorConfig {
   url: string;
   /** Networks the operator has provisioned a relayer wallet + RPC for. */
   supportedNetworks: readonly EvmNetwork[];
+  /**
+   * Server-side allowlist of trusted Boson Diamond addresses, keyed by
+   * `EvmNetwork`. The facilitator MUST resolve the on-chain target from
+   * this map rather than trusting client-supplied addresses — otherwise
+   * any contract on a supported chain that exposes a compatible
+   * `executeMetaTransaction(...)` selector could trick the relayer into
+   * sponsoring gas for non-Boson calls.
+   *
+   * `performAction()` consumes this today: it rejects requests for
+   * networks without an entry, and rejects requests whose body
+   * `escrowAddress` doesn't match the configured Diamond.
+   *
+   * Note: `verify()` and `settle()` still resolve the escrow from
+   * `input.requirements.escrowAddress` and should adopt the same
+   * allowlist check — tracked as a follow-up hardening.
+   */
+  escrows: Readonly<Record<EvmNetwork, Address>>;
   /** viem WalletClient — pays gas on settle / perform-action. Network must be in `supportedNetworks`. */
   walletClient: WalletClient;
   /** viem PublicClient — used to await receipts and read protocol state. */

@@ -11,10 +11,27 @@ for the wire format.
 
 ## Status
 
-**Partial implementation.** This package ships the public TypeScript
-surface, `FacilitatorChannelAdapter`, and an implemented `verify()`
-pre-flight path. `settle()` and `performAction()` still throw
-`NotImplementedError`; relayer submission lands in follow-up PRs.
+**Functional for `tokenAuthStrategy: "none"`.** All three library
+functions (`verify`, `settle`, `performAction`) are wired up:
+
+- `verify()` — structural validation, EIP-712 signature recovery for
+  the buyer's meta-tx and (for non-`"none"`) the token-auth payload,
+  plus an on-chain `eth_call` simulation pre-flight.
+- `settle()` — calls `verify`, builds the
+  `executeMetaTransaction(...)` envelope via `@bosonprotocol/x402-evm`,
+  submits via the configured `WalletClient`, awaits the receipt, and
+  extracts `exchangeId` from the `BuyerCommitted` event.
+- `performAction()` — same envelope + submit path for the eight
+  post-commit transitions (redeem / complete / cancel / revoke / raise
+  / retract / escalate / resolve dispute); returns the predicted
+  `newExchangeState` / `newDisputeState` from the static
+  `ACTION_POST_STATE` table so callers can update local state without a
+  subgraph round-trip.
+
+The BPIP-12 token-auth queue path (`erc3009` / `permit` / `permit2`)
+surfaces as `UNSUPPORTED_TOKEN_AUTH_STRATEGY` until
+`@bosonprotocol/x402-evm` ships the encoder. The atomic
+`boson-createOfferCommitAndRedeem` action is similarly blocked.
 
 ## What it does
 
@@ -65,9 +82,44 @@ import {
   type FacilitatorConfig,
 } from "@bosonprotocol/x402-facilitator";
 
-// v0.1: verify() is implemented; settle() and performAction() throw
-// NotImplementedError until relayer submission lands.
+const config: FacilitatorConfig = {
+  url: "https://facilitator.example",
+  supportedNetworks: ["eip155:1"],
+  // Server-side allowlist of trusted Boson Diamonds. `performAction()`
+  // rejects requests for unknown networks or for `escrowAddress`
+  // values that don't match the configured Diamond — prevents the
+  // facilitator from being abused as a generic gas sponsor for
+  // arbitrary contracts.
+  escrows: { "eip155:1": "0xBosonDiamondAddress…" },
+  walletClient, // viem WalletClient — relayer pays gas
+  publicClient, // viem PublicClient — used for eth_call + receipt waits
+};
+
+const verifyResult = await verify(
+  { scheme: "escrow", network: "eip155:1", payload, requirements },
+  config,
+);
+const settleResult = await settle(
+  { scheme: "escrow", network: "eip155:1", payload, requirements },
+  config,
+);
+const actionResult = await performAction(
+  {
+    network: "eip155:1",
+    escrowAddress: "0x…",
+    exchangeId: "42",
+    action: "boson-redeem",
+    signedPayload, // ABI-encoded BosonMetaTx, see encodeSignedPayload()
+  },
+  config,
+);
 ```
+
+`signedPayload` for `performAction` is the ABI-encoded tuple
+`(address from, string functionName, bytes functionSignature,
+uint256 nonce, uint8 v, bytes32 r, bytes32 s)` — i.e. a serialised
+`BosonMetaTx`. The package exports `encodeSignedPayload` and
+`decodeSignedPayload` helpers so client SDKs can share the codec.
 
 ## The `facilitator` channel
 
