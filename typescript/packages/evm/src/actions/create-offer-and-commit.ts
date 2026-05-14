@@ -30,6 +30,11 @@ import type { FullOfferArgs } from "@bosonprotocol/common";
 import { metaTx } from "@bosonprotocol/core-sdk";
 import type { Hex } from "viem";
 
+import {
+  DUMMY_CHAIN_ID,
+  DUMMY_METATX_HANDLER_ADDRESS,
+  DUMMY_NONCE,
+} from "../internal/metatx-calldata-constants.js";
 import { createCalldataOnlyWeb3LibAdapter } from "../internal/web3lib-stub.js";
 import type { InnerActionCalldata } from "../types.js";
 
@@ -42,15 +47,6 @@ export interface BuildCreateOfferAndCommitCalldataArgs {
    */
   fullOffer: FullOfferArgs;
 }
-
-// Dummy values for `chainId` / `metaTxHandlerAddress` / `nonce` — the SDK
-// requires them to build the meta-tx typed-data domain, but the
-// `{ functionName, functionSignature }` pair we read back is independent
-// of all three. Real values are unnecessary because we discard the
-// typed-data portion.
-const DUMMY_CHAIN_ID = 1;
-const DUMMY_METATX_HANDLER_ADDRESS = "0x0000000000000000000000000000000000000000";
-const DUMMY_NONCE = "0";
 
 const STUB_CALLER_TAG = "@bosonprotocol/x402-evm:create-offer-and-commit";
 

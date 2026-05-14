@@ -20,6 +20,11 @@ import type { FullOfferArgs } from "@bosonprotocol/common";
 import { metaTx } from "@bosonprotocol/core-sdk";
 import type { Hex } from "viem";
 
+import {
+  DUMMY_CHAIN_ID,
+  DUMMY_METATX_HANDLER_ADDRESS,
+  DUMMY_NONCE,
+} from "../internal/metatx-calldata-constants.js";
 import { createCalldataOnlyWeb3LibAdapter } from "../internal/web3lib-stub.js";
 import type { InnerActionCalldata } from "../types.js";
 
@@ -32,13 +37,6 @@ export interface BuildCreateOfferCommitAndRedeemCalldataArgs {
    */
   fullOffer: FullOfferArgs;
 }
-
-// See ./create-offer-and-commit.ts for the rationale: these are required
-// by the SDK's meta-tx domain build but irrelevant to the
-// `{ functionName, functionSignature }` pair we read back.
-const DUMMY_CHAIN_ID = 1;
-const DUMMY_METATX_HANDLER_ADDRESS = "0x0000000000000000000000000000000000000000";
-const DUMMY_NONCE = "0";
 
 const STUB_CALLER_TAG = "@bosonprotocol/x402-evm:create-offer-commit-and-redeem";
 

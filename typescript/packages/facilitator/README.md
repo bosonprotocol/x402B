@@ -11,8 +11,9 @@ for the wire format.
 
 ## Status
 
-**Functional for `tokenAuthStrategy: "none"`.** All three library
-functions (`verify`, `settle`, `performAction`) are wired up:
+**`verify` and `settle` support every `tokenAuthStrategy` (`none`,
+`erc3009`, `permit`, `permit2`). `performAction` is limited — see
+below.** All three library functions are wired up:
 
 - `verify()` — structural validation, EIP-712 signature recovery for
   the buyer's meta-tx and (for non-`"none"`) the token-auth payload,
