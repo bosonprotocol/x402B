@@ -111,11 +111,14 @@ export async function performAction(
       };
     }
 
-    // 6. Simulate.
+    // 6. Simulate. Post-commit transitions never carry a token-auth
+    //    queue — the relayer is just wrapping a buyer/seller-signed
+    //    meta-tx, so the "none" envelope path applies.
     const sim = await simulateExecuteMetaTransaction({
       escrowAddress,
       buyer: metaTx.from as `0x${string}`,
       metaTx,
+      tokenAuthStrategy: "none",
       publicClient: config.publicClient,
       relayerAddress: relayer,
     });

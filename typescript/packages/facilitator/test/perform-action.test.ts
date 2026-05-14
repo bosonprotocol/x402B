@@ -2,6 +2,8 @@ import { metaTransactionTypedData } from "@bosonprotocol/x402-core/eip712";
 import { ACTION_POST_STATE, type ActionId } from "@bosonprotocol/x402-core/state-machine";
 import { describe, expect, it } from "vitest";
 import {
+  BaseError,
+  RawContractError,
   parseSignature,
   type Address,
   type Hex,
@@ -78,7 +80,11 @@ function buildPublicClient(
   return {
     call: async () => {
       if (opts.callBehavior === "revert") {
-        throw new Error("execution reverted: simulated revert");
+        // Match viem's revert shape: a BaseError whose cause chain
+        // contains a RawContractError. simulate.ts walks this chain to
+        // classify SIMULATION_REVERT vs INTERNAL_ERROR.
+        const cause = new RawContractError({ message: "execution reverted: simulated revert" });
+        throw new BaseError("Execution reverted", { cause });
       }
       return { data: "0x" };
     },
