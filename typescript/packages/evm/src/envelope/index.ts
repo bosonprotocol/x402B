@@ -1,15 +1,16 @@
 // Public surface for `@bosonprotocol/x402-evm/envelope`.
 //
-// `buildExecuteMetaTransactionTx` targets the existing Boson
+// `buildExecuteMetaTransactionTx` targets the Boson
 // `MetaTransactionsHandlerFacet.executeMetaTransaction(...)` entrypoint —
-// supported today for `tokenAuthStrategy: "none"` flows where the buyer
-// has pre-approved the escrow contract.
+// used for `tokenAuthStrategy: "none"` flows where the buyer has
+// pre-approved the escrow contract.
 //
-// `buildExecuteMetaTransactionWithTokenAuthTx` is the BPIP-12 variant
-// (deferred); shipped as a throwing stub.
+// `buildExecuteMetaTransactionWithTokenAuthTx` targets the BPIP-12
+// variant `executeMetaTransactionWithTokenTransferAuthorization(...)`,
+// which accepts an ABI-encoded queue of token-transfer authorizations
+// (ERC-3009 / EIP-2612 Permit / Permit2) alongside the meta-tx.
 
 export type { TxRequest } from "../types.js";
-export { NotYetSupportedError } from "../errors.js";
 
 export {
   buildExecuteMetaTransactionTx,
@@ -19,4 +20,5 @@ export {
 export {
   buildExecuteMetaTransactionWithTokenAuthTx,
   type BuildExecuteMetaTransactionWithTokenAuthArgs,
-} from "./deferred-execute-with-token-auth.js";
+  type TransferAuthorization,
+} from "./execute-meta-transaction-with-token-auth.js";

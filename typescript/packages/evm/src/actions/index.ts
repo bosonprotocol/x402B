@@ -5,6 +5,12 @@
 // `metaTransactionTypedData` to produce the EIP-712 typed-data the buyer
 // signs.
 //
+// Two commit-time actions are supported:
+//   - `boson-createOfferAndCommit` (Flow A, deferred redeem) via
+//     `buildCreateOfferAndCommitCalldata`.
+//   - `boson-createOfferCommitAndRedeem` (Flow B, atomic commit+redeem)
+//     via `buildCreateOfferCommitAndRedeemCalldata`.
+//
 // Post-commit transitions (redeem / complete / cancel / revoke / raise /
 // retract / escalate / resolve) are intentionally absent: every one is
 // already covered by `@bosonprotocol/core-sdk`'s
@@ -13,7 +19,6 @@
 // (direct-call path). See the package README for the recommended call
 // patterns.
 
-export { NotYetSupportedError } from "../errors.js";
 export type { InnerActionCalldata, TxRequest } from "../types.js";
 
 export {
@@ -21,4 +26,7 @@ export {
   type BuildCreateOfferAndCommitCalldataArgs,
 } from "./create-offer-and-commit.js";
 
-export { buildCreateOfferCommitAndRedeemCalldata } from "./deferred-create-offer-commit-and-redeem.js";
+export {
+  buildCreateOfferCommitAndRedeemCalldata,
+  type BuildCreateOfferCommitAndRedeemCalldataArgs,
+} from "./create-offer-commit-and-redeem.js";

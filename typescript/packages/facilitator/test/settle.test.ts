@@ -18,6 +18,8 @@ import { settle } from "../src/settle/index.js";
 import type { FacilitatorConfig } from "../src/types.js";
 
 import {
+  AMOUNT,
+  ASSET,
   buildValidPayload,
   buildValidRequirements,
   buyer,
@@ -230,10 +232,10 @@ describe("settle()", () => {
   // The non-"none" token-auth path through settle requires a real
   // signed Permit / ERC-3009 / Permit2 payload AND a working
   // publicClient.readContract for the token-domain lookup. We exercise
-  // verify's signature-recovery on its own in verify.test.ts and the
-  // UNSUPPORTED_TOKEN_AUTH_STRATEGY mapping in the `buildSettleEnvelope`
-  // describe block below — together they cover the path without a real
-  // anvil fork.
+  // verify's signature-recovery on its own in verify.test.ts (including
+  // the happy-path BPIP-12 simulation for Permit2) and the
+  // `buildSettleEnvelope` describe block below covers the calldata-build
+  // side without a real anvil fork.
 
   it("returns ONCHAIN_REVERT when receipt status is reverted", async () => {
     const payload = await buildValidPayload();
@@ -305,7 +307,7 @@ describe("settle()", () => {
 });
 
 describe("buildSettleEnvelope", () => {
-  it("returns UNSUPPORTED_TOKEN_AUTH_STRATEGY for non-none strategies", async () => {
+  it("returns INVALID_PAYLOAD when a non-none strategy is requested but tokenAuth is missing", async () => {
     const { buildSettleEnvelope } = await import("../src/settle/build-envelope.js");
     const result = buildSettleEnvelope({
       escrowAddress: ESCROW,
@@ -319,7 +321,35 @@ describe("buildSettleEnvelope", () => {
       },
       strategy: "erc3009",
     });
-    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY" });
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("returns a TxRequest for tokenAuthStrategy 'permit2' with a valid tokenAuth", async () => {
+    const { buildSettleEnvelope } = await import("../src/settle/build-envelope.js");
+    const result = buildSettleEnvelope({
+      escrowAddress: ESCROW,
+      buyer: buyer.address,
+      metaTx: {
+        from: buyer.address,
+        nonce: "1",
+        functionName: "foo()",
+        functionSignature: "0xdeadbeef",
+        sig: { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
+      },
+      strategy: "permit2",
+      tokenAuth: {
+        kind: "permit2",
+        data: {
+          permitted: { token: ASSET, amount: AMOUNT },
+          spender: ESCROW,
+          nonce: "0",
+          deadline: Math.floor(Date.now() / 1000) + 300,
+          signature: `0x${"aa".repeat(32)}${"bb".repeat(32)}1b` as `0x${string}`,
+        },
+      },
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect((result as { ok: true; tx: { to: string; data: string } }).tx.to).toBe(ESCROW);
   });
 
   it("returns a TxRequest for tokenAuthStrategy 'none'", async () => {

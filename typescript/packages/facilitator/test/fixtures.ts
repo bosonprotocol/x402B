@@ -96,7 +96,7 @@ export const fullOffer = {
  * advertises.
  */
 export async function buildValidPayload(): Promise<EscrowPaymentPayload> {
-  const calldata = buildCreateOfferAndCommitCalldata({
+  const calldata = await buildCreateOfferAndCommitCalldata({
     fullOffer: fullOffer as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
   });
   const typedData = await metaTransactionTypedData({

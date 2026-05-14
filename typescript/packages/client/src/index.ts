@@ -22,7 +22,6 @@ export {
   FulfillmentValidationError,
   MaxAmountExceededError,
   NoCompatibleActionError,
-  NotImplementedError,
   UnsupportedSchemeError,
   UnsupportedTokenAuthError,
 } from "./errors.js";

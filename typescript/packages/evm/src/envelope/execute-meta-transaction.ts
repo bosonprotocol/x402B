@@ -17,14 +17,13 @@
 // shape the deployed protocol's `MetaTransactionsHandlerFacet` exposes —
 // no hand-mirrored ABI here.
 //
-// The BPIP-12 variant
-// `executeMetaTransactionWithTokenTransferAuthorization(...)` is intentionally
-// absent — it ships as a throwing stub in `./deferred-execute-with-token-auth.ts`
-// until core-sdk exposes the new ABI.
+// The BPIP-12 variant `executeMetaTransactionWithTokenTransferAuthorization(...)`
+// lives in the sibling `./execute-meta-transaction-with-token-auth.ts` module.
 
 import { metaTx } from "@bosonprotocol/core-sdk";
-import { concat, type Address, type Hex } from "viem";
+import type { Address, Hex } from "viem";
 
+import { packEcdsaSignature } from "../internal/signature-helpers.js";
 import type { TxRequest } from "../types.js";
 
 export interface BuildExecuteMetaTransactionArgs {
@@ -54,38 +53,4 @@ export function buildExecuteMetaTransactionTx(args: BuildExecuteMetaTransactionA
     [args.userAddress, args.functionName, args.functionSignature, args.nonce.toString(), packedSig],
   ) as Hex;
   return { to: args.escrowAddress, data };
-}
-
-/**
- * Pack a split ECDSA signature into the 65-byte `r ++ s ++ v` form the
- * contract's `LibSignature.recover` slices. `r` and `s` must each be exactly
- * a 32-byte hex word (no shortened representations — `LibSignature.recover`
- * does fixed-offset slicing and a malformed input would silently produce
- * revert-prone calldata). `v` must be 27 or 28 — the legacy Ethereum form;
- * we don't accept the 0/1 variant since the on-chain recover doesn't
- * normalise.
- */
-function packEcdsaSignature(sig: { r: Hex; s: Hex; v: number | bigint }): Hex {
-  assert32ByteHex(sig.r, "r");
-  assert32ByteHex(sig.s, "s");
-  const v = normalizeRecoveryId(sig.v);
-  if (v !== 27 && v !== 28) {
-    throw new Error(`@bosonprotocol/x402-evm: meta-tx signature v must be 27 or 28, got ${sig.v}`);
-  }
-  const vHex = `0x${v.toString(16).padStart(2, "0")}` as Hex;
-  return concat([sig.r, sig.s, vHex]);
-}
-
-const WORD32_RE = /^0x[0-9a-fA-F]{64}$/;
-
-function normalizeRecoveryId(v: number | bigint): number {
-  return typeof v === "bigint" ? Number(v) : v;
-}
-
-function assert32ByteHex(value: Hex, field: "r" | "s"): void {
-  if (!WORD32_RE.test(value)) {
-    throw new Error(
-      `@bosonprotocol/x402-evm: meta-tx signature ${field} must be a 32-byte hex value (0x-prefixed, 64 hex chars), got ${value}`,
-    );
-  }
 }

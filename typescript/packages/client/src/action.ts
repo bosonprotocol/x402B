@@ -1,25 +1,35 @@
 // Pick the on-chain Boson action to invoke from a parsed PaymentRequirements.
 //
-// MVP supports only `boson-createOfferAndCommit` (deferred-redeem path).
-// `boson-createOfferCommitAndRedeem` is not yet exposed by
-// `@bosonprotocol/core-sdk` and is rejected with `NotImplementedError` here
-// so callers learn early, rather than mid-signing.
+// Two commit-time actions are supported:
+//   - `boson-createOfferAndCommit` (Flow A, deferred redeem)
+//   - `boson-createOfferCommitAndRedeem` (Flow B, atomic commit+redeem)
+//
+// Selection rules:
+//   - `policy.redeemMode = "commit-only"`: require Flow A.
+//   - `policy.redeemMode = "auto"` (or unset): prefer Flow A, fall back to Flow B.
+//   - `policy.redeemMode = "commit-and-redeem"`: require Flow B; throw
+//     `NoCompatibleActionError` if the server hasn't advertised it.
+//
+// In "auto" mode we keep MVP behaviour (prefer Flow A whenever advertised)
+// so existing callers don't silently switch flows on the SDK upgrade. A
+// future policy could promote Flow B when both are offered, but that's a
+// separate change.
 
 import type {
   BosonCommitActionId,
   EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
 
-import { NoCompatibleActionError, NotImplementedError } from "./errors.js";
+import { NoCompatibleActionError } from "./errors.js";
 import type { Policy } from "./types.js";
 
-const SUPPORTED_ACTION: BosonCommitActionId = "boson-createOfferAndCommit";
-const UNSUPPORTED_ACTION: BosonCommitActionId = "boson-createOfferCommitAndRedeem";
+const FLOW_A: BosonCommitActionId = "boson-createOfferAndCommit";
+const FLOW_B: BosonCommitActionId = "boson-createOfferCommitAndRedeem";
 
 /**
- * Resolve the Boson commit-time action the client will sign. Throws if the
- * requested redeem mode is not yet implemented, or if the server hasn't
- * advertised a supported action over the server channel.
+ * Resolve the Boson commit-time action the client will sign. Throws
+ * `NoCompatibleActionError` when the server hasn't advertised any action
+ * compatible with the requested policy.
  */
 export function pickAction(
   requirements: EscrowPaymentRequirements,
@@ -27,29 +37,32 @@ export function pickAction(
 ): BosonCommitActionId {
   const redeemMode = policy?.redeemMode ?? "auto";
 
+  const flowAOffered = requirements.actions.next.some(
+    (a) => a.id === FLOW_A && a.channels.includes("server"),
+  );
+  const flowBOffered = requirements.actions.next.some(
+    (a) => a.id === FLOW_B && a.channels.includes("server"),
+  );
+
   if (redeemMode === "commit-and-redeem") {
-    throw new NotImplementedError(
-      `redeemMode='commit-and-redeem' requires core-sdk support for ${UNSUPPORTED_ACTION}, which is not yet wired`,
+    if (flowBOffered) return FLOW_B;
+    throw new NoCompatibleActionError(
+      `policy.redeemMode='commit-and-redeem' requires '${FLOW_B}' on the server channel; requirements only advertise [${requirements.actions.next.map((a) => a.id).join(", ")}]`,
     );
   }
 
-  const supported = requirements.actions.next.find(
-    (a) => a.id === SUPPORTED_ACTION && a.channels.includes("server"),
-  );
-  if (supported) {
-    return SUPPORTED_ACTION;
-  }
-
-  const unsupportedOnServer = requirements.actions.next.some(
-    (a) => a.id === UNSUPPORTED_ACTION && a.channels.includes("server"),
-  );
-  if (unsupportedOnServer) {
-    throw new NotImplementedError(
-      `server advertises ${UNSUPPORTED_ACTION}; client does not yet implement that action`,
+  if (redeemMode === "commit-only") {
+    if (flowAOffered) return FLOW_A;
+    throw new NoCompatibleActionError(
+      `policy.redeemMode='commit-only' requires '${FLOW_A}' on the server channel; requirements only advertise [${requirements.actions.next.map((a) => a.id).join(", ")}]`,
     );
   }
+
+  // "auto": prefer Flow A when present, but fall back to Flow B.
+  if (flowAOffered) return FLOW_A;
+  if (flowBOffered) return FLOW_B;
 
   throw new NoCompatibleActionError(
-    `no '${SUPPORTED_ACTION}' action with 'server' channel found in requirements.actions.next`,
+    `no commit-time action ('${FLOW_A}' or '${FLOW_B}') with 'server' channel found in requirements.actions.next`,
   );
 }

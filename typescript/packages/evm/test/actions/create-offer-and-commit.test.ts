@@ -58,24 +58,24 @@ const baseOffer: FullOfferArgs = {
 };
 
 describe("buildCreateOfferAndCommitCalldata", () => {
-  it("returns the pinned functionName literal core-sdk hashes against", () => {
-    const out = buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
+  it("returns the pinned functionName literal core-sdk hashes against", async () => {
+    const out = await buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
     expect(out.functionName).toBe(EXPECTED_FUNCTION_NAME);
   });
 
-  it("functionSignature byte-matches core-sdk's exchanges.iface.encodeCreateOfferAndCommit", () => {
-    const out = buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
+  it("functionSignature byte-matches core-sdk's exchanges.iface.encodeCreateOfferAndCommit", async () => {
+    const out = await buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
     expect(out.functionSignature).toBe(exchanges.iface.encodeCreateOfferAndCommit(baseOffer));
   });
 
-  it("emits a 0x-prefixed lowercase hex string", () => {
-    const out = buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
+  it("emits a 0x-prefixed lowercase hex string", async () => {
+    const out = await buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
     expect(out.functionSignature).toMatch(/^0x[0-9a-f]+$/);
   });
 
-  it("is deterministic for fixed inputs", () => {
-    const a = buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
-    const b = buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
+  it("is deterministic for fixed inputs", async () => {
+    const a = await buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
+    const b = await buildCreateOfferAndCommitCalldata({ fullOffer: baseOffer });
     expect(a).toEqual(b);
   });
 });
