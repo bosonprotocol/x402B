@@ -37,3 +37,4 @@ export type {
   SignedPostCommitAction,
   SimplePostCommitArgs,
 } from "./post-commit.js";
+export { signerFromEthersAdapter, type Web3LibAdapterLike } from "./signer-from-adapter.js";

@@ -1,0 +1,161 @@
+import { describe, expect, it } from "vitest";
+import { recoverTypedDataAddress, type TypedDataDomain } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+
+import { signerFromEthersAdapter, type Web3LibAdapterLike } from "../src/signer-from-adapter.js";
+
+const TEST_KEY = `0x${"42".repeat(32)}` as const;
+const account = privateKeyToAccount(TEST_KEY);
+
+const fullDomain: TypedDataDomain = {
+  name: "Test",
+  version: "1",
+  chainId: 8453,
+  verifyingContract: "0xdddddddddddddddddddddddddddddddddddddddd",
+};
+
+const types = {
+  Mail: [
+    { name: "from", type: "address" },
+    { name: "to", type: "address" },
+    { name: "contents", type: "string" },
+  ],
+} as const;
+
+const message = {
+  from: account.address,
+  to: "0x1111111111111111111111111111111111111111",
+  contents: "hello",
+} as const;
+
+/**
+ * Build a mock `Web3LibAdapterLike` that records every `send(...)` call and
+ * signs typed-data internally with the wrapped viem account — mirroring
+ * what `EthersAdapter.send("eth_signTypedData_v4", [from, json])` does end
+ * to end.
+ */
+function buildMockAdapter(): {
+  adapter: Web3LibAdapterLike;
+  calls: { method: string; params: readonly unknown[] }[];
+} {
+  const calls: { method: string; params: readonly unknown[] }[] = [];
+  const adapter: Web3LibAdapterLike = {
+    getSignerAddress: async () => account.address,
+    send: async (method, params) => {
+      calls.push({ method, params });
+      if (method !== "eth_signTypedData_v4") {
+        throw new Error(`unexpected method: ${method}`);
+      }
+      const [, raw] = params as [string, string];
+      const { domain, types: parsedTypes, primaryType, message: msg } = JSON.parse(raw);
+      const { EIP712Domain: _ignored, ...rest } = parsedTypes as Record<string, unknown>;
+      return account.signTypedData({
+        domain,
+        types: rest as Parameters<typeof account.signTypedData>[0]["types"],
+        primaryType,
+        message: msg,
+      });
+    },
+  };
+  return { adapter, calls };
+}
+
+describe("signerFromEthersAdapter", () => {
+  it("getAddress() returns the wrapped adapter's signer address", async () => {
+    const { adapter } = buildMockAdapter();
+    const signer = signerFromEthersAdapter(adapter);
+    expect(await signer.getAddress()).toBe(account.address);
+  });
+
+  it("signTypedData() round-trips through the adapter and recovers the signer", async () => {
+    const { adapter, calls } = buildMockAdapter();
+    const signer = signerFromEthersAdapter(adapter);
+    const sig = await signer.signTypedData({
+      domain: fullDomain,
+      types,
+      primaryType: "Mail",
+      message,
+    });
+    const recovered = await recoverTypedDataAddress({
+      domain: fullDomain,
+      types,
+      primaryType: "Mail",
+      message,
+      signature: sig,
+    });
+    expect(recovered.toLowerCase()).toBe(account.address.toLowerCase());
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.method).toBe("eth_signTypedData_v4");
+    expect(calls[0]!.params[0]).toBe(account.address);
+    expect(typeof calls[0]!.params[1]).toBe("string");
+  });
+
+  it("derives EIP712Domain entries from a full 4-field domain in canonical order", async () => {
+    const { adapter, calls } = buildMockAdapter();
+    const signer = signerFromEthersAdapter(adapter);
+    await signer.signTypedData({ domain: fullDomain, types, primaryType: "Mail", message });
+    const parsed = JSON.parse(calls[0]!.params[1] as string) as {
+      types: { EIP712Domain: { name: string; type: string }[] };
+    };
+    expect(parsed.types.EIP712Domain).toEqual([
+      { name: "name", type: "string" },
+      { name: "version", type: "string" },
+      { name: "chainId", type: "uint256" },
+      { name: "verifyingContract", type: "address" },
+    ]);
+  });
+
+  it("omits absent domain fields from the derived EIP712Domain type list", async () => {
+    const { adapter, calls } = buildMockAdapter();
+    const signer = signerFromEthersAdapter(adapter);
+    const partialDomain: TypedDataDomain = { name: "Test", chainId: 8453 };
+    await signer.signTypedData({
+      domain: partialDomain,
+      types,
+      primaryType: "Mail",
+      message,
+    });
+    const parsed = JSON.parse(calls[0]!.params[1] as string) as {
+      types: { EIP712Domain: { name: string; type: string }[] };
+      domain: TypedDataDomain;
+    };
+    expect(parsed.types.EIP712Domain).toEqual([
+      { name: "name", type: "string" },
+      { name: "chainId", type: "uint256" },
+    ]);
+    expect(parsed.domain).toEqual(partialDomain);
+  });
+
+  it("includes a salt entry when the domain carries one", async () => {
+    const { adapter, calls } = buildMockAdapter();
+    const signer = signerFromEthersAdapter(adapter);
+    const saltDomain: TypedDataDomain = {
+      name: "Test",
+      salt: `0x${"ab".repeat(32)}`,
+    };
+    await signer.signTypedData({
+      domain: saltDomain,
+      types,
+      primaryType: "Mail",
+      message,
+    });
+    const parsed = JSON.parse(calls[0]!.params[1] as string) as {
+      types: { EIP712Domain: { name: string; type: string }[] };
+    };
+    expect(parsed.types.EIP712Domain).toEqual([
+      { name: "name", type: "string" },
+      { name: "salt", type: "bytes32" },
+    ]);
+  });
+
+  it("rejects when adapter.send returns a non-hex value", async () => {
+    const adapter: Web3LibAdapterLike = {
+      getSignerAddress: async () => account.address,
+      send: async () => 42,
+    };
+    const signer = signerFromEthersAdapter(adapter);
+    await expect(
+      signer.signTypedData({ domain: fullDomain, types, primaryType: "Mail", message }),
+    ).rejects.toThrow(/0x-prefixed signature string/);
+  });
+});
