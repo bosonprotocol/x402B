@@ -74,12 +74,12 @@ export async function performAction(
 
     // 3. Action/calldata validation. The request body is only metadata; the
     //    signed payload decides what the relayer will actually submit.
-    const action = validatePerformActionMetaTx({
+    const validation = validatePerformActionMetaTx({
       action: input.action,
       exchangeId: input.exchangeId,
       metaTx,
     });
-    if (!action.ok) return action;
+    if (!validation.ok) return validation;
 
     // 4. Resolve and validate token-auth strategy. BPIP-12 post-commit
     //    token-auth envelopes are not wired yet, so non-"none" fails
