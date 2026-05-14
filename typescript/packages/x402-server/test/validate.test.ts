@@ -268,6 +268,35 @@ describe("validatePaymentPayload — rule failures", () => {
     expect(result).toMatchObject({ ok: false, rule: 11, code: "TOKEN_AUTH_SPENDER_MISMATCH" });
   });
 
+  it("rules 9–11 — defensive default: rejects an unknown token-auth strategy", async () => {
+    // zod narrows `tokenAuth.kind` to the discriminated union, so a
+    // well-formed wire payload can't reach the default branch. Cast
+    // through `unknown` to simulate a malformed payload that bypassed
+    // validation and assert the switch fails closed rather than
+    // implicitly returning `undefined`.
+    const fx = await makePaymentFixture({ tokenAuthStrategy: "erc3009" });
+    const requirementsWithMystery = {
+      ...fx.requirements,
+      tokenAuthStrategies: [...fx.requirements.tokenAuthStrategies, "mystery"],
+    } as unknown as typeof fx.requirements;
+    const tampered = JSON.parse(JSON.stringify(fx.payload)) as typeof fx.payload;
+    (tampered.payload as { tokenAuthStrategy: string }).tokenAuthStrategy = "mystery";
+    if (tampered.payload.tokenAuth) {
+      (tampered.payload.tokenAuth as { kind: string }).kind = "mystery";
+    }
+    const result = await validatePaymentPayload({
+      payload: tampered,
+      requirements: requirementsWithMystery,
+      chainId: CHAIN_ID,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      rule: 9,
+      code: "TOKEN_AUTH_UNKNOWN_STRATEGY",
+      field: "payload.tokenAuth.kind",
+    });
+  });
+
   it("rule 13 — rejects missing fulfillment when required", async () => {
     const fx = await makePaymentFixture();
     const result = await validatePaymentPayload({

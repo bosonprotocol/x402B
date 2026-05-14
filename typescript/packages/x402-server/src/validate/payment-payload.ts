@@ -56,6 +56,7 @@ export type ValidationErrorCode =
   | "TOKEN_AUTH_DEADLINE_EXCEEDED"
   | "TOKEN_AUTH_MISSING"
   | "TOKEN_AUTH_UNEXPECTED"
+  | "TOKEN_AUTH_UNKNOWN_STRATEGY"
   | "FULFILLMENT_REQUIRED"
   | "FULFILLMENT_OPTION_NOT_ADVERTISED"
   | "FULFILLMENT_DATA_INVALID";
@@ -423,6 +424,19 @@ function checkTokenAuthRules(
       }
       return null;
     }
+    default:
+      // Defensive: zod narrows `tokenAuth.kind` to the discriminated
+      // union above, so the runtime should never reach this branch.
+      // Fail closed if a malformed payload bypasses the parser rather
+      // than implicitly returning `undefined` (which the caller treats
+      // as `=== null` and would silently pass through to rule 13).
+      return failure(
+        9,
+        "TOKEN_AUTH_UNKNOWN_STRATEGY",
+        "payload.tokenAuth.kind",
+        "erc3009 | permit | permit2",
+        (tokenAuth as { kind: string }).kind,
+      );
   }
 }
 
