@@ -13,8 +13,8 @@
 // without an SDK round-trip, and the type-list is fixed by Permit2's
 // deployed contract — so this module keeps the canonical address +
 // type-list hand-defined as Uniswap protocol constants. A KAT
-// cross-validation test (`permit2.sdk-parity.test.ts`) asserts the
-// type-list matches the SDK's internal one, catching drift.
+// cross-validation test (`sdk-parity.test.ts`) asserts the type-list
+// matches the SDK's internal one, catching drift.
 //
 // `@x402/evm`'s public `./exact/client` exposes `createPermit2ApprovalTx`
 // and `getPermit2AllowanceReadParams` (re-exported below).

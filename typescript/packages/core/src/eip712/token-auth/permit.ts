@@ -9,9 +9,9 @@
 // via an on-chain `nonces(owner)` call before signing. The verification path
 // needs a caller-supplied nonce (so it can rebuild the digest the buyer
 // signed without going on-chain), so this module keeps a standalone
-// typed-data builder. A KAT cross-validation test
-// (`permit.sdk-parity.test.ts`) asserts the type-list matches the SDK's
-// internal one, catching drift if either side ever changes.
+// typed-data builder. A KAT cross-validation test (`sdk-parity.test.ts`)
+// asserts the type-list matches the SDK's internal one, catching drift if
+// either side ever changes.
 
 import { hashTypedData, recoverTypedDataAddress, type Address, type Hex } from "viem";
 

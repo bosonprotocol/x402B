@@ -12,8 +12,8 @@
 // before returning typed-data. The verification path needs a caller-supplied
 // nonce (so it can rebuild the digest the buyer signed), so this module
 // keeps a standalone typed-data builder. A KAT cross-validation test
-// (`erc3009.sdk-parity.test.ts`) asserts the type-list matches the SDK's
-// internal one, catching drift if either side ever changes.
+// (`sdk-parity.test.ts`) asserts the type-list matches the SDK's internal
+// one, catching drift if either side ever changes.
 
 import { hashTypedData, recoverTypedDataAddress, type Address, type Hex } from "viem";
 
