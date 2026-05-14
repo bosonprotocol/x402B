@@ -32,4 +32,9 @@ export { resolveFulfillment, type ResolvedFulfillment } from "./fulfillment.js";
 export { parseChainId } from "./core-sdk-factory.js";
 export { parsePaymentResponse } from "./response.js";
 export { createX402bClient, type X402bClient } from "./client.js";
-export type { ResolveDisputeArgs, SignActionArgs, SimplePostCommitArgs } from "./post-commit.js";
+export type {
+  ResolveDisputeArgs,
+  SignActionArgs,
+  SignedPostCommitAction,
+  SimplePostCommitArgs,
+} from "./post-commit.js";
