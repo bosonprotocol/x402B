@@ -154,6 +154,33 @@ describe("verify()", () => {
     expect(result).toMatchObject({ ok: false, code: "TOKEN_AUTH_NOT_IN_REQUIREMENTS" });
   });
 
+  it("rejects when the network has no configured escrow allowlist entry", async () => {
+    const payload = await buildValidPayload();
+    const requirements = buildValidRequirements();
+    const config = buildConfig();
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      { ...config, escrows: {} },
+    );
+    expect(result).toMatchObject({ ok: false, code: "NETWORK_MISMATCH" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(/no escrow configured/i);
+  });
+
+  it("rejects when requirements.escrowAddress is not the configured Diamond", async () => {
+    const payload = await buildValidPayload();
+    const ATTACKER_CONTRACT: Address = "0xcafecafecafecafecafecafecafecafecafecafe";
+    // The seller advertised a different escrow than the operator's
+    // allowlist — could be a malicious seller trying to direct the
+    // relayer at an arbitrary contract.
+    const requirements = { ...buildValidRequirements(), escrowAddress: ATTACKER_CONTRACT };
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(/not the configured Diamond/i);
+  });
+
   it("rejects when payload.offerRef does not match requirements.offer", async () => {
     const payload = await buildValidPayload();
     payload.payload.offerRef.fullOffer = { ...fullOffer, price: "2" };
