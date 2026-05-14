@@ -238,7 +238,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
 
-  typescript/packages/x402-server:
+  typescript/packages/server:
     dependencies:
       '@bosonprotocol/common':
         specifier: ^1.32.2
@@ -278,14 +278,14 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)
 
-  typescript/packages/x402-server-express:
+  typescript/packages/server-express:
     dependencies:
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../core
       '@bosonprotocol/x402-server':
         specifier: workspace:^
-        version: link:../x402-server
+        version: link:../server
     devDependencies:
       '@bosonprotocol/x402-actions':
         specifier: workspace:^

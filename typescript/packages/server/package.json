@@ -6,9 +6,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/bosonprotocol/x402B.git",
-    "directory": "typescript/packages/x402-server"
+    "directory": "typescript/packages/server"
   },
-  "homepage": "https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/x402-server",
+  "homepage": "https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/server",
   "bugs": {
     "url": "https://github.com/bosonprotocol/x402B/issues"
   },
