@@ -145,8 +145,8 @@ export async function validatePaymentPayload(
   // Rule 7 — functionSignature byte-equals the calldata reconstructed
   // from offerRef. Only enforced for `boson-createOfferAndCommit`
   // (Flow A); Flow B's builder still throws `NotYetSupportedError`.
-  const rule7 = checkRule7(payload);
-  if (rule7 !== null) return rule7;
+  const calldataResult = checkFunctionSignatureAndCalldataEquality(payload);
+  if (calldataResult !== null) return calldataResult;
 
   // Rule 8 — meta-tx signer recovers to payload.buyer === metaTx.from.
   if (payload.payload.buyer.toLowerCase() !== payload.payload.metaTx.from.toLowerCase()) {
@@ -207,7 +207,16 @@ export async function validatePaymentPayload(
   return { ok: true };
 }
 
-function checkRule7(payload: EscrowPaymentPayload): ValidatePaymentPayloadResult | null {
+/**
+ * Validate that `payload.metaTx.functionName` + `functionSignature`
+ * byte-equal the calldata reconstructed from the payload's
+ * `offerRef.fullOffer` + `sellerSig`. Tracks spec rule 7 today;
+ * named for what it checks rather than its rule number so the
+ * function survives any future renumbering of the spec.
+ */
+function checkFunctionSignatureAndCalldataEquality(
+  payload: EscrowPaymentPayload,
+): ValidatePaymentPayloadResult | null {
   const action = payload.payload.action;
   if (action === "boson-createOfferAndCommit") {
     const fullOfferWithSig = {
