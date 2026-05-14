@@ -98,7 +98,7 @@ export async function verify(
     });
     if (!offerRef.ok) return offerRef;
 
-    const calldata = validateMetaTxCalldataMatchesRequirements({
+    const calldata = await validateMetaTxCalldataMatchesRequirements({
       payload: input.payload,
       requirements: input.requirements,
     });
@@ -181,6 +181,7 @@ export async function verify(
       buyer: inner.buyer as `0x${string}`,
       metaTx: inner.metaTx,
       tokenAuthStrategy: inner.tokenAuthStrategy,
+      tokenAuth: inner.tokenAuth,
       publicClient: config.publicClient,
       relayerAddress: relayer,
     });

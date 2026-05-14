@@ -121,7 +121,7 @@ async function buildBuyerPayload() {
     escrow: ESCROW,
     chainId: CHAIN_ID,
   });
-  const calldata = buildCreateOfferAndCommitCalldata({
+  const calldata = await buildCreateOfferAndCommitCalldata({
     fullOffer: {
       ...offerRef.fullOffer,
       signature: offerRef.sellerSig,
@@ -199,9 +199,8 @@ async function buildBuyerPayload() {
 
 describe("mountX402b — convenience routes", () => {
   // The fixture signs the Flow A meta-tx (`boson-createOfferAndCommit`)
-  // because `@bosonprotocol/x402-evm`'s atomic Flow B builder still
-  // throws `NotYetSupportedError`. We test the matching `/commit`
-  // route here; a Flow B happy-path test lands once the builder ships.
+  // and exercises the matching `/commit` route here. Flow B
+  // (`/commit-and-redeem`) has its own happy-path test below.
   it("POST /x402b/commit returns 200 + nextActions", async () => {
     const { requirements, headerValue } = await buildBuyerPayload();
     const server = await buildServer(

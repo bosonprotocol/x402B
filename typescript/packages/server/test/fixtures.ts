@@ -113,7 +113,7 @@ export async function makePaymentFixture(
   });
 
   const fullOfferWithSig = { ...offerRef.fullOffer, signature: offerRef.sellerSig };
-  const calldata = buildCreateOfferAndCommitCalldata({
+  const calldata = await buildCreateOfferAndCommitCalldata({
     fullOffer: fullOfferWithSig as Parameters<
       typeof buildCreateOfferAndCommitCalldata
     >[0]["fullOffer"],

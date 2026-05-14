@@ -10,13 +10,14 @@ import type { Address, Hex, PublicClient, TypedDataDomain, TypedDataParameter } 
  * Decision the buyer's policy makes about the on-chain redemption phase, **independent
  * of when the resource is delivered off-chain**.
  *
- *  - `"auto"`     — default. MVP picks the deferred `boson-createOfferAndCommit`
- *                   path; later iterations may pick atomic commit+redeem when both
- *                   are advertised.
+ *  - `"auto"`     — default. Prefers the deferred `boson-createOfferAndCommit`
+ *                   path when advertised; falls back to atomic commit+redeem.
  *  - `"commit-only"` — explicitly want the deferred path; buyer (or another agent)
  *                      will redeem later.
- *  - `"commit-and-redeem"` — explicitly want atomic on-chain commit+redeem. Not
- *                            implemented in MVP — throws `NotImplementedError`.
+ *  - `"commit-and-redeem"` — explicitly want atomic on-chain commit+redeem;
+ *                            requires the server to advertise
+ *                            `boson-createOfferCommitAndRedeem` on the server channel,
+ *                            otherwise throws `NoCompatibleActionError`.
  */
 export type RedeemMode = "auto" | "commit-only" | "commit-and-redeem";
 

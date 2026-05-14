@@ -28,10 +28,13 @@ functions (`verify`, `settle`, `performAction`) are wired up:
   `ACTION_POST_STATE` table so callers can update local state without a
   subgraph round-trip.
 
-The BPIP-12 token-auth queue path (`erc3009` / `permit` / `permit2`)
-surfaces as `UNSUPPORTED_TOKEN_AUTH_STRATEGY` until
-`@bosonprotocol/x402-evm` ships the encoder. The atomic
-`boson-createOfferCommitAndRedeem` action is similarly blocked.
+All four `tokenAuthStrategy` paths (`none`, `erc3009`, `permit`,
+`permit2`) and both commit-time actions (`boson-createOfferAndCommit`
+and `boson-createOfferCommitAndRedeem`) are supported in `verify` and
+`settle`. `performAction` does not yet wrap the BPIP-12 envelope for
+buyer-driven post-commit actions that pair a meta-tx with a token-auth
+deposit (e.g. `escalateDispute` with a non-`none` strategy); those
+surface as `UNSUPPORTED_TOKEN_AUTH_STRATEGY` for now.
 
 ## What it does
 

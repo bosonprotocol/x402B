@@ -422,7 +422,7 @@ describe("verify()", () => {
     expect((result as { ok: false; reason: string }).reason).toContain("ECONNREFUSED");
   });
 
-  it("returns UNSUPPORTED_TOKEN_AUTH_STRATEGY for valid token-auth while BPIP-12 simulation is deferred", async () => {
+  it("simulates the BPIP-12 envelope for a valid permit2 token-auth and returns ok", async () => {
     const payload = await buildValidPayload();
     payload.payload.tokenAuthStrategy = "permit2";
     payload.payload.tokenAuth = await buildValidPermit2TokenAuth();
@@ -431,6 +431,6 @@ describe("verify()", () => {
       { scheme: "escrow", network: NETWORK, payload, requirements },
       buildConfig(),
     );
-    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY" });
+    expect(result).toMatchObject({ ok: true });
   });
 });

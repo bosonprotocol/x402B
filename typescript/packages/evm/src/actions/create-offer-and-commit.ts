@@ -2,28 +2,35 @@
 // the "deferred-redemption" Boson action (Flow A in
 // docs/boson-impl-02-flows.md).
 //
-// This is the *inner* action a buyer authorises through a Boson meta-tx
-// envelope. The output is the `{ functionName, functionSignature }` pair
-// that goes into the meta-tx typed-data the buyer signs, as built by
-// `@bosonprotocol/x402-core/eip712`'s `metaTransactionTypedData`.
+// Returns the `{ functionName, functionSignature }` pair the buyer's
+// meta-tx typed-data is built over — same pair the on-chain
+// `MetaTransactionsHandlerFacet` recovers signatures against.
 //
-// `functionSignature` reuses `@bosonprotocol/core-sdk`'s
-// `exchanges.iface.encodeCreateOfferAndCommit` so the bytes are
-// byte-identical to what the protocol's `MetaTransactionsHandlerFacet`
-// recovers and replays on-chain.
+// Implementation note: rather than hand-pin the `functionName` selector
+// string and call `exchanges.iface.encodeCreateOfferAndCommit` here
+// directly, we delegate the whole pair to
+// `@bosonprotocol/core-sdk`'s `metaTx.handler.signMetaTxCreateOfferAndCommit`
+// in `returnTypedDataToSign: true` mode. That's the *same* helper the
+// client uses to sign, so both signing and verification source the
+// `functionName` literal + `functionSignature` bytes from one place.
+// If a future SDK release changes either, both paths track the change
+// automatically — no drift between what the buyer signed and what the
+// verifier reconstructs.
 //
-// `functionName` is hand-pinned to the exact selector string core-sdk's
-// own `metaTx.handler.signMetaTxCreateOfferAndCommit` uses internally —
-// the EIP-712 meta-tx hash includes it as a `string`, so any byte-level
-// drift would cause the buyer's signature to recover to the wrong address
-// on-chain. Inlined rather than exported as a constant: callers that need
-// it read it back off the return value, and a stale exported constant
-// would be the easiest way to introduce drift.
+// In `returnTypedDataToSign: true` mode the SDK:
+//   - runs the same yup validation the signing path runs (good — same
+//     check on both sides of the wire);
+//   - calls `storeMetadataOnTheGraph` and `storeMetadataItems`, both of
+//     which are no-ops when `metadataStorage` and `theGraphStorage`
+//     are omitted;
+//   - never invokes any method on the supplied `web3Lib`, which is
+//     why a throwing-stub adapter is safe here.
 
-import { exchanges } from "@bosonprotocol/core-sdk";
 import type { FullOfferArgs } from "@bosonprotocol/common";
+import { metaTx } from "@bosonprotocol/core-sdk";
 import type { Hex } from "viem";
 
+import { createCalldataOnlyWeb3LibAdapter } from "../internal/web3lib-stub.js";
 import type { InnerActionCalldata } from "../types.js";
 
 export interface BuildCreateOfferAndCommitCalldataArgs {
@@ -36,18 +43,38 @@ export interface BuildCreateOfferAndCommitCalldataArgs {
   fullOffer: FullOfferArgs;
 }
 
+// Dummy values for `chainId` / `metaTxHandlerAddress` / `nonce` — the SDK
+// requires them to build the meta-tx typed-data domain, but the
+// `{ functionName, functionSignature }` pair we read back is independent
+// of all three. Real values are unnecessary because we discard the
+// typed-data portion.
+const DUMMY_CHAIN_ID = 1;
+const DUMMY_METATX_HANDLER_ADDRESS = "0x0000000000000000000000000000000000000000";
+const DUMMY_NONCE = "0";
+
+const STUB_CALLER_TAG = "@bosonprotocol/x402-evm:create-offer-and-commit";
+
 /**
  * Build the `{ functionName, functionSignature }` calldata pair for the
- * `createOfferAndCommit` inner action. Pass the result into
- * `@bosonprotocol/x402-core/eip712`'s `metaTransactionTypedData` to get
- * the EIP-712 typed-data the buyer signs.
+ * `createOfferAndCommit` inner action by delegating to core-sdk. The
+ * result feeds `@bosonprotocol/x402-core/eip712`'s
+ * `metaTransactionTypedData` builder to produce the EIP-712 typed-data
+ * the buyer signs.
  */
-export function buildCreateOfferAndCommitCalldata(
+export async function buildCreateOfferAndCommitCalldata(
   args: BuildCreateOfferAndCommitCalldataArgs,
-): InnerActionCalldata {
+): Promise<InnerActionCalldata> {
+  const result = await metaTx.handler.signMetaTxCreateOfferAndCommit({
+    web3Lib: createCalldataOnlyWeb3LibAdapter(STUB_CALLER_TAG),
+    metaTxHandlerAddress: DUMMY_METATX_HANDLER_ADDRESS,
+    chainId: DUMMY_CHAIN_ID,
+    nonce: DUMMY_NONCE,
+    createOfferAndCommitArgs: args.fullOffer,
+    returnTypedDataToSign: true,
+  });
+
   return {
-    functionName:
-      "createOfferAndCommit(((uint256,uint256,uint256,uint256,uint256,uint256,address,uint8,uint8,string,string,bool,uint256,(address[],uint256[])[],uint256),(uint256,uint256,uint256,uint256),(uint256,uint256,uint256),(uint256,address),(uint8,uint8,address,uint8,uint256,uint256,uint256,uint256),uint256,uint256,bool),address,address,bytes,uint256,(uint256,(address[],uint256[]),address))",
-    functionSignature: exchanges.iface.encodeCreateOfferAndCommit(args.fullOffer) as Hex,
+    functionName: result.functionName,
+    functionSignature: result.functionSignature as Hex,
   };
 }

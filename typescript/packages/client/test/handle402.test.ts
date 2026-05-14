@@ -21,11 +21,7 @@ import { recoverTypedDataAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { createX402bClient } from "../src/client.js";
-import {
-  MaxAmountExceededError,
-  NotImplementedError,
-  UnsupportedTokenAuthError,
-} from "../src/errors.js";
+import { MaxAmountExceededError, UnsupportedTokenAuthError } from "../src/errors.js";
 import type { Signer } from "../src/types.js";
 
 const TEST_KEY = `0x${"42".repeat(32)}` as const;
@@ -223,11 +219,27 @@ describe("handle402 — round-trip", () => {
     expect(recovered.toLowerCase()).toBe(BUYER_ACCOUNT.address.toLowerCase());
   });
 
-  it("rejects requirements offering only boson-createOfferCommitAndRedeem with NotImplementedError", async () => {
+  it("signs Flow B when redeemMode='commit-and-redeem' and the server advertises boson-createOfferCommitAndRedeem", async () => {
     const requirements = baseRequirements();
     requirements.actions.next = [{ id: "boson-createOfferCommitAndRedeem", channels: ["server"] }];
-    const client = makeClient();
-    await expect(client.handle402(requirements)).rejects.toThrow(NotImplementedError);
+    const client = createX402bClient({
+      signer: BUYER_SIGNER,
+      tokenDomainResolver: async (asset, chainId) => ({
+        name: "USD Coin",
+        version: "2",
+        chainId,
+        verifyingContract: asset,
+      }),
+      policy: { redeemMode: "commit-and-redeem" },
+    });
+    const header = await client.handle402(requirements);
+    const decoded = parseEscrowPaymentPayload(
+      JSON.parse(Buffer.from(header, "base64").toString("utf8")),
+    );
+    expect(decoded.payload.action).toBe("boson-createOfferCommitAndRedeem");
+    expect(decoded.payload.metaTx.functionName.startsWith("createOfferCommitAndRedeem(")).toBe(
+      true,
+    );
   });
 
   it("rejects requirements that only advertise the 'none' strategy (no client-side signing)", async () => {

@@ -20,7 +20,10 @@ import { pickAction } from "./action.js";
 import { createCoreSdkFactory } from "./core-sdk-factory.js";
 import { resolveFulfillment } from "./fulfillment.js";
 import { assembleAndEncodePayload } from "./payload.js";
-import { signCreateOfferAndCommitMetaTx } from "./pre-commit.js";
+import {
+  signCreateOfferAndCommitMetaTx,
+  signCreateOfferCommitAndRedeemMetaTx,
+} from "./pre-commit.js";
 import {
   signPostCommitAction,
   type SignActionArgs,
@@ -98,11 +101,11 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
         publicClient: config.publicClients?.[chainId],
       });
 
-      const metaTx = await signCreateOfferAndCommitMetaTx({
-        requirements,
-        coreSdk,
-        buyer,
-      });
+      const signMetaTx =
+        action === "boson-createOfferCommitAndRedeem"
+          ? signCreateOfferCommitAndRedeemMetaTx
+          : signCreateOfferAndCommitMetaTx;
+      const metaTx = await signMetaTx({ requirements, coreSdk, buyer });
 
       return assembleAndEncodePayload({
         requirements,

@@ -58,11 +58,6 @@ export async function handleCommit(
 /**
  * Flow B — `boson-createOfferCommitAndRedeem`. Same pipeline as
  * `handleCommit` but verifies the exchange reached `REDEEMED`.
- *
- * NOTE: until contracts PR #1105 lands, the underlying calldata
- * builder in `@bosonprotocol/x402-evm` still throws
- * `NotYetSupportedError`; rule 7 in `validatePaymentPayload` is a
- * no-op for this action and the route is essentially plumbing-only.
  */
 export async function handleCommitAndRedeem(
   input: CommitHandlerInput,

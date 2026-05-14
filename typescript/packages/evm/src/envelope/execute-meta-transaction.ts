@@ -17,10 +17,8 @@
 // shape the deployed protocol's `MetaTransactionsHandlerFacet` exposes —
 // no hand-mirrored ABI here.
 //
-// The BPIP-12 variant
-// `executeMetaTransactionWithTokenTransferAuthorization(...)` is intentionally
-// absent — it ships as a throwing stub in `./deferred-execute-with-token-auth.ts`
-// until core-sdk exposes the new ABI.
+// The BPIP-12 variant `executeMetaTransactionWithTokenTransferAuthorization(...)`
+// lives in the sibling `./execute-meta-transaction-with-token-auth.ts` module.
 
 import { metaTx } from "@bosonprotocol/core-sdk";
 import { concat, type Address, type Hex } from "viem";

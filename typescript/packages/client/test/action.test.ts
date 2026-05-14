@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 
 import { pickAction } from "../src/action.js";
-import { NoCompatibleActionError, NotImplementedError } from "../src/errors.js";
+import { NoCompatibleActionError } from "../src/errors.js";
 
 function baseRequirements(): EscrowPaymentRequirements {
   return {
@@ -37,16 +37,26 @@ describe("pickAction", () => {
     expect(pickAction(req, { redeemMode: "commit-only" })).toBe("boson-createOfferAndCommit");
   });
 
-  it("throws NotImplementedError for redeemMode='commit-and-redeem'", () => {
-    const req = baseRequirements();
-    req.actions.next = [{ id: "boson-createOfferAndCommit", channels: ["server"] }];
-    expect(() => pickAction(req, { redeemMode: "commit-and-redeem" })).toThrow(NotImplementedError);
-  });
-
-  it("throws NotImplementedError when boson-createOfferCommitAndRedeem is offered over the server channel", () => {
+  it("returns boson-createOfferCommitAndRedeem for redeemMode='commit-and-redeem' when advertised", () => {
     const req = baseRequirements();
     req.actions.next = [{ id: "boson-createOfferCommitAndRedeem", channels: ["server"] }];
-    expect(() => pickAction(req)).toThrow(NotImplementedError);
+    expect(pickAction(req, { redeemMode: "commit-and-redeem" })).toBe(
+      "boson-createOfferCommitAndRedeem",
+    );
+  });
+
+  it("throws NoCompatibleActionError for redeemMode='commit-and-redeem' when only Flow A is advertised", () => {
+    const req = baseRequirements();
+    req.actions.next = [{ id: "boson-createOfferAndCommit", channels: ["server"] }];
+    expect(() => pickAction(req, { redeemMode: "commit-and-redeem" })).toThrow(
+      NoCompatibleActionError,
+    );
+  });
+
+  it("falls back to boson-createOfferCommitAndRedeem in 'auto' mode when only Flow B is advertised", () => {
+    const req = baseRequirements();
+    req.actions.next = [{ id: "boson-createOfferCommitAndRedeem", channels: ["server"] }];
+    expect(pickAction(req)).toBe("boson-createOfferCommitAndRedeem");
   });
 
   it("throws NoCompatibleActionError when boson-createOfferAndCommit is offered but only over non-server channels", () => {

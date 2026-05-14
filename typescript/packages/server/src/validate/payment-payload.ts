@@ -11,11 +11,9 @@
 // composition layer (PR 4) runs it as part of `verifyExchange`.
 //
 // Rule 7 byte-compares `payload.metaTx.functionSignature` against
-// calldata reconstructed from `payload.offerRef`. The reconstruction
-// path for `boson-createOfferCommitAndRedeem` (Flow B) is gated on
-// `@bosonprotocol/x402-evm`'s atomic builder which still throws
-// `NotYetSupportedError` pending contracts PR #1105; until that builder
-// exists, Flow B fails closed rather than accepting unchecked calldata.
+// calldata reconstructed from `payload.offerRef`. Both commit-time
+// actions are supported: `boson-createOfferAndCommit` (Flow A) and
+// `boson-createOfferCommitAndRedeem` (Flow B).
 
 import { recoverMetaTransactionSigner } from "@bosonprotocol/x402-core/eip712";
 import type {
@@ -23,7 +21,10 @@ import type {
   EscrowPaymentRequirements,
   FulfillmentOption,
 } from "@bosonprotocol/x402-core/schemes/escrow";
-import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm";
+import {
+  buildCreateOfferAndCommitCalldata,
+  buildCreateOfferCommitAndRedeemCalldata,
+} from "@bosonprotocol/x402-evm";
 import type { Address as ViemAddress, Hex as ViemHex } from "viem";
 
 type BuilderFullOffer = Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"];
@@ -144,9 +145,8 @@ export async function validatePaymentPayload(
   }
 
   // Rule 7 — functionSignature byte-equals the calldata reconstructed
-  // from offerRef. Only enforced for `boson-createOfferAndCommit`
-  // (Flow A); Flow B's builder still throws `NotYetSupportedError`.
-  const calldataResult = checkFunctionSignatureAndCalldataEquality(payload);
+  // from offerRef. Both commit-time actions are validated.
+  const calldataResult = await checkFunctionSignatureAndCalldataEquality(payload);
   if (calldataResult !== null) return calldataResult;
 
   // Rule 8 — meta-tx signer recovers to payload.buyer === metaTx.from.
@@ -215,76 +215,74 @@ export async function validatePaymentPayload(
  * named for what it checks rather than its rule number so the
  * function survives any future renumbering of the spec.
  */
-function checkFunctionSignatureAndCalldataEquality(
+async function checkFunctionSignatureAndCalldataEquality(
   payload: EscrowPaymentPayload,
-): ValidatePaymentPayloadResult | null {
+): Promise<ValidatePaymentPayloadResult | null> {
   const action = payload.payload.action;
-  if (action === "boson-createOfferAndCommit") {
-    const fullOfferWithSig = {
-      ...payload.payload.offerRef.fullOffer,
-      signature: payload.payload.offerRef.sellerSig,
-    } as unknown as BuilderFullOffer;
+  const buildCalldata =
+    action === "boson-createOfferAndCommit"
+      ? buildCreateOfferAndCommitCalldata
+      : action === "boson-createOfferCommitAndRedeem"
+        ? buildCreateOfferCommitAndRedeemCalldata
+        : undefined;
 
-    let expected: ReturnType<typeof buildCreateOfferAndCommitCalldata>;
-    try {
-      expected = buildCreateOfferAndCommitCalldata({ fullOffer: fullOfferWithSig });
-    } catch (e) {
-      return failure(
-        7,
-        "CALLDATA_MISMATCH",
-        "payload.metaTx.functionSignature",
-        undefined,
-        undefined,
-        (e as Error).message,
-      );
-    }
-
-    if (expected.functionName !== payload.payload.metaTx.functionName) {
-      return failure(
-        7,
-        "CALLDATA_MISMATCH",
-        "payload.metaTx.functionName",
-        expected.functionName,
-        payload.payload.metaTx.functionName,
-      );
-    }
-    if (
-      expected.functionSignature.toLowerCase() !==
-      payload.payload.metaTx.functionSignature.toLowerCase()
-    ) {
-      return failure(
-        7,
-        "CALLDATA_MISMATCH",
-        "payload.metaTx.functionSignature",
-        expected.functionSignature,
-        payload.payload.metaTx.functionSignature,
-      );
-    }
-    return null;
-  }
-  if (action === "boson-createOfferCommitAndRedeem") {
+  if (!buildCalldata) {
+    // Other actions (boson-redeem, dispute/*, etc.) aren't commit-time;
+    // they have their own meta-tx encodings outside this scheme's
+    // payment-payload validator. If we ever see one here it's a config
+    // bug — the action wouldn't have been listed in
+    // requirements.actions.next at commit time.
     return failure(
       7,
       "CALLDATA_MISMATCH",
       "payload.action",
-      "supported calldata reconstruction",
+      "boson-createOfferAndCommit | boson-createOfferCommitAndRedeem",
       action,
-      "calldata reconstruction for boson-createOfferCommitAndRedeem is gated on contracts PR #1105 (NotYetSupportedError in @bosonprotocol/x402-evm)",
+      "rule-7 calldata reconstruction is only defined for commit-time actions",
     );
   }
-  // Other actions (boson-redeem, dispute/*, etc.) aren't commit-time;
-  // they have their own meta-tx encodings outside this scheme's
-  // payment-payload validator. If we ever see one here it's a config
-  // bug — the action wouldn't have been listed in
-  // requirements.actions.next at commit time.
-  return failure(
-    7,
-    "CALLDATA_MISMATCH",
-    "payload.action",
-    "boson-createOfferAndCommit | boson-createOfferCommitAndRedeem",
-    action,
-    "rule-7 calldata reconstruction is only defined for commit-time actions",
-  );
+
+  const fullOfferWithSig = {
+    ...payload.payload.offerRef.fullOffer,
+    signature: payload.payload.offerRef.sellerSig,
+  } as unknown as BuilderFullOffer;
+
+  let expected: { functionName: string; functionSignature: string };
+  try {
+    expected = await buildCalldata({ fullOffer: fullOfferWithSig });
+  } catch (e) {
+    return failure(
+      7,
+      "CALLDATA_MISMATCH",
+      "payload.metaTx.functionSignature",
+      undefined,
+      undefined,
+      (e as Error).message,
+    );
+  }
+
+  if (expected.functionName !== payload.payload.metaTx.functionName) {
+    return failure(
+      7,
+      "CALLDATA_MISMATCH",
+      "payload.metaTx.functionName",
+      expected.functionName,
+      payload.payload.metaTx.functionName,
+    );
+  }
+  if (
+    expected.functionSignature.toLowerCase() !==
+    payload.payload.metaTx.functionSignature.toLowerCase()
+  ) {
+    return failure(
+      7,
+      "CALLDATA_MISMATCH",
+      "payload.metaTx.functionSignature",
+      expected.functionSignature,
+      payload.payload.metaTx.functionSignature,
+    );
+  }
+  return null;
 }
 
 function checkTokenAuthRules(

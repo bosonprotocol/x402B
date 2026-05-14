@@ -3,9 +3,11 @@
 // Pipeline:
 //   1. Run `verify()` first — bail on any failure.
 //   2. Build the outer envelope via @bosonprotocol/x402-evm, dispatching
-//      on payload.tokenAuthStrategy. The `"none"` path is functional;
-//      the BPIP-12 token-auth queue path surfaces as
-//      UNSUPPORTED_TOKEN_AUTH_STRATEGY until x402-evm ships the encoder.
+//      on payload.tokenAuthStrategy. The `"none"` path uses
+//      `executeMetaTransaction`; ERC-3009 / Permit / Permit2 use the
+//      BPIP-12 `executeMetaTransactionWithTokenTransferAuthorization`
+//      with the buyer's signed authorization lifted into a single-entry
+//      queue.
 //   3. Submit via the configured WalletClient (relayer pays gas).
 //   4. Await the receipt; an on-chain revert surfaces as ONCHAIN_REVERT.
 //   5. Parse `BuyerCommitted` from the receipt to extract `exchangeId`.
@@ -45,6 +47,7 @@ export async function settle(
       buyer: inner.buyer as `0x${string}`,
       metaTx: inner.metaTx,
       strategy: inner.tokenAuthStrategy,
+      tokenAuth: inner.tokenAuth,
     });
     if (!envelope.ok) return envelope;
 
