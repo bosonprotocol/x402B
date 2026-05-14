@@ -201,6 +201,40 @@ describe("createFacilitatorClient", () => {
     });
   });
 
+  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) when 2xx JSON doesn't match the result shape", async () => {
+    // A buggy / malicious facilitator could return any 2xx JSON; without
+    // the runtime guard, `parsed as Res` would slip an off-shape body
+    // straight through to the caller.
+    const stub = makeStubFetch(() => ({
+      status: 200,
+      body: { exchangeId: "42" }, // missing `ok` discriminator + `txHash`
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    await expect(client.settle(settleInput)).rejects.toMatchObject({
+      name: "FacilitatorHttpError",
+      code: "BAD_RESPONSE_BODY",
+      status: 200,
+    });
+  });
+
+  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) on partial perform-action success body", async () => {
+    // `ok: true` for /perform-action requires `txHash` + `newExchangeState`.
+    // A response that drops `newExchangeState` would otherwise typecheck
+    // away to undefined at the call site.
+    const stub = makeStubFetch(() => ({
+      status: 200,
+      body: { ok: true, txHash: "0xabc" }, // newExchangeState missing
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    await expect(client.performAction(performActionInput)).rejects.toMatchObject({
+      name: "FacilitatorHttpError",
+      code: "BAD_RESPONSE_BODY",
+      status: 200,
+    });
+  });
+
   it("strips a trailing slash from `url`", async () => {
     const stub = makeStubFetch(() => ({ body: { ok: true } }));
     const client = createFacilitatorClient({ url: `${BASE_URL}/`, fetch: stub.fetch });

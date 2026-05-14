@@ -64,7 +64,11 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
   const baseUrl = opts.url.replace(/\/+$/, "");
   const baseHeaders = { "content-type": "application/json", ...(opts.headers ?? {}) };
 
-  const post = async <Req, Res>(path: string, body: Req): Promise<Res> => {
+  const post = async <Req, Res>(
+    path: string,
+    body: Req,
+    validate: (parsed: unknown) => parsed is Res,
+  ): Promise<Res> => {
     let res: Awaited<ReturnType<FetchLike>>;
     try {
       res = await fetchImpl(`${baseUrl}${path}`, {
@@ -113,18 +117,74 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
       );
     }
 
-    return parsed as Res;
+    if (!validate(parsed)) {
+      throw new FacilitatorHttpError(`facilitator returned unexpected body shape (${path})`, {
+        code: "BAD_RESPONSE_BODY",
+        status: res.status,
+      });
+    }
+    return parsed;
   };
 
   return {
-    verify: (input) => post<FacilitatorVerifyInput, FacilitatorVerifyResult>("/verify", input),
-    settle: (input) => post<FacilitatorSettleInput, FacilitatorSettleResult>("/settle", input),
+    verify: (input) =>
+      post<FacilitatorVerifyInput, FacilitatorVerifyResult>("/verify", input, isVerifyResult),
+    settle: (input) =>
+      post<FacilitatorSettleInput, FacilitatorSettleResult>("/settle", input, isSettleResult),
     performAction: (input) =>
       post<FacilitatorPerformActionInput, FacilitatorPerformActionResult>(
         `/perform-action?action=${encodeURIComponent(input.action)}`,
         input,
+        isPerformActionResult,
       ),
   };
+}
+
+// --- Response-shape type guards ----------------------------------------
+//
+// A buggy or malicious facilitator could return any 2xx JSON; without a
+// runtime check, `parsed as Res` would silently slip an unexpected shape
+// past the type system and the convenience handlers (PR 4) would
+// dereference fields that aren't there. These guards mirror the
+// discriminated unions in `@bosonprotocol/x402-facilitator`'s types and
+// fail any response that doesn't fit — surfaced as
+// `BAD_RESPONSE_BODY` so the caller treats it as a transport-layer
+// failure rather than a domain answer.
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object";
+}
+
+/** Failure branch is identical across all three endpoints. */
+function isFailureBranch(v: Record<string, unknown>): boolean {
+  return v.ok === false && typeof v.code === "string" && typeof v.reason === "string";
+}
+
+function isVerifyResult(parsed: unknown): parsed is FacilitatorVerifyResult {
+  if (!isObject(parsed)) return false;
+  if (parsed.ok === true) return true; // `{ ok: true }` carries no further fields
+  return isFailureBranch(parsed);
+}
+
+function isSettleResult(parsed: unknown): parsed is FacilitatorSettleResult {
+  if (!isObject(parsed)) return false;
+  if (parsed.ok === true) {
+    return typeof parsed.exchangeId === "string" && typeof parsed.txHash === "string";
+  }
+  return isFailureBranch(parsed);
+}
+
+function isPerformActionResult(parsed: unknown): parsed is FacilitatorPerformActionResult {
+  if (!isObject(parsed)) return false;
+  if (parsed.ok === true) {
+    if (typeof parsed.txHash !== "string") return false;
+    if (typeof parsed.newExchangeState !== "string") return false;
+    if (parsed.newDisputeState !== undefined && typeof parsed.newDisputeState !== "string") {
+      return false;
+    }
+    return true;
+  }
+  return isFailureBranch(parsed);
 }
 
 function extractFacilitatorCode(body: unknown): FacilitatorErrorCode | undefined {
