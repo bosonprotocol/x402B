@@ -32,7 +32,8 @@ export interface BuildTokenAuthArgs {
   requirements: EscrowPaymentRequirements;
   buyer: Address;
   coreSdk: CoreSDK;
-  tokenDomainResolver: TokenDomainResolver;
+  /** Required for ERC-3009 and EIP-2612 Permit; not used by Permit2. */
+  tokenDomainResolver?: TokenDomainResolver;
   /** Optional PublicClient for the requirements' chain. Required for Permit. */
   publicClient?: PublicClient;
   now?: () => number;
@@ -61,16 +62,33 @@ export async function buildAndSignTokenAuth(args: BuildTokenAuthArgs): Promise<B
 
   switch (chosen) {
     case "erc3009": {
-      const data = await signErc3009(args);
+      if (!args.tokenDomainResolver) {
+        throw new UnsupportedTokenAuthError(
+          "server advertises 'erc3009' but no tokenDomainResolver is configured — pass tokenDomainResolver in X402bClientConfig",
+        );
+      }
+      const data = await signErc3009({
+        ...args,
+        tokenDomainResolver: args.tokenDomainResolver,
+      });
       return { strategy: "erc3009", tokenAuth: { kind: "erc3009", data } };
     }
     case "permit": {
+      if (!args.tokenDomainResolver) {
+        throw new UnsupportedTokenAuthError(
+          "server advertises 'permit' but no tokenDomainResolver is configured — pass tokenDomainResolver in X402bClientConfig",
+        );
+      }
       if (!args.publicClient) {
         throw new UnsupportedTokenAuthError(
           "server advertises 'permit' but no PublicClient is configured for this chain — pass publicClients in X402bClientConfig",
         );
       }
-      const data = await signPermit({ ...args, publicClient: args.publicClient });
+      const data = await signPermit({
+        ...args,
+        tokenDomainResolver: args.tokenDomainResolver,
+        publicClient: args.publicClient,
+      });
       return { strategy: "permit", tokenAuth: { kind: "permit", data } };
     }
     case "permit2": {

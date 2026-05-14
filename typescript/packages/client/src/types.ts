@@ -1,7 +1,6 @@
 // Public configuration types for `createX402bClient`. The `Signer` interface
 // is defined here (rather than under `src/signer/`) so the config types can
-// reference it without forcing consumers to install or import from a
-// secondary subpath; the `./signer` subpath re-exports it for ergonomics.
+// reference it without forcing consumers through a secondary subpath.
 
 import type { ClientState } from "@bosonprotocol/x402-core/state-machine";
 import type { TokenEip712Domain } from "@bosonprotocol/x402-core/eip712/token-auth";
@@ -36,9 +35,9 @@ export interface FulfillmentConfig {
 
 /**
  * Resolves the EIP-712 domain a given ERC-20 publishes for ERC-3009 /
- * EIP-2612 signatures. Tokens are not on-chain queried by the client in
- * MVP — callers must provide this resolver (often a small in-memory lookup
- * table keyed by `(chainId, asset)`).
+ * EIP-2612 signatures. Callers usually provide a small in-memory lookup
+ * table keyed by `(chainId, asset)`. Permit2 does not use the token's
+ * EIP-712 domain and can be signed without this resolver.
  */
 export type TokenDomainResolver = (
   asset: Address,

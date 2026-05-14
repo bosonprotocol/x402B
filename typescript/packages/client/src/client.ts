@@ -29,7 +29,7 @@ import {
 import { parsePaymentResponse } from "./response.js";
 import { buildAndSignTokenAuth } from "./token-auth/index.js";
 import { MaxAmountExceededError } from "./errors.js";
-import type { ExchangeSummary, TokenDomainResolver, X402bClientConfig } from "./types.js";
+import type { ExchangeSummary, X402bClientConfig } from "./types.js";
 
 export interface X402bClient {
   /**
@@ -71,7 +71,6 @@ export interface X402bClient {
  * cached across calls — both `handle402` and `signAction` reuse it.
  */
 export function createX402bClient(config: X402bClientConfig): X402bClient {
-  const tokenDomainResolver: TokenDomainResolver | undefined = config.tokenDomainResolver;
   const buildCoreSdk = createCoreSdkFactory(config.signer, config);
 
   const getBuyerAddress = async () => (await config.signer.getAddress()) as Address;
@@ -86,16 +85,6 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
       enforceMaxAmount(requirements.amount, config.policy?.maxAmount);
       const buyer = await getBuyerAddress();
 
-      if (!tokenDomainResolver) {
-        // Defensive: ERC-3009 and EIP-2612 Permit both need the token's
-        // EIP-712 domain. Fail fast rather than at signing time. Permit2
-        // doesn't need this, but the resolver is cheap to require and
-        // simplifies the contract.
-        throw new Error(
-          "x402-client: tokenDomainResolver is required (ERC-3009 and EIP-2612 Permit need the token EIP-712 domain)",
-        );
-      }
-
       const { coreSdk, chainId } = buildCoreSdk(
         requirements.network,
         requirements.escrowAddress as Address,
@@ -105,7 +94,7 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
         requirements,
         buyer,
         coreSdk,
-        tokenDomainResolver,
+        tokenDomainResolver: config.tokenDomainResolver,
         publicClient: config.publicClients?.[chainId],
       });
 

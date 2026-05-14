@@ -244,10 +244,16 @@ describe("handle402 — round-trip", () => {
     await expect(client.handle402(requirements)).rejects.toThrow(UnsupportedTokenAuthError);
   });
 
-  it("signs Permit2 when the server advertises only 'permit2'", async () => {
+  it("rejects 'erc3009' when no tokenDomainResolver is configured", async () => {
+    const requirements = baseRequirements();
+    const client = createX402bClient({ signer: BUYER_SIGNER });
+    await expect(client.handle402(requirements)).rejects.toThrow(UnsupportedTokenAuthError);
+  });
+
+  it("signs Permit2 when the server advertises only 'permit2', without tokenDomainResolver", async () => {
     const requirements = baseRequirements();
     requirements.tokenAuthStrategies = ["permit2"];
-    const client = makeClient();
+    const client = createX402bClient({ signer: BUYER_SIGNER });
     const header = await client.handle402(requirements);
     const decoded = parseEscrowPaymentPayload(
       JSON.parse(Buffer.from(header, "base64").toString("utf8")),
