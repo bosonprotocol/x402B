@@ -17,6 +17,7 @@
 // in `getTypesForEIP712Domain`.
 
 import {
+  getAddress,
   serializeTypedData,
   type Address,
   type Hex,
@@ -45,10 +46,11 @@ export interface Web3LibAdapterLike {
  * `EIP712Domain` type list) and routes it through `adapter.send`.
  */
 export function signerFromEthersAdapter(adapter: Web3LibAdapterLike): Signer {
+  const resolveAddress = async (): Promise<Address> => getAddress(await adapter.getSignerAddress());
   return {
-    getAddress: async () => (await adapter.getSignerAddress()) as Address,
+    getAddress: resolveAddress,
     signTypedData: async ({ domain, types, primaryType, message }) => {
-      const from = await adapter.getSignerAddress();
+      const from = await resolveAddress();
       const typedData = {
         domain,
         types: { ...types, EIP712Domain: deriveEip712DomainType(domain) },

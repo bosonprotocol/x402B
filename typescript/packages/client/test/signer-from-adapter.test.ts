@@ -28,6 +28,15 @@ const message = {
   contents: "hello",
 } as const;
 
+const EXPECTED_FULL_EIP712_DOMAIN = [
+  { name: "name", type: "string" },
+  { name: "version", type: "string" },
+  { name: "chainId", type: "uint256" },
+  { name: "verifyingContract", type: "address" },
+] as const;
+
+const HEX_SIGNATURE_ERROR = /hex signature string/;
+
 /**
  * Build a mock `Web3LibAdapterLike` that records every `send(...)` call and
  * signs typed-data internally with the wrapped viem account — mirroring
@@ -96,12 +105,7 @@ describe("signerFromEthersAdapter", () => {
     const parsed = JSON.parse(calls[0]!.params[1] as string) as {
       types: { EIP712Domain: { name: string; type: string }[] };
     };
-    expect(parsed.types.EIP712Domain).toEqual([
-      { name: "name", type: "string" },
-      { name: "version", type: "string" },
-      { name: "chainId", type: "uint256" },
-      { name: "verifyingContract", type: "address" },
-    ]);
+    expect(parsed.types.EIP712Domain).toEqual(EXPECTED_FULL_EIP712_DOMAIN);
   });
 
   it("omits absent domain fields from the derived EIP712Domain type list", async () => {
@@ -196,7 +200,7 @@ describe("signerFromEthersAdapter", () => {
     const signer = signerFromEthersAdapter(adapter);
     await expect(
       signer.signTypedData({ domain: fullDomain, types, primaryType: "Mail", message }),
-    ).rejects.toThrow(/hex signature string/);
+    ).rejects.toThrow(HEX_SIGNATURE_ERROR);
   });
 
   it("rejects when adapter.send returns a 0x-prefixed string with non-hex chars", async () => {
@@ -207,7 +211,29 @@ describe("signerFromEthersAdapter", () => {
     const signer = signerFromEthersAdapter(adapter);
     await expect(
       signer.signTypedData({ domain: fullDomain, types, primaryType: "Mail", message }),
-    ).rejects.toThrow(/hex signature string/);
+    ).rejects.toThrow(HEX_SIGNATURE_ERROR);
+  });
+
+  it("rejects when adapter.getSignerAddress returns a malformed address", async () => {
+    const adapter: Web3LibAdapterLike = {
+      getSignerAddress: async () => "not-an-address",
+      send: async () => `0x${"00".repeat(65)}`,
+    };
+    const signer = signerFromEthersAdapter(adapter);
+    await expect(signer.getAddress()).rejects.toThrow();
+    await expect(
+      signer.signTypedData({ domain: fullDomain, types, primaryType: "Mail", message }),
+    ).rejects.toThrow();
+  });
+
+  it("checksums a lowercase address returned by the adapter", async () => {
+    const lowercase = account.address.toLowerCase();
+    const adapter: Web3LibAdapterLike = {
+      getSignerAddress: async () => lowercase,
+      send: async () => `0x${"00".repeat(65)}`,
+    };
+    const signer = signerFromEthersAdapter(adapter);
+    expect(await signer.getAddress()).toBe(account.address);
   });
 
   it("derived EIP712Domain wins over a caller-supplied entry of the same name", async () => {
@@ -226,11 +252,6 @@ describe("signerFromEthersAdapter", () => {
     const parsed = JSON.parse(calls[0]!.params[1] as string) as {
       types: { EIP712Domain: { name: string; type: string }[] };
     };
-    expect(parsed.types.EIP712Domain).toEqual([
-      { name: "name", type: "string" },
-      { name: "version", type: "string" },
-      { name: "chainId", type: "uint256" },
-      { name: "verifyingContract", type: "address" },
-    ]);
+    expect(parsed.types.EIP712Domain).toEqual(EXPECTED_FULL_EIP712_DOMAIN);
   });
 });
