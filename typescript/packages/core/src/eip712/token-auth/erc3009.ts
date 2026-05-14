@@ -7,9 +7,13 @@
 // on-chain function name and primary type differ. The shape is fixed by
 // EIP-3009 and hasn't changed since the standard was published.
 //
-// `@x402/evm@2.11.0` defines the same type-list internally as
-// `authorizationTypes.TransferWithAuthorization` but does NOT publicly export
-// it from `@x402/evm/exact/client`, so we hand-mirror the standard.
+// `@bosonprotocol/core-sdk` exposes the same type-list internally inside
+// `signReceiveWithErc3009Authorization` but auto-generates the `nonce`
+// before returning typed-data. The verification path needs a caller-supplied
+// nonce (so it can rebuild the digest the buyer signed), so this module
+// keeps a standalone typed-data builder. A KAT cross-validation test
+// (`erc3009.sdk-parity.test.ts`) asserts the type-list matches the SDK's
+// internal one, catching drift if either side ever changes.
 
 import { hashTypedData, recoverTypedDataAddress, type Address, type Hex } from "viem";
 

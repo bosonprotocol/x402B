@@ -1,10 +1,17 @@
 // EIP-712 typed-data builder for EIP-2612 `Permit`.
 //
-// `@x402/evm@2.11.0` does not expose the EIP-2612 Permit type definition
-// (it's reserved for that package's internal sign-permit flow inside the
-// exact scheme), so this module hand-mirrors the standard 5-field shape:
+// Hand-mirrors the standard 5-field shape
 //   Permit(address owner, address spender, uint256 value, uint256 nonce, uint256 deadline)
 // which is identical across every well-implemented EIP-2612 token.
+//
+// `@bosonprotocol/core-sdk` exposes the same type-list internally inside
+// `signReceiveWithErc2612Permit` but auto-fetches the `nonce` from the token
+// via an on-chain `nonces(owner)` call before signing. The verification path
+// needs a caller-supplied nonce (so it can rebuild the digest the buyer
+// signed without going on-chain), so this module keeps a standalone
+// typed-data builder. A KAT cross-validation test
+// (`permit.sdk-parity.test.ts`) asserts the type-list matches the SDK's
+// internal one, catching drift if either side ever changes.
 
 import { hashTypedData, recoverTypedDataAddress, type Address, type Hex } from "viem";
 

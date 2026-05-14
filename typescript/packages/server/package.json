@@ -70,8 +70,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@bosonprotocol/common": "^1.32.2",
-    "@bosonprotocol/core-sdk": "1.47.1-alpha.0",
+    "@bosonprotocol/common": "1.33.0-alpha.2",
+    "@bosonprotocol/core-sdk": "1.48.0-alpha.1",
     "@bosonprotocol/x402-actions": "workspace:^",
     "@bosonprotocol/x402-core": "workspace:^",
     "@bosonprotocol/x402-evm": "workspace:^",

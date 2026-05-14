@@ -87,21 +87,28 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
       const buyer = await getBuyerAddress();
 
       if (!tokenDomainResolver) {
-        // Defensive: ERC-3009 is the only MVP strategy and it needs the
-        // token's EIP-712 domain. Fail fast rather than at signing time.
+        // Defensive: ERC-3009 and EIP-2612 Permit both need the token's
+        // EIP-712 domain. Fail fast rather than at signing time. Permit2
+        // doesn't need this, but the resolver is cheap to require and
+        // simplifies the contract.
         throw new Error(
-          "x402-client: tokenDomainResolver is required for MVP (ERC-3009 needs the token EIP-712 domain)",
+          "x402-client: tokenDomainResolver is required (ERC-3009 and EIP-2612 Permit need the token EIP-712 domain)",
         );
       }
+
+      const { coreSdk, chainId } = buildCoreSdk(
+        requirements.network,
+        requirements.escrowAddress as Address,
+      );
 
       const { tokenAuth, strategy } = await buildAndSignTokenAuth({
         requirements,
         buyer,
-        signer: config.signer,
+        coreSdk,
         tokenDomainResolver,
+        publicClient: config.publicClients?.[chainId],
       });
 
-      const { coreSdk } = buildCoreSdk(requirements.network, requirements.escrowAddress as Address);
       const metaTx = await signCreateOfferAndCommitMetaTx({
         requirements,
         coreSdk,

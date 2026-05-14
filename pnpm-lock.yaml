@@ -4,6 +4,8 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+packageExtensionsChecksum: sha256-WnxqdW1oCTJDfZcPfniM7S89+vZ8E4mKFYWgK7JIihQ=
+
 importers:
 
   .:
@@ -61,11 +63,11 @@ importers:
   typescript/packages/client:
     dependencies:
       '@bosonprotocol/common':
-        specifier: ^1.32.2
-        version: 1.32.2
+        specifier: 1.33.0-alpha.2
+        version: 1.33.0-alpha.2
       '@bosonprotocol/core-sdk':
-        specifier: 1.47.1-alpha.0
-        version: 1.47.1-alpha.0
+        specifier: 1.48.0-alpha.1
+        version: 1.48.0-alpha.1
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../core
@@ -114,11 +116,11 @@ importers:
   typescript/packages/core:
     dependencies:
       '@bosonprotocol/common':
-        specifier: ^1.32.2
-        version: 1.32.2
+        specifier: 1.33.0-alpha.2
+        version: 1.33.0-alpha.2
       '@bosonprotocol/core-sdk':
-        specifier: 1.47.1-alpha.0
-        version: 1.47.1-alpha.0
+        specifier: 1.48.0-alpha.1
+        version: 1.48.0-alpha.1
       '@x402/core':
         specifier: ^2.11.0
         version: 2.11.0
@@ -157,11 +159,11 @@ importers:
   typescript/packages/evm:
     dependencies:
       '@bosonprotocol/common':
-        specifier: ^1.32.2
-        version: 1.32.2
+        specifier: 1.33.0-alpha.2
+        version: 1.33.0-alpha.2
       '@bosonprotocol/core-sdk':
-        specifier: 1.47.1-alpha.0
-        version: 1.47.1-alpha.0
+        specifier: 1.48.0-alpha.1
+        version: 1.48.0-alpha.1
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../core
@@ -185,8 +187,8 @@ importers:
   typescript/packages/facilitator:
     dependencies:
       '@bosonprotocol/common':
-        specifier: ^1.32.2
-        version: 1.32.2
+        specifier: 1.33.0-alpha.2
+        version: 1.33.0-alpha.2
       '@bosonprotocol/x402-actions':
         specifier: workspace:^
         version: link:../actions
@@ -281,11 +283,11 @@ importers:
   typescript/packages/server:
     dependencies:
       '@bosonprotocol/common':
-        specifier: ^1.32.2
-        version: 1.32.2
+        specifier: 1.33.0-alpha.2
+        version: 1.33.0-alpha.2
       '@bosonprotocol/core-sdk':
-        specifier: 1.47.1-alpha.0
-        version: 1.47.1-alpha.0
+        specifier: 1.48.0-alpha.1
+        version: 1.48.0-alpha.1
       '@bosonprotocol/x402-actions':
         specifier: workspace:^
         version: link:../actions
@@ -373,14 +375,11 @@ packages:
     resolution: {integrity: sha512-JiDShH45zKHWyGe4ZNVRrCjBz8Nh9TMmZG1kh4QTK8hCBTWBi8Da+i7s1fJw7/lYpM4ccepSNfqzZ/QvABBi5g==}
     engines: {node: '>=6.9.0'}
 
-  '@bosonprotocol/common@1.32.2':
-    resolution: {integrity: sha512-SXaUvMIEHT1yGxcTNlbxoWzyPUqoacrKSIYXpIUJVVOU/5uLYrojULx2htZlqF5OKl6XDxXHSPLyjUxuIEe5lg==}
+  '@bosonprotocol/common@1.33.0-alpha.2':
+    resolution: {integrity: sha512-p41SMHBDA9fmn0zv1Pq1QaaA7jTiDkvj71NShx/hbjnVKNEOh6N2GUcwvJ5rVbD30vaaga3pz2rNhXSGDX0vsw==}
 
-  '@bosonprotocol/common@1.33.0-alpha.0':
-    resolution: {integrity: sha512-ud4/u7o3CnncfoOPQaalauiSQsNvouYFhzbLUNf70H63m6iUfUGCYAsvQRhb8V+jtICvLLQJtkPlQqdDn/HtmA==}
-
-  '@bosonprotocol/core-sdk@1.47.1-alpha.0':
-    resolution: {integrity: sha512-iX32xUM1w8XpuyyGR8bVJzHAkbsWdOqK3VWJ71NMU0Co4JNL8Ca6aXPHMHStMVLm+ZoNMClfBXEZgnuQp47nzg==}
+  '@bosonprotocol/core-sdk@1.48.0-alpha.1':
+    resolution: {integrity: sha512-dl8cnYTjcdy+ZXq2W1PRdd9Fw+0yR8/Zfhd5+EhQDkCZsb1h9x8v7RwVL2p0P2ckI/4RNn8tUBBLbsvmGd47sA==}
 
   '@bosonprotocol/metadata-storage@1.0.1':
     resolution: {integrity: sha512-f2W2SQAvY5IKD6L9JwaiNye7gGRIIPd/HOB0i+otWLzMPBlwQtbN4JeWSuKeJvuaqu8tyMy7CHzN8EkhrJDB+A==}
@@ -813,6 +812,9 @@ packages:
 
   '@ethersproject/properties@5.8.0':
     resolution: {integrity: sha512-PYuiEoQ+FMaZZNGrStmN7+lWjlsoufGIHdww7454FIaGdbe/p5rnaCXTr5MtBYl3NkeoVhHZuyzChPeGeKIpQw==}
+
+  '@ethersproject/random@5.8.0':
+    resolution: {integrity: sha512-E4I5TDl7SVqyg4/kkA/qTfuLWAQGXmSOgYyO01So8hLfwgKvYK5snIlzxJMk72IFdG/7oh8yuSqY2KX7MMwg+A==}
 
   '@ethersproject/rlp@5.8.0':
     resolution: {integrity: sha512-LqZgAznqDbiEunaUvykH2JAoXTT9NV0Atqk8rQN9nx9SEgThA/WMx5DnW8a9FOufo//6FZOCHZ+XiClzgbqV9Q==}
@@ -2662,7 +2664,7 @@ snapshots:
 
   '@babel/runtime@7.29.2': {}
 
-  '@bosonprotocol/common@1.32.2':
+  '@bosonprotocol/common@1.33.0-alpha.2':
     dependencies:
       '@bosonprotocol/metadata': 1.16.3
       '@ethersproject/abi': 5.8.0
@@ -2671,23 +2673,15 @@ snapshots:
       '@ethersproject/constants': 5.8.0
       '@ethersproject/units': 5.8.0
 
-  '@bosonprotocol/common@1.33.0-alpha.0':
+  '@bosonprotocol/core-sdk@1.48.0-alpha.1':
     dependencies:
-      '@bosonprotocol/metadata': 1.16.3
-      '@ethersproject/abi': 5.8.0
-      '@ethersproject/address': 5.8.0
-      '@ethersproject/bignumber': 5.8.0
-      '@ethersproject/constants': 5.8.0
-      '@ethersproject/units': 5.8.0
-
-  '@bosonprotocol/core-sdk@1.47.1-alpha.0':
-    dependencies:
-      '@bosonprotocol/common': 1.33.0-alpha.0
+      '@bosonprotocol/common': 1.33.0-alpha.2
       '@ethersproject/abi': 5.8.0
       '@ethersproject/address': 5.8.0
       '@ethersproject/bignumber': 5.8.0
       '@ethersproject/bytes': 5.8.0
       '@ethersproject/constants': 5.8.0
+      '@ethersproject/random': 5.8.0
       '@ethersproject/units': 5.8.0
       cross-fetch: 3.2.0
       graphql: 16.14.0
@@ -3125,6 +3119,11 @@ snapshots:
 
   '@ethersproject/properties@5.8.0':
     dependencies:
+      '@ethersproject/logger': 5.8.0
+
+  '@ethersproject/random@5.8.0':
+    dependencies:
+      '@ethersproject/bytes': 5.8.0
       '@ethersproject/logger': 5.8.0
 
   '@ethersproject/rlp@5.8.0':

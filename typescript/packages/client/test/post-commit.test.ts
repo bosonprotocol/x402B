@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { createX402bClient } from "../src/client.js";
-import { viemAccountSigner } from "../src/signer/index.js";
+import type { Signer } from "../src/types.js";
 
 const TEST_KEY = `0x${"42".repeat(32)}` as const;
 const BUYER_ACCOUNT = privateKeyToAccount(TEST_KEY);
@@ -26,9 +26,15 @@ const ESCROW = "0xdddddddddddddddddddddddddddddddddddddddd" as const;
 const NETWORK = "eip155:8453";
 const EXCHANGE_ID = "42";
 
+const BUYER_SIGNER: Signer = {
+  getAddress: async () => BUYER_ACCOUNT.address,
+  signTypedData: (args) =>
+    BUYER_ACCOUNT.signTypedData(args as Parameters<typeof BUYER_ACCOUNT.signTypedData>[0]),
+};
+
 function makeClient() {
   return createX402bClient({
-    signer: viemAccountSigner(BUYER_ACCOUNT),
+    signer: BUYER_SIGNER,
   });
 }
 

@@ -5,7 +5,7 @@
 
 import type { ClientState } from "@bosonprotocol/x402-core/state-machine";
 import type { TokenEip712Domain } from "@bosonprotocol/x402-core/eip712/token-auth";
-import type { Address, Hex, TypedDataDomain, TypedDataParameter } from "viem";
+import type { Address, Hex, PublicClient, TypedDataDomain, TypedDataParameter } from "viem";
 
 /**
  * Decision the buyer's policy makes about the on-chain redemption phase, **independent
@@ -47,9 +47,10 @@ export type TokenDomainResolver = (
 
 /**
  * Minimal wallet abstraction the client signs through. Matches the shape of
- * viem's `Account.signTypedData` so a viem `LocalAccount` /
- * `WalletClient`-bound account can be wrapped by a thin adapter (see
- * `viemAccountSigner` / `viemWalletClientSigner` in `./signer`).
+ * viem's `Account.signTypedData` so a viem `LocalAccount` can be passed
+ * directly (its `signTypedData` and `address` already line up); a viem
+ * `WalletClient`-bound account or an external signer needs a 4-line
+ * inline wrapper of the same shape.
  */
 export interface Signer {
   getAddress(): Promise<Address>;
@@ -69,6 +70,14 @@ export interface X402bClientConfig {
    * be present. Keyed by EIP-155 chain id (e.g. `8453` for Base mainnet).
    */
   subgraphUrls?: Record<number, string>;
+  /**
+   * Per-chain viem `PublicClient`s. Required for the EIP-2612 Permit
+   * token-auth strategy, which fetches the token's `nonces(owner)` before
+   * signing. If the buyer signs only on chains with no Permit support, this
+   * may be omitted; attempting to sign a Permit payload without a configured
+   * PublicClient throws a clear error. Keyed by EIP-155 chain id.
+   */
+  publicClients?: Record<number, PublicClient>;
   tokenDomainResolver?: TokenDomainResolver;
   policy?: Policy;
   /** Default fulfillment selection. Required when `requirements.fulfillment.required` is true. */

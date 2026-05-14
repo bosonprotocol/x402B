@@ -1,93 +1,67 @@
 // Build and sign the buyer's ERC-3009 `ReceiveWithAuthorization` for the
-// escrow contract.
+// escrow contract via `CoreSDK.signReceiveWithErc3009Authorization`.
 //
-// The typed-data builder lives in `@bosonprotocol/x402-core` — reused here
-// rather than redeclared so the type-list and primary-type stay in
-// lock-step with the canonical EIP-3009 shape Boson expects. The buyer
-// signs through the configured `Signer`; the resulting 65-byte hex
-// signature is split into wire-format `{ v, r, s }` via viem's
-// `parseSignature`.
+// The SDK generates a 32-byte random nonce internally, builds the EIP-712
+// typed-data against the token's domain (taken from `tokenDomainResolver`),
+// signs through the configured `Web3LibAdapter`, and returns a
+// `TransferAuthorization` with `{ strategy, data: { validAfter, validBefore,
+// nonce }, r, s, v, signature }`. We re-shape the result into the
+// `Erc3009AuthData` slot of the escrow payment payload.
 
-import {
-  erc3009TypedData,
-  type TokenEip712Domain,
-} from "@bosonprotocol/x402-core/eip712/token-auth";
+import type { CoreSDK } from "@bosonprotocol/core-sdk";
 import type {
   Erc3009AuthData,
   EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
-import { parseSignature, type Address } from "viem";
+import type { Address, Hex } from "viem";
 
 import { parseChainId } from "../core-sdk-factory.js";
-import type { Signer, TokenDomainResolver } from "../types.js";
-import { randomBytes32 } from "../utils/crypto.js";
+import type { TokenDomainResolver } from "../types.js";
 
 export interface SignErc3009Args {
   requirements: EscrowPaymentRequirements;
   buyer: Address;
-  signer: Signer;
+  coreSdk: CoreSDK;
   tokenDomainResolver: TokenDomainResolver;
   /** Override the wall-clock; injected by tests for determinism. Defaults to `Date.now()`. */
   now?: () => number;
 }
 
 /**
- * Build the ERC-3009 typed-data, sign it, and shape the result into the
- * `Erc3009AuthData` slot of the escrow payment payload.
+ * Build the ERC-3009 typed-data, sign it via core-sdk, and shape the result
+ * into the `Erc3009AuthData` slot of the escrow payment payload.
  */
 export async function signErc3009({
   requirements,
   buyer,
-  signer,
+  coreSdk,
   tokenDomainResolver,
   now = Date.now,
 }: SignErc3009Args): Promise<Erc3009AuthData> {
   const chainId = parseChainId(requirements.network);
-  const domain: TokenEip712Domain = await tokenDomainResolver(
-    requirements.asset as Address,
-    chainId,
+  const domain = await tokenDomainResolver(requirements.asset as Address, chainId);
+
+  const validAfter = 0;
+  const validBefore = Math.floor(now() / 1000) + requirements.maxTimeoutSeconds;
+
+  const result = await coreSdk.signReceiveWithErc3009Authorization(
+    requirements.asset,
+    { name: domain.name, version: domain.version },
+    requirements.amount,
+    validAfter,
+    validBefore,
+    { spender: requirements.escrowAddress as `0x${string}` },
   );
-
-  const nonce = randomBytes32();
-  const validAfter = 0n;
-  const validBefore = BigInt(Math.floor(now() / 1000) + requirements.maxTimeoutSeconds);
-
-  const typedData = erc3009TypedData({
-    domain,
-    message: {
-      from: buyer,
-      to: requirements.escrowAddress as Address,
-      value: BigInt(requirements.amount),
-      validAfter,
-      validBefore,
-      nonce,
-    },
-  });
-
-  const signature = await signer.signTypedData({
-    domain: typedData.domain,
-    types: typedData.types,
-    primaryType: typedData.primaryType,
-    message: {
-      from: typedData.message.from,
-      to: typedData.message.to,
-      value: typedData.message.value,
-      validAfter: typedData.message.validAfter,
-      validBefore: typedData.message.validBefore,
-      nonce: typedData.message.nonce,
-    },
-  });
-  const { v, r, s } = parseSignature(signature);
 
   return {
     from: buyer,
     to: requirements.escrowAddress,
     value: requirements.amount,
-    validAfter: Number(validAfter),
-    validBefore: Number(validBefore),
-    nonce,
-    v: Number(v),
-    r,
-    s,
+    validAfter: Number(result.data.validAfter),
+    validBefore: Number(result.data.validBefore),
+    nonce: result.data.nonce as Hex,
+    v: result.v,
+    r: result.r as Hex,
+    s: result.s as Hex,
   };
 }

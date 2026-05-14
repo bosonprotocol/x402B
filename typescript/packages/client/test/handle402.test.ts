@@ -14,7 +14,9 @@ import {
   parseEscrowPaymentPayload,
   type EscrowPaymentRequirements,
   type Erc3009AuthData,
+  type Permit2AuthData,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+import { PERMIT2_ADDRESS } from "@bosonprotocol/x402-core/eip712/token-auth";
 import { recoverTypedDataAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -24,7 +26,7 @@ import {
   NotImplementedError,
   UnsupportedTokenAuthError,
 } from "../src/errors.js";
-import { viemAccountSigner } from "../src/signer/index.js";
+import type { Signer } from "../src/types.js";
 
 const TEST_KEY = `0x${"42".repeat(32)}` as const;
 const BUYER_ACCOUNT = privateKeyToAccount(TEST_KEY);
@@ -103,9 +105,15 @@ function baseRequirements(): EscrowPaymentRequirements {
   };
 }
 
+const BUYER_SIGNER: Signer = {
+  getAddress: async () => BUYER_ACCOUNT.address,
+  signTypedData: (args) =>
+    BUYER_ACCOUNT.signTypedData(args as Parameters<typeof BUYER_ACCOUNT.signTypedData>[0]),
+};
+
 function makeClient() {
   return createX402bClient({
-    signer: viemAccountSigner(BUYER_ACCOUNT),
+    signer: BUYER_SIGNER,
     tokenDomainResolver: async (asset, chainId) => ({
       name: "USD Coin",
       version: "2",
@@ -222,18 +230,77 @@ describe("handle402 — round-trip", () => {
     await expect(client.handle402(requirements)).rejects.toThrow(NotImplementedError);
   });
 
-  it("rejects requirements without 'erc3009' in tokenAuthStrategies", async () => {
+  it("rejects requirements that only advertise the 'none' strategy (no client-side signing)", async () => {
     const requirements = baseRequirements();
-    requirements.tokenAuthStrategies = ["none", "permit"];
+    requirements.tokenAuthStrategies = ["none"];
     const client = makeClient();
     await expect(client.handle402(requirements)).rejects.toThrow(UnsupportedTokenAuthError);
+  });
+
+  it("rejects 'permit' when no PublicClient is configured for the chain", async () => {
+    const requirements = baseRequirements();
+    requirements.tokenAuthStrategies = ["permit"];
+    const client = makeClient();
+    await expect(client.handle402(requirements)).rejects.toThrow(UnsupportedTokenAuthError);
+  });
+
+  it("signs Permit2 when the server advertises only 'permit2'", async () => {
+    const requirements = baseRequirements();
+    requirements.tokenAuthStrategies = ["permit2"];
+    const client = makeClient();
+    const header = await client.handle402(requirements);
+    const decoded = parseEscrowPaymentPayload(
+      JSON.parse(Buffer.from(header, "base64").toString("utf8")),
+    );
+
+    expect(decoded.payload.tokenAuthStrategy).toBe("permit2");
+    expect(decoded.payload.tokenAuth?.kind).toBe("permit2");
+    const tokenAuth = decoded.payload.tokenAuth?.data as Permit2AuthData;
+    expect(tokenAuth.permitted.token.toLowerCase()).toBe(requirements.asset.toLowerCase());
+    expect(tokenAuth.permitted.amount).toBe(requirements.amount);
+    expect(tokenAuth.spender.toLowerCase()).toBe(requirements.escrowAddress.toLowerCase());
+    expect(tokenAuth.nonce).toMatch(/^\d+$/);
+    expect(tokenAuth.signature).toMatch(/^0x[0-9a-f]{130}$/);
+
+    // Signature recovers to the buyer against Permit2's canonical domain.
+    const recovered = await recoverTypedDataAddress({
+      domain: {
+        name: "Permit2",
+        chainId: 8453,
+        verifyingContract: PERMIT2_ADDRESS,
+      },
+      types: {
+        PermitTransferFrom: [
+          { name: "permitted", type: "TokenPermissions" },
+          { name: "spender", type: "address" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+        TokenPermissions: [
+          { name: "token", type: "address" },
+          { name: "amount", type: "uint256" },
+        ],
+      },
+      primaryType: "PermitTransferFrom",
+      message: {
+        permitted: {
+          token: tokenAuth.permitted.token as `0x${string}`,
+          amount: BigInt(tokenAuth.permitted.amount),
+        },
+        spender: tokenAuth.spender as `0x${string}`,
+        nonce: BigInt(tokenAuth.nonce),
+        deadline: BigInt(tokenAuth.deadline),
+      },
+      signature: tokenAuth.signature as `0x${string}`,
+    });
+    expect(recovered.toLowerCase()).toBe(BUYER_ACCOUNT.address.toLowerCase());
   });
 
   it("rejects requirements whose amount exceeds policy.maxAmount before signing", async () => {
     const requirements = baseRequirements();
     requirements.amount = "1000001";
     const client = createX402bClient({
-      signer: viemAccountSigner(BUYER_ACCOUNT),
+      signer: BUYER_SIGNER,
       policy: { maxAmount: "1000000" },
     });
 

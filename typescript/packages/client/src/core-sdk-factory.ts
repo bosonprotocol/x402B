@@ -9,7 +9,7 @@
 import { CoreSDK } from "@bosonprotocol/core-sdk";
 import type { Address } from "viem";
 
-import { signerToWeb3LibAdapter } from "./signer/index.js";
+import { signerToWeb3LibAdapter } from "./internal/web3lib-adapter.js";
 import type { Signer, X402bClientConfig } from "./types.js";
 
 // Sentinel used when the caller did not configure a real subgraph URL for
@@ -48,10 +48,16 @@ export function parseChainId(network: string): number {
  * `(chainId, escrowAddress)` so repeated calls on the same network — for
  * commit and subsequent post-commit actions on the same exchange — reuse a
  * single SDK.
+ *
+ * The SDK's `web3Lib.call(...)` is wired through `config.publicClients[chainId]`
+ * when one is configured; this enables read-only RPC reads (e.g. the EIP-2612
+ * Permit strategy's `nonces(owner)` lookup). Chains without a PublicClient
+ * configured can still sign meta-transactions and ERC-3009 / Permit2
+ * token-auths.
  */
 export function createCoreSdkFactory(
   signer: Signer,
-  config: Pick<X402bClientConfig, "subgraphUrls">,
+  config: Pick<X402bClientConfig, "subgraphUrls" | "publicClients">,
 ) {
   const cache = new Map<string, CoreSDK>();
 
@@ -64,7 +70,8 @@ export function createCoreSdkFactory(
     }
 
     const subgraphUrl = config.subgraphUrls?.[chainId] ?? PLACEHOLDER_SUBGRAPH_URL;
-    const web3Lib = signerToWeb3LibAdapter(signer, chainId);
+    const publicClient = config.publicClients?.[chainId];
+    const web3Lib = signerToWeb3LibAdapter(signer, chainId, publicClient);
 
     const coreSdk = new CoreSDK({
       web3Lib,

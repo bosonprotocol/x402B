@@ -30,11 +30,6 @@
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js"
     },
-    "./signer": {
-      "types": "./dist/cjs/signer/index.d.ts",
-      "import": "./dist/esm/signer/index.js",
-      "require": "./dist/cjs/signer/index.js"
-    },
     "./schemas/*": "./dist/schemas/*"
   },
   "files": [
@@ -53,8 +48,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@bosonprotocol/common": "^1.32.2",
-    "@bosonprotocol/core-sdk": "1.47.1-alpha.0",
+    "@bosonprotocol/common": "1.33.0-alpha.2",
+    "@bosonprotocol/core-sdk": "1.48.0-alpha.1",
     "@bosonprotocol/x402-core": "workspace:^",
     "@bosonprotocol/x402-evm": "workspace:^",
     "ajv": "^8.17.1",
