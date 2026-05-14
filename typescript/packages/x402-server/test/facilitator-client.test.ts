@@ -146,7 +146,7 @@ describe("createFacilitatorClient", () => {
     expect(stub.calls[0]!.url).toBe(`${BASE_URL}/settle`);
   });
 
-  it("POSTs `/perform-action` with the action-specific input shape", async () => {
+  it("POSTs `/perform-action?action=<action>` with the action-specific input shape", async () => {
     const stub = makeStubFetch(() => ({
       body: {
         ok: true,
@@ -159,7 +159,7 @@ describe("createFacilitatorClient", () => {
     const result = await client.performAction(performActionInput);
 
     expect(result).toMatchObject({ ok: true, txHash: "0xdef", newExchangeState: "COMPLETED" });
-    expect(stub.calls[0]!.url).toBe(`${BASE_URL}/perform-action`);
+    expect(stub.calls[0]!.url).toBe(`${BASE_URL}/perform-action?action=boson-completeExchange`);
     expect(JSON.parse(stub.calls[0]!.init!.body!)).toEqual(performActionInput);
   });
 

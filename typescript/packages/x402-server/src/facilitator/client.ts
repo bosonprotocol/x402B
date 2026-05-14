@@ -1,7 +1,7 @@
 // HTTP client for the Boson facilitator service. The facilitator runs
 // as a remote process implementing the three endpoints in
 // docs/boson-impl-07-facilitator.md (`/verify`, `/settle`,
-// `/perform-action`); this module wraps `fetch` with the typed
+// `/perform-action?action=<action>`); this module wraps `fetch` with the typed
 // request/response shapes exported by `@bosonprotocol/x402-facilitator`.
 //
 // Successful responses (`{ ok: true, ... }` or `{ ok: false, code, reason }`)
@@ -120,7 +120,10 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
     verify: (input) => post<FacilitatorVerifyInput, FacilitatorVerifyResult>("/verify", input),
     settle: (input) => post<FacilitatorSettleInput, FacilitatorSettleResult>("/settle", input),
     performAction: (input) =>
-      post<FacilitatorPerformActionInput, FacilitatorPerformActionResult>("/perform-action", input),
+      post<FacilitatorPerformActionInput, FacilitatorPerformActionResult>(
+        `/perform-action?action=${encodeURIComponent(input.action)}`,
+        input,
+      ),
   };
 }
 
