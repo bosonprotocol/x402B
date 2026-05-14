@@ -306,6 +306,37 @@ describe("mountX402b — convenience routes", () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_REQUEST_BODY");
   });
+
+  it.each([["/x402b/commit"], ["/x402b/commit-and-redeem"]])(
+    "POST %s without X-PAYMENT returns the canonical x402 challenge",
+    async (path) => {
+      // Commit routes hit without `X-PAYMENT` should emit the same
+      // `{ x402Version, accepts: [...] }` body as `expressMiddleware()`,
+      // not the handler's structured-error 402. This is what x402
+      // clients pattern-match on to retry with the signed payment.
+      const { requirements } = await buildBuyerPayload();
+      const server = await buildServer(makeStubFetch(() => ({ ok: true })));
+
+      const app = express();
+      app.use(express.json());
+      app.use(
+        mountX402b(server, {
+          resolveRequirements: () =>
+            requirements as unknown as Awaited<ReturnType<typeof server.buildPaymentRequirements>>,
+        }),
+      );
+
+      const res = await supertest(app).post(path).send();
+      expect(res.status).toBe(402);
+      expect(res.body.x402Version).toBe(2);
+      expect(Array.isArray(res.body.accepts)).toBe(true);
+      expect(res.body.accepts[0].scheme).toBe("escrow");
+      // Structured-error fields must NOT leak when emitting the
+      // canonical challenge.
+      expect(res.body.code).toBeUndefined();
+      expect(res.body.reason).toBeUndefined();
+    },
+  );
 });
 
 describe("expressMiddleware — 402 challenge + settle gating", () => {

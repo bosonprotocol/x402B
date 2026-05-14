@@ -13,6 +13,8 @@ import {
 } from "@bosonprotocol/x402-server";
 import { Router, type Request, type RequestHandler, type Response } from "express";
 
+import { respondWithChallenge } from "./internal/x402-challenge.js";
+
 export interface MountX402bOptions {
   /**
    * Resolver invoked for the commit-time routes (`/commit`,
@@ -52,11 +54,22 @@ function commitRoute(
 ): RequestHandler {
   return async (req, res, next) => {
     try {
+      const header = req.header("x-payment");
       const requirements = await opts.resolveRequirements(req);
-      const input: CommitHandlerInput = {
-        paymentHeader: req.header("x-payment"),
-        requirements,
-      };
+
+      // Missing `X-PAYMENT` is the canonical x402 challenge case — emit
+      // the same `{ x402Version, accepts: [requirements] }` body
+      // `expressMiddleware` does. Without this short-circuit the
+      // request would fall through to the handler, which returns its
+      // structured-error 402 body ({ code: "MISSING_HEADER", … }) —
+      // useful for non-Express integrators, but not the x402 wire
+      // contract clients branch on.
+      if (header === undefined || header.length === 0) {
+        respondWithChallenge(res, requirements);
+        return;
+      }
+
+      const input: CommitHandlerInput = { paymentHeader: header, requirements };
       const handler = kind === "commit" ? server.handlers.commit : server.handlers.commitAndRedeem;
       const result = await handler(input);
       stampXPaymentResponseIfOk(res, result);
