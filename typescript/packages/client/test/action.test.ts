@@ -37,6 +37,14 @@ describe("pickAction", () => {
     expect(pickAction(req, { redeemMode: "commit-only" })).toBe("boson-createOfferAndCommit");
   });
 
+  it("throws NoCompatibleActionError for redeemMode='commit-only' when only Flow B is advertised", () => {
+    const req = baseRequirements();
+    req.actions.next = [{ id: "boson-createOfferCommitAndRedeem", channels: ["server"] }];
+    expect(() => pickAction(req, { redeemMode: "commit-only" })).toThrow(
+      NoCompatibleActionError,
+    );
+  });
+
   it("returns boson-createOfferCommitAndRedeem for redeemMode='commit-and-redeem' when advertised", () => {
     const req = baseRequirements();
     req.actions.next = [{ id: "boson-createOfferCommitAndRedeem", channels: ["server"] }];

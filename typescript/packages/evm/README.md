@@ -74,4 +74,3 @@ import {
   createPermit2ApprovalTx,
 } from "@bosonprotocol/x402-core/eip712/token-auth";
 ```
-

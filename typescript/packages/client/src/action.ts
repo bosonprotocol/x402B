@@ -5,7 +5,8 @@
 //   - `boson-createOfferCommitAndRedeem` (Flow B, atomic commit+redeem)
 //
 // Selection rules:
-//   - `policy.redeemMode = "commit-only"` (or unset / "auto"): prefer Flow A.
+//   - `policy.redeemMode = "commit-only"`: require Flow A.
+//   - `policy.redeemMode = "auto"` (or unset): prefer Flow A, fall back to Flow B.
 //   - `policy.redeemMode = "commit-and-redeem"`: require Flow B; throw
 //     `NoCompatibleActionError` if the server hasn't advertised it.
 //
@@ -50,7 +51,14 @@ export function pickAction(
     );
   }
 
-  // "auto" / "commit-only": prefer Flow A when present.
+  if (redeemMode === "commit-only") {
+    if (flowAOffered) return FLOW_A;
+    throw new NoCompatibleActionError(
+      `policy.redeemMode='commit-only' requires '${FLOW_A}' on the server channel; requirements only advertise [${requirements.actions.next.map((a) => a.id).join(", ")}]`,
+    );
+  }
+
+  // "auto": prefer Flow A when present, but fall back to Flow B.
   if (flowAOffered) return FLOW_A;
   if (flowBOffered) return FLOW_B;
 

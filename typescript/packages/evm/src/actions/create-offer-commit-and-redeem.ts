@@ -8,13 +8,12 @@
 // `@bosonprotocol/core-sdk`'s `metaTx.handler.signMetaTxCreateOfferCommitAndRedeem`
 // in `returnTypedDataToSign: true` mode. That's the same helper the
 // client uses to sign, so signing and verification share one source of
-// truth — if a future SDK release changes either the selector literal
-// or the ABI encoding, both paths track the change together.
+// truth.
 //
 // Note: the function-argument arity differs from `createOfferAndCommit`
-// (this variant takes `(fullOffer, address committer, bytes sellerSig,
-// uint256 agentId)` rather than the deferred-redeem path's longer
-// signature). The SDK pins the matching literal internally.
+// (this variant takes `(fullOfferStruct, address offerCreator, bytes
+// sellerSig, uint256 conditionalTokenId)` rather than the
+// deferred-redeem path's longer signature).
 
 import type { FullOfferArgs } from "@bosonprotocol/common";
 import { metaTx } from "@bosonprotocol/core-sdk";
@@ -42,7 +41,7 @@ const STUB_CALLER_TAG = "@bosonprotocol/x402-evm:create-offer-commit-and-redeem"
 
 /**
  * Build the `{ functionName, functionSignature }` calldata pair for the
- * `createOfferCommitAndRedeem` inner action by delegating to core-sdk.
+ * `createOfferCommitAndRedeem` inner action.
  */
 export async function buildCreateOfferCommitAndRedeemCalldata(
   args: BuildCreateOfferCommitAndRedeemCalldataArgs,

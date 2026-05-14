@@ -41,7 +41,7 @@ export function extractExchangeId(receipt: TransactionReceipt): ExtractExchangeI
   // viem types the parsed event as `{ args: ... }`. The `args.exchangeId`
   // is a bigint per the ABI's `uint256`; serialise as a decimal string to
   // match the wire format every other Boson identifier uses.
-  const args = (first as { args: { exchangeId?: bigint } }).args;
+  const args = (first as unknown as { args: { exchangeId?: bigint } }).args;
   const exchangeId = args.exchangeId;
   if (typeof exchangeId !== "bigint") {
     return {

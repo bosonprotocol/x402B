@@ -10,21 +10,11 @@
 // string and call `exchanges.iface.encodeCreateOfferAndCommit` here
 // directly, we delegate the whole pair to
 // `@bosonprotocol/core-sdk`'s `metaTx.handler.signMetaTxCreateOfferAndCommit`
-// in `returnTypedDataToSign: true` mode. That's the *same* helper the
-// client uses to sign, so both signing and verification source the
+// in `returnTypedDataToSign: true` mode. That's the same helper the
+// client uses to sign, so signing and verification source the
 // `functionName` literal + `functionSignature` bytes from one place.
 // If a future SDK release changes either, both paths track the change
-// automatically — no drift between what the buyer signed and what the
-// verifier reconstructs.
-//
-// In `returnTypedDataToSign: true` mode the SDK:
-//   - runs the same yup validation the signing path runs (good — same
-//     check on both sides of the wire);
-//   - calls `storeMetadataOnTheGraph` and `storeMetadataItems`, both of
-//     which are no-ops when `metadataStorage` and `theGraphStorage`
-//     are omitted;
-//   - never invokes any method on the supplied `web3Lib`, which is
-//     why a throwing-stub adapter is safe here.
+// automatically.
 
 import type { FullOfferArgs } from "@bosonprotocol/common";
 import { metaTx } from "@bosonprotocol/core-sdk";
@@ -52,10 +42,9 @@ const STUB_CALLER_TAG = "@bosonprotocol/x402-evm:create-offer-and-commit";
 
 /**
  * Build the `{ functionName, functionSignature }` calldata pair for the
- * `createOfferAndCommit` inner action by delegating to core-sdk. The
- * result feeds `@bosonprotocol/x402-core/eip712`'s
- * `metaTransactionTypedData` builder to produce the EIP-712 typed-data
- * the buyer signs.
+ * `createOfferAndCommit` inner action. The result feeds
+ * `@bosonprotocol/x402-core/eip712`'s `metaTransactionTypedData`
+ * builder to produce the EIP-712 typed-data the buyer signs.
  */
 export async function buildCreateOfferAndCommitCalldata(
   args: BuildCreateOfferAndCommitCalldataArgs,

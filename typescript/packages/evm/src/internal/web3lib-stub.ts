@@ -1,25 +1,21 @@
 // Calldata-only `Web3LibAdapter` for the calldata-builder modules.
 //
 // Core-sdk's `signMetaTx` calls `web3Lib.getSignerAddress()` even in
-// `returnTypedDataToSign: true` mode (to fill the message's `from`
-// field). We return a deterministic dummy address — the resulting
-// `from` ends up baked into the discarded typed-data portion, not the
-// `{ functionName, functionSignature }` pair the verifier consumes.
+// `returnTypedDataToSign: true` mode to fill the message's `from` field.
+// We return a deterministic dummy address; the typed-data message is
+// discarded and only `{ functionName, functionSignature }` is consumed.
 //
-// All signing- and transaction-flavour methods reject so the stub fails
-// loudly if it ever leaks into a path that needs more than the
-// typed-data-only contract.
+// All signing and transaction methods reject so the stub fails loudly if
+// it ever leaks into a path that needs more than typed-data construction.
 
 import type { Web3LibAdapter } from "@bosonprotocol/common";
 
-/** Deterministic dummy returned for `getSignerAddress` — not the zero address, so any "did someone forget to set the signer" check still finds something. */
 const DUMMY_SIGNER_ADDRESS = "0x0000000000000000000000000000000000000001";
 
 function unreachable(callerTag: string, method: string): Error {
   return new Error(
     `${callerTag}: stub Web3LibAdapter.${method}() should never be called. ` +
-      `If you see this, either core-sdk changed its behaviour or the stub leaked ` +
-      `into a non-typed-data-only path — file a bug.`,
+      "If you see this, core-sdk changed its typed-data-only behavior.",
   );
 }
 

@@ -15,6 +15,8 @@ import {
 
 import type { FacilitatorErrorCode } from "../types.js";
 
+type CalldataFullOffer = Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"];
+
 /**
  * Structured result form used by every verify-step helper. Lets callers
  * chain steps with early returns without throwing.
@@ -143,7 +145,7 @@ export async function validateMetaTxCalldataMatchesRequirements(input: {
   const fullOffer = withSellerSignature(
     input.requirements.offer.fullOffer,
     input.requirements.offer.sellerSig,
-  );
+  ) as CalldataFullOffer;
 
   try {
     const expected =

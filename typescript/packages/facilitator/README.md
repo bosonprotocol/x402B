@@ -62,9 +62,10 @@ The facilitator's responsibilities are:
 1. **Validate** — structural shape, scheme/network/action match, signature
    recovery, offer/calldata consistency, token-auth constraints, and
    on-chain simulation pre-flight.
-2. **Submit** — wrap the buyer's signed meta-tx in
-   `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`, send via
-   the configured viem `WalletClient`, await the receipt.
+2. **Submit** — wrap the buyer's signed meta-tx in the appropriate
+   `MetaTransactionsHandlerFacet` envelope for the chosen
+   `tokenAuthStrategy`, send via the configured viem `WalletClient`, and
+   await the receipt.
 3. **Relay post-commit transitions** — same envelope, same submit path,
    for `redeem` / `complete` / `cancel` / `revoke` / `raise` / `retract` /
    `escalate` / `resolve` dispute.
