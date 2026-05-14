@@ -8,16 +8,18 @@
 //   2. supportedNetworks gate.
 //   3. Validate action is a post-commit action and that signed calldata
 //      matches `input.action` + `input.exchangeId`.
-//   4. Recover the meta-tx signer and confirm it matches metaTx.from.
+//   4. Validate tokenAuthStrategy compatibility. Until the BPIP-12
+//      envelope encoder ships, performAction supports only `"none"` and
+//      rejects all token-auth-related fields on that path.
+//   5. Recover the meta-tx signer and confirm it matches metaTx.from.
 //      The facilitator is signer-agnostic: it doesn't care if the role
 //      is buyer or seller — the protocol enforces that on-chain.
-//   5. Simulate `executeMetaTransaction(...)` via `eth_call` (same
+//   6. Simulate `executeMetaTransaction(...)` via `eth_call` (same
 //      pre-flight settle uses).
-//   6. Build the outer envelope (always `none` strategy — post-commit
-//      transitions don't carry a token-auth queue).
-//   7. Submit + wait for receipt; an on-chain revert surfaces as
+//   7. Build the outer envelope (currently the `"none"` strategy only).
+//   8. Submit + wait for receipt; an on-chain revert surfaces as
 //      ONCHAIN_REVERT.
-//   8. Look up the predicted post-state from ACTION_POST_STATE and
+//   9. Look up the predicted post-state from ACTION_POST_STATE and
 //      return it so callers can update local state without a subgraph
 //      round-trip.
 //
@@ -79,7 +81,32 @@ export async function performAction(
     });
     if (!action.ok) return action;
 
-    // 4. Parse chain id.
+    // 4. Resolve and validate token-auth strategy. BPIP-12 post-commit
+    //    token-auth envelopes are not wired yet, so non-"none" fails
+    //    before signature recovery or RPC work.
+    const tokenAuthStrategy = input.tokenAuthStrategy ?? "none";
+    if (tokenAuthStrategy !== "none") {
+      return {
+        ok: false,
+        code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY",
+        reason: `tokenAuthStrategy "${tokenAuthStrategy}" requires the BPIP-12 token-auth envelope, which is not yet wired in performAction()`,
+      };
+    }
+    if (
+      input.tokenAuth !== undefined ||
+      input.asset !== undefined ||
+      input.amount !== undefined ||
+      input.maxTimeoutSeconds !== undefined
+    ) {
+      return {
+        ok: false,
+        code: "INVALID_PAYLOAD",
+        reason:
+          'tokenAuth, asset, amount, and maxTimeoutSeconds must be omitted when tokenAuthStrategy is "none"',
+      };
+    }
+
+    // 5. Parse chain id.
     const chain = parseChainId(input.network);
     if (!chain.ok) return chain;
 
@@ -94,7 +121,7 @@ export async function performAction(
 
     const escrowAddress = input.escrowAddress as `0x${string}`;
 
-    // 5. Signature recovery — for performAction we just confirm the sig
+    // 6. Signature recovery — for performAction we just confirm the sig
     //    is self-consistent (recovered === metaTx.from). The role check
     //    (buyer vs seller vs assistant) is the protocol's job.
     const recovery = await recoverMetaTxSigner({
@@ -111,29 +138,27 @@ export async function performAction(
       };
     }
 
-    // 6. Simulate. Post-commit transitions never carry a token-auth
-    //    queue — the relayer is just wrapping a buyer/seller-signed
-    //    meta-tx, so the "none" envelope path applies.
+    // 7. Simulate. The `none` path goes through `executeMetaTransaction`.
     const sim = await simulateExecuteMetaTransaction({
       escrowAddress,
       buyer: metaTx.from as `0x${string}`,
       metaTx,
-      tokenAuthStrategy: "none",
+      tokenAuthStrategy,
       publicClient: config.publicClient,
       relayerAddress: relayer,
     });
     if (!sim.ok) return sim;
 
-    // 7. Build outer envelope (post-commit always "none" strategy).
+    // 8. Build outer envelope.
     const envelope = buildSettleEnvelope({
       escrowAddress,
       buyer: metaTx.from as `0x${string}`,
       metaTx,
-      strategy: "none",
+      strategy: tokenAuthStrategy,
     });
     if (!envelope.ok) return envelope;
 
-    // 8. Submit + wait.
+    // 9. Submit + wait.
     const submitted = await submit({
       tx: envelope.tx,
       walletClient: config.walletClient,
@@ -141,7 +166,7 @@ export async function performAction(
     });
     if (!submitted.ok) return submitted;
 
-    // 9. New state lookup.
+    // 10. New state lookup.
     const newState = deriveNewState(input.action);
 
     return {

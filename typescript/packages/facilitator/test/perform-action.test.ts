@@ -438,6 +438,121 @@ describe("performAction()", () => {
       newDisputeState: undefined,
     });
   });
+
+  it("rejects non-'none' tokenAuthStrategy before token-auth validation", async () => {
+    // BPIP-12 perform-action envelopes are not wired yet. Fail with the
+    // stable unsupported-strategy code before token-auth signature/RPC work.
+    const signedPayload = await buildSignedPayload({ functionName: "redeemVoucher(uint256)" });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-redeem",
+        signedPayload,
+        tokenAuthStrategy: "permit2",
+        tokenAuth: {
+          kind: "permit2",
+          data: {
+            permitted: { token: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", amount: "100" },
+            spender: ESCROW,
+            nonce: "0",
+            deadline: Math.floor(Date.now() / 1000) + 300,
+            signature: `0x${"00".repeat(65)}`,
+          },
+        },
+        asset: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        amount: "100",
+        maxTimeoutSeconds: 3600,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY" });
+  });
+
+  it("rejects when tokenAuth is present but strategy is 'none'", async () => {
+    const signedPayload = await buildSignedPayload({
+      functionName: "escalateDispute(uint256)",
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-escalateDispute",
+        signedPayload,
+        // Strategy defaults to "none" — tokenAuth must therefore be absent.
+        tokenAuth: {
+          kind: "permit2",
+          data: {
+            permitted: { token: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", amount: "100" },
+            spender: ESCROW,
+            nonce: "0",
+            deadline: Math.floor(Date.now() / 1000) + 300,
+            signature: `0x${"00".repeat(65)}`,
+          },
+        },
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(/must be omitted/i);
+  });
+
+  it("rejects when token-auth metadata is present but strategy is 'none'", async () => {
+    const signedPayload = await buildSignedPayload({
+      functionName: "escalateDispute(uint256)",
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-escalateDispute",
+        signedPayload,
+        asset: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        amount: "100",
+        maxTimeoutSeconds: 3600,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(/must be omitted/i);
+  });
+
+  it("escalateDispute with tokenAuthStrategy 'permit2' returns UNSUPPORTED_TOKEN_AUTH_STRATEGY", async () => {
+    const signedPayload = await buildSignedPayload({
+      functionName: "escalateDispute(uint256)",
+    });
+    const ASSET = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" as `0x${string}`;
+    const AMOUNT = "100";
+    const deadline = Math.floor(Date.now() / 1000) + 300;
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-escalateDispute",
+        signedPayload,
+        tokenAuthStrategy: "permit2",
+        tokenAuth: {
+          kind: "permit2",
+          data: {
+            permitted: { token: ASSET, amount: AMOUNT },
+            spender: ESCROW,
+            nonce: "0",
+            deadline,
+            signature: `0x${"00".repeat(65)}`,
+          },
+        },
+        asset: ASSET,
+        amount: AMOUNT,
+        maxTimeoutSeconds: 3600,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY" });
+  });
 });
 
 describe("encodeSignedPayload / decodeSignedPayload", () => {

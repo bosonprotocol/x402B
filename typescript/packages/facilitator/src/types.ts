@@ -11,10 +11,12 @@
 
 import type {
   Address,
+  BosonTokenAuth,
   EscrowPaymentPayload,
   EscrowPaymentRequirements,
   EvmNetwork,
   Hex,
+  TokenAuthStrategy,
 } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 import { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
@@ -83,6 +85,13 @@ export type FacilitatorSettleResult =
  *   uint256 nonce, uint8 v, bytes32 r, bytes32 s)` —
  * the buyer / seller's pre-signed envelope ready to be wrapped in
  * `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
+ *
+ * Most post-commit actions are non-payable: the relayer just submits
+ * the meta-tx and `tokenAuthStrategy` defaults to `"none"`. The one
+ * exception today is `boson-escalateDispute`, which is `payable` on
+ * the Diamond. The BPIP-12 post-commit token-auth envelope is not wired
+ * yet, so `performAction()` returns `UNSUPPORTED_TOKEN_AUTH_STRATEGY`
+ * for `tokenAuthStrategy !== "none"` until that encoder ships.
  */
 export interface FacilitatorPerformActionInput {
   network: EvmNetwork;
@@ -90,6 +99,28 @@ export interface FacilitatorPerformActionInput {
   exchangeId: string;
   action: ActionId;
   signedPayload: Hex;
+  /**
+   * Defaults to `"none"`. Only `boson-escalateDispute` accepts non-`"none"`
+   * once the BPIP-12 post-commit envelope is wired.
+   */
+  tokenAuthStrategy?: TokenAuthStrategy;
+  /** Reserved for the future BPIP-12 post-commit envelope. Omit while strategy is `"none"`. */
+  tokenAuth?: BosonTokenAuth;
+  /**
+   * Reserved for the future BPIP-12 post-commit envelope. Omit while
+   * strategy is `"none"`.
+   */
+  asset?: Address;
+  /**
+   * Reserved for the future BPIP-12 post-commit envelope. Omit while
+   * strategy is `"none"`.
+   */
+  amount?: string;
+  /**
+   * Reserved for the future BPIP-12 post-commit envelope. Omit while
+   * strategy is `"none"`.
+   */
+  maxTimeoutSeconds?: number;
 }
 
 export type FacilitatorPerformActionResult =
