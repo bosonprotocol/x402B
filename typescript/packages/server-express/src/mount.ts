@@ -93,7 +93,11 @@ function performActionRoute(
         signedPayload: body.signedPayload as `0x${string}`,
       };
       const result = await server.handlers[action](input);
-      stampXPaymentResponseIfOk(res, result);
+      // No `X-PAYMENT-RESPONSE` here — post-commit actions (redeem,
+      // complete, dispute raise/resolve/retract/escalate) don't carry
+      // a payment. The header is reserved for commit-time settlements;
+      // a future deposit-paying `escalateDispute` flow will re-add it
+      // on that specific path.
       res.status(result.status).json(result.body);
     } catch (e) {
       next(e);
@@ -101,9 +105,9 @@ function performActionRoute(
   };
 }
 
-// Helper shared by every successful route. Stamps base64(JSON.stringify(body))
-// onto the `X-PAYMENT-RESPONSE` header so the buyer's client can read the
-// exchange metadata without parsing the resource body.
+// Stamp base64(JSON.stringify(body)) onto the `X-PAYMENT-RESPONSE` header.
+// Only used on commit-time routes — see `performActionRoute` for the
+// rationale on why post-commit actions don't get this header.
 function stampXPaymentResponseIfOk(
   res: Response,
   result: { ok: true; body: unknown } | { ok: false },

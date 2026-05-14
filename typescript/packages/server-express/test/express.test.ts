@@ -289,11 +289,11 @@ describe("mountX402b — convenience routes", () => {
     expect(res.status).toBe(200);
     expect(res.body.txHash).toBe("0xfed");
 
-    // Post-commit success path also stamps X-PAYMENT-RESPONSE.
-    const xpr = res.headers["x-payment-response"];
-    expect(typeof xpr).toBe("string");
-    const decoded = JSON.parse(Buffer.from(xpr as string, "base64").toString("utf8"));
-    expect(decoded.txHash).toBe("0xfed");
+    // Post-commit actions don't carry a payment, so the response must
+    // NOT include `X-PAYMENT-RESPONSE`. The header is reserved for
+    // commit-time settlement responses (and the future deposit-paying
+    // `escalateDispute` flow).
+    expect(res.headers["x-payment-response"]).toBeUndefined();
   });
 
   it("POST /x402b/complete rejects malformed body with 400", async () => {
