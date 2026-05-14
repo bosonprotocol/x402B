@@ -29,3 +29,18 @@ export {
   type ValidationErrorCode,
   type ValidationWarning,
 } from "./validate/index.js";
+export {
+  createFacilitatorClient,
+  FacilitatorHttpError,
+  type CreateFacilitatorClientOptions,
+  type FacilitatorClient,
+  type FacilitatorErrorCode,
+  type FacilitatorHttpErrorCode,
+  type FacilitatorPerformActionInput,
+  type FacilitatorPerformActionResult,
+  type FacilitatorSettleInput,
+  type FacilitatorSettleResult,
+  type FacilitatorVerifyInput,
+  type FacilitatorVerifyResult,
+  type FetchLike,
+} from "./facilitator/index.js";
