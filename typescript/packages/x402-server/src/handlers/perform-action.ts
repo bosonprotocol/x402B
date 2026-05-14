@@ -19,19 +19,12 @@ import {
   type ExchangeReader,
   type VerifyExchangeExpected,
 } from "../onchain/verify-exchange.js";
-import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 
 /** Per-action inputs accepted by every post-commit convenience handler. */
 export interface PerformActionInput {
   exchangeId: string;
   /** ABI-encoded `BosonMetaTx` tuple — see `encodeSignedPayload` in `@bosonprotocol/x402-facilitator`. */
   signedPayload: Hex;
-  /**
-   * Reference snapshot for the post-state verification step — usually
-   * cached from the original 402 so we can assert seller / token /
-   * price match without another offer-side lookup.
-   */
-  requirementsRef: Pick<EscrowPaymentRequirements, "asset" | "amount" | "offer">;
 }
 
 export interface PerformActionContext {
@@ -50,6 +43,16 @@ export async function handlePerformAction(
   input: PerformActionInput,
   ctx: PerformActionContext,
 ): Promise<HandlerResult<PerformActionOk>> {
+  const reference = await ctx.exchangeReader.read(input.exchangeId);
+  if (reference === null) {
+    return handlerErr(
+      502,
+      "STATE_VERIFY_EXCHANGE_NOT_FOUND",
+      "pre-action exchange reference could not be read",
+      { action, exchangeId: input.exchangeId },
+    );
+  }
+
   let result: Awaited<ReturnType<FacilitatorClient["performAction"]>>;
   try {
     result = await ctx.facilitator.performAction({
@@ -80,9 +83,9 @@ export async function handlePerformAction(
   const expected: VerifyExchangeExpected = {
     state: postState.exchange,
     ...(postState.dispute !== undefined ? { disputeState: postState.dispute } : {}),
-    seller: input.requirementsRef.offer.creator,
-    exchangeToken: input.requirementsRef.asset,
-    price: input.requirementsRef.amount,
+    seller: reference.seller,
+    exchangeToken: reference.exchangeToken,
+    price: reference.price,
   };
   const verifyResult = await verifyExchange(ctx.exchangeReader, input.exchangeId, expected);
   if (!verifyResult.ok) {

@@ -10,5 +10,6 @@ export {
   type ExchangeSnapshot,
   type VerifyExchangeErrorCode,
   type VerifyExchangeExpected,
+  type VerifyExchangeOptions,
   type VerifyExchangeResult,
 } from "./verify-exchange.js";

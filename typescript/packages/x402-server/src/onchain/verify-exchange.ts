@@ -38,8 +38,8 @@ export interface ExchangeSnapshot {
  * Pluggable reader for the post-settle / post-perform-action state
  * verification step. The reader returns `null` iff the exchange id
  * doesn't yet exist in the data source (subgraph not yet indexed,
- * `getExchange` reverts on a non-existent id, etc.) — handlers retry
- * + bound the wait in their own logic.
+ * `getExchange` reverts on a non-existent id, etc.). `verifyExchange`
+ * retries transient not-found / stale-state results with a bounded wait.
  */
 export interface ExchangeReader {
   read(exchangeId: string): Promise<ExchangeSnapshot | null>;
@@ -65,6 +65,13 @@ export type VerifyExchangeErrorCode =
   | "SELLER_MISMATCH"
   | "TOKEN_MISMATCH"
   | "PRICE_MISMATCH";
+
+export interface VerifyExchangeOptions {
+  /** Maximum read/compare attempts. Defaults to 3. */
+  attempts?: number;
+  /** Delay between retryable attempts in milliseconds. Defaults to 50. */
+  delayMs?: number;
+}
 
 /**
  * Compare a snapshot against the expected post-state. Short-circuits
@@ -129,14 +136,46 @@ export function verifyExchangeSnapshot(
 
 /**
  * High-level convenience — read via the configured `ExchangeReader`
- * and apply `verifyExchangeSnapshot`. Returns `EXCHANGE_NOT_FOUND`
- * if the reader yields `null`.
+ * and apply `verifyExchangeSnapshot`. Retries boundedly when a reader
+ * may be behind the just-mined transaction (`EXCHANGE_NOT_FOUND`,
+ * `STATE_MISMATCH`, or `DISPUTE_STATE_MISMATCH`), then returns the
+ * last comparison result.
  */
 export async function verifyExchange(
   reader: ExchangeReader,
   exchangeId: string,
   expected: VerifyExchangeExpected,
+  options: VerifyExchangeOptions = {},
 ): Promise<VerifyExchangeResult> {
-  const snapshot = await reader.read(exchangeId);
-  return verifyExchangeSnapshot(snapshot, expected);
+  const attempts = Math.max(1, Math.floor(options.attempts ?? 3));
+  const delayMs = Math.max(0, Math.floor(options.delayMs ?? 50));
+  let result: VerifyExchangeResult = { ok: false, code: "EXCHANGE_NOT_FOUND" };
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const snapshot = await reader.read(exchangeId);
+    result = verifyExchangeSnapshot(snapshot, expected);
+    if (result.ok || !isRetryableVerifyResult(result) || attempt === attempts) {
+      return result;
+    }
+    if (delayMs > 0) {
+      await delay(delayMs);
+    }
+  }
+
+  return result;
+}
+
+function isRetryableVerifyResult(result: VerifyExchangeResult): boolean {
+  return (
+    !result.ok &&
+    (result.code === "EXCHANGE_NOT_FOUND" ||
+      result.code === "STATE_MISMATCH" ||
+      result.code === "DISPUTE_STATE_MISMATCH")
+  );
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

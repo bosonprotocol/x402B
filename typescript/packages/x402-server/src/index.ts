@@ -75,5 +75,6 @@ export {
   type ExchangeSnapshot,
   type VerifyExchangeErrorCode,
   type VerifyExchangeExpected,
+  type VerifyExchangeOptions,
   type VerifyExchangeResult,
 } from "./onchain/index.js";

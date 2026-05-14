@@ -3,7 +3,7 @@
 // `ExchangeReader` is stubbed with an in-memory implementation so we
 // can drive both the happy path and the state-verification mismatch.
 
-import { ExchangeState } from "@bosonprotocol/x402-actions";
+import { DisputeState, ExchangeState } from "@bosonprotocol/x402-actions";
 import { describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -45,6 +45,17 @@ function makeReader(snapshot: ExchangeSnapshot | null): ExchangeReader {
   return { read: async () => snapshot };
 }
 
+function makeSequenceReader(snapshots: Array<ExchangeSnapshot | null>): ExchangeReader {
+  let index = 0;
+  return {
+    read: async () => {
+      const snapshot = snapshots[Math.min(index, snapshots.length - 1)] ?? null;
+      index += 1;
+      return snapshot;
+    },
+  };
+}
+
 function makeBuyerHeader(payload: unknown): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
 }
@@ -82,11 +93,11 @@ async function buildServerWithStubs(
   }
 }
 
-describe("handlers.commitAndRedeem", () => {
+describe("handlers.commit / commitAndRedeem", () => {
   it("happy path — settles + verifies + returns nextActions", async () => {
     const fx = await makePaymentFixture();
     const reader = makeReader({
-      state: ExchangeState.REDEEMED,
+      state: ExchangeState.COMMITTED,
       seller: fx.requirements.offer.creator,
       exchangeToken: TOKEN,
       price: fx.requirements.amount,
@@ -99,7 +110,7 @@ describe("handlers.commitAndRedeem", () => {
       reader,
     });
 
-    const result = await server.handlers.commitAndRedeem({
+    const result = await server.handlers.commit({
       paymentHeader: makeBuyerHeader(fx.payload),
       requirements: fx.requirements,
     });
@@ -108,9 +119,29 @@ describe("handlers.commitAndRedeem", () => {
     if (result.ok) {
       expect(result.body.exchangeId).toBe("42");
       expect(result.body.txHash).toBe("0xabc");
-      expect(result.body.nextActions.exchangeState).toBe(ExchangeState.REDEEMED);
+      expect(result.body.nextActions.exchangeState).toBe(ExchangeState.COMMITTED);
       expect(result.body.nextActions.exchangeId).toBe("42");
     }
+  });
+
+  it("400s before settle when the route does not match the signed action", async () => {
+    const fx = await makePaymentFixture();
+    const { server, fetchStub } = await buildServerWithStubs({
+      facilitator: () => ({ ok: true, exchangeId: "42", txHash: "0xabc" }),
+      reader: makeReader(null),
+    });
+
+    const result = await server.handlers.commitAndRedeem({
+      paymentHeader: makeBuyerHeader(fx.payload),
+      requirements: fx.requirements,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.body.code).toBe("ACTION_ROUTE_MISMATCH");
+    }
+    expect(fetchStub.calls).toHaveLength(0);
   });
 
   it("402 when X-PAYMENT is missing", async () => {
@@ -142,7 +173,7 @@ describe("handlers.commitAndRedeem", () => {
     const reader = makeReader(null);
     const { server } = await buildServerWithStubs({ reader });
 
-    const result = await server.handlers.commitAndRedeem({
+    const result = await server.handlers.commit({
       paymentHeader: makeBuyerHeader(tampered),
       requirements: fx.requirements,
     });
@@ -161,7 +192,7 @@ describe("handlers.commitAndRedeem", () => {
       reader: makeReader(null),
     });
 
-    const result = await server.handlers.commitAndRedeem({
+    const result = await server.handlers.commit({
       paymentHeader: makeBuyerHeader(fx.payload),
       requirements: fx.requirements,
     });
@@ -176,7 +207,7 @@ describe("handlers.commitAndRedeem", () => {
   it("502 when on-chain state doesn't match expected post-state", async () => {
     const fx = await makePaymentFixture();
     const reader = makeReader({
-      state: ExchangeState.COMMITTED, // expected REDEEMED for Flow B
+      state: ExchangeState.REDEEMED, // expected COMMITTED for Flow A
       seller: fx.requirements.offer.creator,
       exchangeToken: TOKEN,
       price: fx.requirements.amount,
@@ -186,7 +217,7 @@ describe("handlers.commitAndRedeem", () => {
       reader,
     });
 
-    const result = await server.handlers.commitAndRedeem({
+    const result = await server.handlers.commit({
       paymentHeader: makeBuyerHeader(fx.payload),
       requirements: fx.requirements,
     });
@@ -203,7 +234,7 @@ describe("handlers.commitAndRedeem", () => {
     const { server } = await buildServerWithStubs({ reader: undefined });
 
     await expect(
-      server.handlers.commitAndRedeem({
+      server.handlers.commit({
         paymentHeader: makeBuyerHeader(fx.payload),
         requirements: fx.requirements,
       }),
@@ -214,12 +245,20 @@ describe("handlers.commitAndRedeem", () => {
 describe("handlers.complete (perform-action wrapper)", () => {
   it("happy path — forwards to facilitator and verifies COMPLETED", async () => {
     const fx = await makePaymentFixture();
-    const reader = makeReader({
-      state: ExchangeState.COMPLETED,
-      seller: fx.requirements.offer.creator,
-      exchangeToken: TOKEN,
-      price: fx.requirements.amount,
-    });
+    const reader = makeSequenceReader([
+      {
+        state: ExchangeState.REDEEMED,
+        seller: fx.requirements.offer.creator,
+        exchangeToken: TOKEN,
+        price: fx.requirements.amount,
+      },
+      {
+        state: ExchangeState.COMPLETED,
+        seller: fx.requirements.offer.creator,
+        exchangeToken: TOKEN,
+        price: fx.requirements.amount,
+      },
+    ]);
     const stub = makeStubFacilitatorFetch(() => ({
       ok: true,
       txHash: "0xfed",
@@ -242,11 +281,6 @@ describe("handlers.complete (perform-action wrapper)", () => {
       const result = await server.handlers.complete({
         exchangeId: "42",
         signedPayload: "0xc0ffee",
-        requirementsRef: {
-          asset: fx.requirements.asset,
-          amount: fx.requirements.amount,
-          offer: fx.requirements.offer,
-        },
       });
 
       expect(result.ok).toBe(true);
@@ -261,20 +295,42 @@ describe("handlers.complete (perform-action wrapper)", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("502s before facilitator call when the server cannot read the exchange reference", async () => {
+    const { server, fetchStub } = await buildServerWithStubs({ reader: makeReader(null) });
+
+    const result = await server.handlers.complete({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(502);
+      expect(result.body.code).toBe("STATE_VERIFY_EXCHANGE_NOT_FOUND");
+    }
+    expect(fetchStub.calls).toHaveLength(0);
+  });
 });
 
 describe("handlers.disputeRaise — DISPUTED post-state path", () => {
   it("stamps nextActions with disputeState=RESOLVING", async () => {
     const fx = await makePaymentFixture();
-    const reader: ExchangeReader = {
-      read: async () => ({
-        state: ExchangeState.DISPUTED,
-        disputeState: (await import("@bosonprotocol/x402-actions")).DisputeState.RESOLVING,
+    const reader = makeSequenceReader([
+      {
+        state: ExchangeState.REDEEMED,
         seller: fx.requirements.offer.creator,
         exchangeToken: TOKEN,
         price: fx.requirements.amount,
-      }),
-    };
+      },
+      {
+        state: ExchangeState.DISPUTED,
+        disputeState: DisputeState.RESOLVING,
+        seller: fx.requirements.offer.creator,
+        exchangeToken: TOKEN,
+        price: fx.requirements.amount,
+      },
+    ]);
     const stub = makeStubFacilitatorFetch(() => ({
       ok: true,
       txHash: "0x111",
@@ -298,11 +354,6 @@ describe("handlers.disputeRaise — DISPUTED post-state path", () => {
       const result = await server.handlers.disputeRaise({
         exchangeId: "42",
         signedPayload: "0xdef",
-        requirementsRef: {
-          asset: fx.requirements.asset,
-          amount: fx.requirements.amount,
-          offer: fx.requirements.offer,
-        },
       });
 
       expect(result.ok).toBe(true);
@@ -366,5 +417,32 @@ describe("verifyExchangeSnapshot — pure comparison", () => {
       },
     );
     expect(result).toMatchObject({ ok: false, code: "PRICE_MISMATCH" });
+  });
+
+  it("verifyExchange retries transient EXCHANGE_NOT_FOUND", async () => {
+    const { verifyExchange } = await import("../src/index.js");
+    const reader = makeSequenceReader([
+      null,
+      {
+        state: ExchangeState.REDEEMED,
+        seller: "0x1111111111111111111111111111111111111111",
+        exchangeToken: TOKEN,
+        price: "1000000",
+      },
+    ]);
+
+    const result = await verifyExchange(
+      reader,
+      "42",
+      {
+        state: ExchangeState.REDEEMED,
+        seller: "0x1111111111111111111111111111111111111111",
+        exchangeToken: TOKEN,
+        price: "1000000",
+      },
+      { attempts: 2, delayMs: 0 },
+    );
+
+    expect(result.ok).toBe(true);
   });
 });

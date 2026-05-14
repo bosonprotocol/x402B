@@ -7,6 +7,7 @@
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 
 import { emitNextActions } from "./next-actions.js";
 import { handlerErr, handlerOk, type HandlerResult } from "./types.js";
@@ -48,7 +49,10 @@ export async function handleCommit(
   input: CommitHandlerInput,
   ctx: CommitHandlerContext,
 ): Promise<HandlerResult<CommitOk>> {
-  return await handleCommitImpl(input, ctx, ExchangeState.COMMITTED);
+  return await handleCommitImpl(input, ctx, {
+    expectedAction: "boson-createOfferAndCommit",
+    expectedState: ExchangeState.COMMITTED,
+  });
 }
 
 /**
@@ -64,18 +68,32 @@ export async function handleCommitAndRedeem(
   input: CommitHandlerInput,
   ctx: CommitHandlerContext,
 ): Promise<HandlerResult<CommitOk>> {
-  return await handleCommitImpl(input, ctx, ExchangeState.REDEEMED);
+  return await handleCommitImpl(input, ctx, {
+    expectedAction: "boson-createOfferCommitAndRedeem",
+    expectedState: ExchangeState.REDEEMED,
+  });
 }
 
 async function handleCommitImpl(
   input: CommitHandlerInput,
   ctx: CommitHandlerContext,
-  expectedState: ExchangeState,
+  expected: { expectedAction: ActionId; expectedState: ExchangeState },
 ): Promise<HandlerResult<CommitOk>> {
   const decoded = decodeXPaymentHeader(input.paymentHeader);
   if (!decoded.ok) {
     const status = decoded.code === "MISSING_HEADER" ? 402 : 400;
     return handlerErr(status, decoded.code, decoded.reason);
+  }
+  if (decoded.payload.payload.action !== expected.expectedAction) {
+    return handlerErr(
+      400,
+      "ACTION_ROUTE_MISMATCH",
+      `handler expected action ${expected.expectedAction}, got ${decoded.payload.payload.action}`,
+      {
+        expected: expected.expectedAction,
+        got: decoded.payload.payload.action,
+      },
+    );
   }
 
   const validation = await validatePaymentPayload({
@@ -117,8 +135,11 @@ async function handleCommitImpl(
     });
   }
 
-  const expected = buildExpectedFromRequirements(input.requirements, expectedState);
-  const verifyResult = await verifyExchange(ctx.exchangeReader, settleResult.exchangeId, expected);
+  const verifyResult = await verifyExchange(
+    ctx.exchangeReader,
+    settleResult.exchangeId,
+    buildExpectedFromRequirements(input.requirements, expected.expectedState),
+  );
   if (!verifyResult.ok) {
     return handlerErr(
       502,
@@ -137,12 +158,15 @@ async function handleCommitImpl(
   // Both commit-side actions transition to non-DISPUTED states
   // (COMMITTED for Flow A, REDEEMED for Flow B), so the cast to
   // `Exclude<ExchangeState, DISPUTED>` is sound — the function only
-  // narrows `expectedState` itself which is typed loosely as
+  // narrows `expected.expectedState` itself which is typed loosely as
   // `ExchangeState` for shared use by both wrappers.
   const nextActions = emitNextActions(
     {
       exchangeId: settleResult.exchangeId,
-      exchangeState: expectedState as Exclude<ExchangeState, typeof ExchangeState.DISPUTED>,
+      exchangeState: expected.expectedState as Exclude<
+        ExchangeState,
+        typeof ExchangeState.DISPUTED
+      >,
     },
     ctx.config.channelRegistry,
   );
