@@ -1,10 +1,4 @@
 import { abis } from "@bosonprotocol/common";
-import { metaTransactionTypedData } from "@bosonprotocol/x402-core/eip712";
-import type {
-  EscrowPaymentPayload,
-  EscrowPaymentRequirements,
-} from "@bosonprotocol/x402-core/schemes/escrow";
-import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm/actions";
 import { describe, expect, it } from "vitest";
 import {
   BaseError,
@@ -13,143 +7,28 @@ import {
   encodeAbiParameters,
   encodeEventTopics,
   keccak256,
-  parseSignature,
   toBytes,
-  type Address,
   type Hex,
   type PublicClient,
   type TransactionReceipt,
   type WalletClient,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 
 import { settle } from "../src/settle/index.js";
 import type { FacilitatorConfig } from "../src/types.js";
 
-const BUYER_PK = "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as const;
-const buyer = privateKeyToAccount(BUYER_PK);
-const RELAYER_PK = "0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210" as const;
-const relayer = privateKeyToAccount(RELAYER_PK);
+import {
+  buildValidPayload,
+  buildValidRequirements,
+  buyer,
+  CHAIN_ID,
+  ESCROW,
+  NETWORK,
+  relayer,
+} from "./fixtures.js";
 
-const ESCROW: Address = "0xdddddddddddddddddddddddddddddddddddddddd";
-const ASSET: Address = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
-const CHAIN_ID = 1;
-const NETWORK = `eip155:${CHAIN_ID}`;
-const NONCE = "1";
-const SELLER: Address = "0x1111111111111111111111111111111111111111";
-const SELLER_SIG: Hex = `0x${"33".repeat(65)}`;
-const AMOUNT = "1000000";
 const TX_HASH: Hex = `0x${"ab".repeat(32)}`;
 const EXPECTED_EXCHANGE_ID = 42n;
-
-// Mirrors verify.test.ts's fullOffer shape so the verify step inside
-// settle()'s pipeline accepts the calldata as consistent with the
-// advertised offer.
-const fullOffer = {
-  price: AMOUNT,
-  sellerDeposit: "0",
-  agentId: "0",
-  buyerCancelPenalty: "0",
-  quantityAvailable: "1",
-  validFromDateInMS: "1900000000000",
-  validUntilDateInMS: "1900003600000",
-  voucherRedeemableFromDateInMS: "1900000000000",
-  voucherRedeemableUntilDateInMS: "1900003600000",
-  disputePeriodDurationInMS: "86400000",
-  voucherValidDurationInMS: "0",
-  resolutionPeriodDurationInMS: "604800000",
-  exchangeToken: ASSET,
-  disputeResolverId: "1",
-  metadataUri: "ipfs://QmDeadBeef",
-  metadataHash: "QmDeadBeef",
-  collectionIndex: "0",
-  feeLimit: "0",
-  offerCreator: SELLER,
-  committer: buyer.address,
-  condition: {
-    method: 0,
-    tokenType: 0,
-    tokenAddress: "0x0000000000000000000000000000000000000000",
-    gatingType: 0,
-    minTokenId: "0",
-    threshold: "0",
-    maxCommits: "0",
-    maxTokenId: "0",
-  },
-  useDepositedFunds: false,
-  signature: SELLER_SIG,
-  sellerId: "12345",
-  buyerId: "0",
-  sellerOfferParams: {
-    collectionIndex: "0",
-    royaltyInfo: { recipients: [], bps: [] },
-    mutualizerAddress: "0x0000000000000000000000000000000000000000",
-  },
-};
-
-async function buildValidPayload(): Promise<EscrowPaymentPayload> {
-  const calldata = buildCreateOfferAndCommitCalldata({
-    fullOffer: fullOffer as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
-  });
-  const typedData = await metaTransactionTypedData({
-    chainId: CHAIN_ID,
-    verifyingContract: ESCROW,
-    message: {
-      nonce: BigInt(NONCE),
-      from: buyer.address,
-      contractAddress: ESCROW,
-      functionName: calldata.functionName,
-      functionSignature: calldata.functionSignature,
-    },
-  });
-  const sig = await buyer.signTypedData({
-    domain: typedData.domain,
-    types: typedData.types,
-    primaryType: typedData.primaryType,
-    message: typedData.message,
-  });
-  const parsed = parseSignature(sig);
-  const v = parsed.v !== undefined ? Number(parsed.v) : parsed.yParity === 0 ? 27 : 28;
-  return {
-    x402Version: 1,
-    scheme: "escrow",
-    network: NETWORK,
-    payload: {
-      action: "boson-createOfferAndCommit",
-      tokenAuthStrategy: "none",
-      offerRef: { fullOffer, sellerSig: SELLER_SIG },
-      buyer: buyer.address,
-      metaTx: {
-        from: buyer.address,
-        nonce: NONCE,
-        functionName: calldata.functionName,
-        functionSignature: calldata.functionSignature,
-        sig: { v, r: parsed.r, s: parsed.s },
-      },
-    },
-  };
-}
-
-function buildValidRequirements(): EscrowPaymentRequirements {
-  return {
-    scheme: "escrow",
-    network: NETWORK,
-    asset: ASSET,
-    amount: AMOUNT,
-    escrowAddress: ESCROW,
-    recipientId: "did:boson:seller:42",
-    maxTimeoutSeconds: 3600,
-    offer: {
-      fullOffer,
-      sellerSig: SELLER_SIG,
-      creator: SELLER,
-    },
-    tokenAuthStrategies: ["none"],
-    actions: {
-      next: [{ id: "boson-createOfferAndCommit", channels: ["server", "facilitator", "onchain"] }],
-    },
-  };
-}
 
 /**
  * Build a synthetic receipt with one BuyerCommitted log. Encodes the
