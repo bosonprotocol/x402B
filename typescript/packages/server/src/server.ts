@@ -32,6 +32,7 @@ import {
   type PerformActionInput,
   type PerformActionOk,
 } from "./handlers/index.js";
+import { stampFacilitatorEndpoints } from "./internal/facilitator-endpoints.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
 
 /** Per-offer inputs for `server.buildPaymentRequirements` — everything the offer-level args carry, minus the per-server context the factory already holds. */
@@ -68,19 +69,6 @@ export interface X402bServer {
   };
 }
 
-const COMMIT_ACTION_IDS = new Set([
-  "boson-createOfferAndCommit",
-  "boson-createOfferCommitAndRedeem",
-]);
-
-function facilitatorEndpointFor(actionId: string, facilitatorUrl: string): string {
-  const base = facilitatorUrl.replace(/\/+$/, "");
-  if (COMMIT_ACTION_IDS.has(actionId)) {
-    return `${base}/settle`;
-  }
-  return `${base}/perform-action?action=${encodeURIComponent(actionId)}`;
-}
-
 function withFacilitatorEndpoints(
   requirements: EscrowPaymentRequirements,
   facilitatorUrl: string,
@@ -89,18 +77,7 @@ function withFacilitatorEndpoints(
     ...requirements,
     actions: {
       ...requirements.actions,
-      next: requirements.actions.next.map((entry) => {
-        if (!entry.channels.includes("facilitator")) {
-          return entry;
-        }
-        return {
-          ...entry,
-          endpoints: {
-            ...entry.endpoints,
-            facilitator: facilitatorEndpointFor(entry.id, facilitatorUrl),
-          },
-        };
-      }),
+      next: stampFacilitatorEndpoints(requirements.actions.next, facilitatorUrl),
     },
   };
 }

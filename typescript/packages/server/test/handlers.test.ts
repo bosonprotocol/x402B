@@ -121,6 +121,21 @@ describe("handlers.commit / commitAndRedeem", () => {
       expect(result.body.txHash).toBe("0xabc");
       expect(result.body.nextActions.exchangeState).toBe(ExchangeState.COMMITTED);
       expect(result.body.nextActions.exchangeId).toBe("42");
+
+      // Every nextAction advertising `facilitator` in `channels` must
+      // also carry an `endpoints.facilitator` URL; otherwise clients
+      // see the channel advertised but have nowhere to route. The
+      // commit-time challenge stamps these in `buildPaymentRequirements`;
+      // the post-commit envelope stamps them in `emitNextActions`.
+      const facilitatorEntries = result.body.nextActions.next.filter((entry) =>
+        entry.channels.includes("facilitator"),
+      );
+      expect(facilitatorEntries.length).toBeGreaterThan(0);
+      for (const entry of facilitatorEntries) {
+        expect(entry.endpoints?.facilitator).toBe(
+          `${facilitatorUrl}/perform-action?action=${encodeURIComponent(entry.id)}`,
+        );
+      }
     }
   });
 
@@ -361,6 +376,17 @@ describe("handlers.disputeRaise — DISPUTED post-state path", () => {
         expect(result.body.nextActions.exchangeState).toBe(ExchangeState.DISPUTED);
         if ("disputeState" in result.body.nextActions) {
           expect(result.body.nextActions.disputeState).toBe("RESOLVING");
+        }
+
+        // Facilitator endpoints get stamped on the DISPUTED path too.
+        const facilitatorEntries = result.body.nextActions.next.filter((entry) =>
+          entry.channels.includes("facilitator"),
+        );
+        expect(facilitatorEntries.length).toBeGreaterThan(0);
+        for (const entry of facilitatorEntries) {
+          expect(entry.endpoints?.facilitator).toBe(
+            `${facilitatorUrl}/perform-action?action=${encodeURIComponent(entry.id)}`,
+          );
         }
       }
     } finally {

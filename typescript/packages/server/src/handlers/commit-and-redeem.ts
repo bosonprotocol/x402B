@@ -169,6 +169,7 @@ async function handleCommitImpl(
       >,
     },
     ctx.config.channelRegistry,
+    ctx.config.facilitator.url,
   );
   return handlerOk({
     exchangeId: settleResult.exchangeId,
