@@ -20,6 +20,8 @@ import {
 import type { Hex } from "viem";
 import { z } from "zod";
 
+import type { ExchangeReader } from "./onchain/verify-exchange.js";
+
 /**
  * Minimal signing surface needed by `signFullOffer`. Structurally
  * compatible with viem's `Account` (in particular `LocalAccount` from
@@ -57,6 +59,14 @@ export interface X402bServerConfig {
   facilitator: { url: string };
   /** Per-seller channel + endpoint registry consumed by `deriveNextActions`. */
   channelRegistry: ChannelRegistry;
+  /**
+   * Reader the convenience handlers use to verify the post-settle /
+   * post-perform-action exchange state. Required at runtime when any
+   * write handler is invoked; the `signOffer` / `buildPaymentRequirements`
+   * read-only paths don't touch it. See `./onchain/verify-exchange.ts`
+   * for the interface.
+   */
+  exchangeReader?: ExchangeReader;
 }
 
 const httpUrlSchema = z
@@ -77,11 +87,18 @@ const sellerSignerSchema = z
   })
   .passthrough();
 
+const exchangeReaderShallowSchema = z
+  .object({
+    read: z.function().args(z.string()).returns(z.unknown()),
+  })
+  .passthrough();
+
 /**
  * zod validator for `X402bServerConfig`. Shallow on the signer +
- * signer (viem account types bring their own structural validators);
- * strict on the scalar fields we own here and on the channel registry
- * via `@bosonprotocol/x402-actions`.
+ * exchange reader (viem account types bring their own structural
+ * validators; the user-supplied reader impl is structurally typed);
+ * strict on the scalar fields we own here, and on the channel
+ * registry via `@bosonprotocol/x402-actions`.
  */
 export const x402bServerConfigSchema = z
   .object({
@@ -95,6 +112,7 @@ export const x402bServerConfigSchema = z
       })
       .strict(),
     channelRegistry: channelRegistryZodSchema,
+    exchangeReader: exchangeReaderShallowSchema.optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {
