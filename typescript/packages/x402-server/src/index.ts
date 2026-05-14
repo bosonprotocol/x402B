@@ -19,3 +19,13 @@ export {
   type BuildPaymentRequirementsArgs,
   type SignFullOfferArgs,
 } from "./challenge/index.js";
+export {
+  decodeXPaymentHeader,
+  validatePaymentPayload,
+  type DecodeErrorCode,
+  type DecodeXPaymentResult,
+  type ValidatePaymentPayloadArgs,
+  type ValidatePaymentPayloadResult,
+  type ValidationErrorCode,
+  type ValidationWarning,
+} from "./validate/index.js";
