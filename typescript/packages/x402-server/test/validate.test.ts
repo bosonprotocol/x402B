@@ -255,16 +255,9 @@ describe("validatePaymentPayload — rule failures", () => {
 
   it("rule 13 — rejects missing fulfillment when required", async () => {
     const fx = await makePaymentFixture();
-    const requirementsWithFulfillment = {
-      ...fx.requirements,
-      fulfillment: {
-        required: true,
-        options: [{ id: "email", schema: { type: "object" as const } }],
-      },
-    };
     const result = await validatePaymentPayload({
       payload: fx.payload,
-      requirements: requirementsWithFulfillment,
+      requirements: withRequiredEmailFulfillment(fx.requirements),
       chainId: CHAIN_ID,
     });
     expect(result).toMatchObject({ ok: false, rule: 13, code: "FULFILLMENT_REQUIRED" });
@@ -272,20 +265,13 @@ describe("validatePaymentPayload — rule failures", () => {
 
   it("rule 13 — rejects fulfillment option not advertised", async () => {
     const fx = await makePaymentFixture();
-    const requirementsWithFulfillment = {
-      ...fx.requirements,
-      fulfillment: {
-        required: true,
-        options: [{ id: "email", schema: { type: "object" as const } }],
-      },
-    };
     const payloadWithBadOption = {
       ...fx.payload,
       fulfillment: { option: "smoke-signal", data: {} },
     };
     const result = await validatePaymentPayload({
       payload: payloadWithBadOption,
-      requirements: requirementsWithFulfillment,
+      requirements: withRequiredEmailFulfillment(fx.requirements),
       chainId: CHAIN_ID,
     });
     expect(result).toMatchObject({
@@ -297,26 +283,34 @@ describe("validatePaymentPayload — rule failures", () => {
 
   it("rule 13 — rejects fulfillment data when caller-supplied validator fails", async () => {
     const fx = await makePaymentFixture();
-    const requirementsWithFulfillment = {
-      ...fx.requirements,
-      fulfillment: {
-        required: true,
-        options: [{ id: "email", schema: { type: "object" as const } }],
-      },
-    };
     const payloadWithFulfillment = {
       ...fx.payload,
       fulfillment: { option: "email", data: { email: "not-an-email" } },
     };
     const result = await validatePaymentPayload({
       payload: payloadWithFulfillment,
-      requirements: requirementsWithFulfillment,
+      requirements: withRequiredEmailFulfillment(fx.requirements),
       chainId: CHAIN_ID,
       validateFulfillmentData: (_option, _data) => ({ ok: false, reason: "bad email" }),
     });
     expect(result).toMatchObject({ ok: false, rule: 13, code: "FULFILLMENT_DATA_INVALID" });
   });
 });
+
+/**
+ * Stamp `requirements` with a single mandatory `email` fulfillment
+ * option — the shape every rule-13 test needs. Returns a fresh
+ * object each call so test mutations stay isolated.
+ */
+function withRequiredEmailFulfillment<T extends { fulfillment?: unknown }>(requirements: T): T {
+  return {
+    ...requirements,
+    fulfillment: {
+      required: true,
+      options: [{ id: "email", schema: { type: "object" as const } }],
+    },
+  };
+}
 
 describe("validatePaymentPayload — unsupported calldata builders", () => {
   it("rule 7 — fails closed for `boson-createOfferCommitAndRedeem` until its builder lands", async () => {
