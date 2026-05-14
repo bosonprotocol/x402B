@@ -12,7 +12,6 @@
 
 import {
   parseEscrowPaymentRequirements,
-  type BosonMetaTx,
   type EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { Address } from "viem";
@@ -22,7 +21,11 @@ import { createCoreSdkFactory } from "./core-sdk-factory.js";
 import { resolveFulfillment } from "./fulfillment.js";
 import { assembleAndEncodePayload } from "./payload.js";
 import { signCreateOfferAndCommitMetaTx } from "./pre-commit.js";
-import { signPostCommitAction, type SignActionArgs } from "./post-commit.js";
+import {
+  signPostCommitAction,
+  type SignActionArgs,
+  type SignedPostCommitAction,
+} from "./post-commit.js";
 import { parsePaymentResponse } from "./response.js";
 import { buildAndSignTokenAuth } from "./token-auth/index.js";
 import { MaxAmountExceededError } from "./errors.js";
@@ -37,10 +40,13 @@ export interface X402bClient {
 
   /**
    * Sign a Boson protocol meta-transaction for a buyer-driven post-commit
-   * action (redeem, cancel, complete, dispute family). Returns the
-   * wire-format `BosonMetaTx` envelope the caller delivers to the chosen
-   * channel — typically as the JSON body of a POST to the server endpoint
-   * the prior response advertised under `actions.next[].endpoints.server`.
+   * action (redeem, cancel, complete, dispute family). Returns both the
+   * wire-format `BosonMetaTx` envelope and the ABI-encoded `signedPayload`
+   * Hex — pick the shape that matches the chosen channel. Server /
+   * facilitator HTTP routes consume `signedPayload` directly (e.g. as
+   * the `signedPayload` field on the JSON POST body to the endpoint the
+   * prior response advertised under `actions.next[].endpoints.server`);
+   * on-chain and MCP channels use the `metaTx` object.
    *
    * Note: `boson-escalateDispute` signs only the meta-tx. If the dispute
    * resolver requires an escalation deposit, the resolver/server returns
@@ -48,7 +54,7 @@ export interface X402bClient {
    * this meta-tx with a token-auth payload — the deposit wrapper is out
    * of MVP.
    */
-  signAction(args: SignActionArgs): Promise<BosonMetaTx>;
+  signAction(args: SignActionArgs): Promise<SignedPostCommitAction>;
 
   /**
    * Best-effort decode of `X-PAYMENT-RESPONSE` after a successful retry.

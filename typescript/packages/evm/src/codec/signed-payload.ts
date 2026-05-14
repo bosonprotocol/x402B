@@ -1,14 +1,12 @@
-// Wire-format codec for `FacilitatorPerformActionInput.signedPayload`.
+// Wire-format codec for the post-commit `signedPayload` Hex.
 //
 // The signed-payload Hex is the ABI-encoded tuple
 //   (address from, string functionName, bytes functionSignature,
 //    uint256 nonce, uint8 v, bytes32 r, bytes32 s)
 // — i.e. a serialised `BosonMetaTx` ready to be unpacked and wrapped in
-// `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
-//
-// This codec is the inverse of whatever the buyer / seller's client used
-// to build the request body. We ship both directions (encode + decode)
-// so client SDKs can re-use the same shape.
+// `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`. It lives
+// here so the buyer's client (encoding) and the facilitator (decoding)
+// share one definition and cannot drift.
 
 import type { BosonMetaTx, Hex } from "@bosonprotocol/x402-core/schemes/escrow";
 import { decodeAbiParameters, encodeAbiParameters, type AbiParameter } from "viem";

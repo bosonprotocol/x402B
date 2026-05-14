@@ -14,4 +14,5 @@ export * from "./errors.js";
 export type { InnerActionCalldata, TxRequest } from "./types.js";
 
 export * from "./actions/index.js";
+export * from "./codec/index.js";
 export * from "./envelope/index.js";

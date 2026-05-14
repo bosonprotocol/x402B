@@ -45,8 +45,9 @@ import { recoverMetaTxSigner } from "../verify/meta-tx-signature.js";
 import { simulateExecuteMetaTransaction } from "../verify/simulate.js";
 import { parseChainId } from "../verify/structural.js";
 
+import { decodeSignedPayload } from "@bosonprotocol/x402-evm/codec";
+
 import { validatePerformActionMetaTx } from "./action-calldata.js";
-import { decodeSignedPayload } from "./codec.js";
 import { deriveNewState } from "./new-state.js";
 
 export async function performAction(

@@ -14,7 +14,10 @@ export * from "./errors.js";
 export { verify } from "./verify/index.js";
 export { settle } from "./settle/index.js";
 export { performAction } from "./perform-action/index.js";
-export { decodeSignedPayload, encodeSignedPayload } from "./perform-action/codec.js";
+// Codec lives in `@bosonprotocol/x402-evm/codec` so client and facilitator
+// share one implementation. Re-exported here for backward compatibility
+// with existing facilitator consumers that import it from the barrel.
+export { decodeSignedPayload, encodeSignedPayload } from "@bosonprotocol/x402-evm/codec";
 
 export {
   FacilitatorChannelAdapter,

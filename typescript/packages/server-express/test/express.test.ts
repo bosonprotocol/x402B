@@ -344,6 +344,31 @@ describe("expressMiddleware — 402 challenge + settle gating", () => {
     expect(res.body.x402b.exchangeId).toBe("99");
   });
 
+  it("defaults to the commit handler (Flow A) when `flow` is omitted", async () => {
+    // The fixture signs `boson-createOfferAndCommit` (Flow A). With the
+    // default in place this path settles cleanly; under the previous
+    // `commit-and-redeem` default the action wouldn't match.
+    const { requirements, headerValue } = await buildBuyerPayload();
+    const server = await buildServer(
+      makeStubFetch(() => ({ ok: true, exchangeId: "101", txHash: "0xc0ffee" })),
+    );
+
+    const app = express();
+    app.use(express.json());
+    app.get(
+      "/datafeed",
+      expressMiddleware(server, {
+        resolveRequirements: () =>
+          requirements as unknown as Awaited<ReturnType<typeof server.buildPaymentRequirements>>,
+      }),
+      (_req, res) => res.json({ x402b: res.locals.x402b }),
+    );
+
+    const res = await supertest(app).get("/datafeed").set("X-PAYMENT", headerValue);
+    expect(res.status).toBe(200);
+    expect(res.body.x402b.exchangeId).toBe("101");
+  });
+
   it("forwards validator failures as the suggested status", async () => {
     const { requirements, payload } = await buildBuyerPayload();
     const server = await buildServer(makeStubFetch(() => ({ ok: true })));
