@@ -246,6 +246,7 @@ function buildPublicClient(
   opts: {
     callBehavior?: "pass" | "revert";
     receipt?: TransactionReceipt;
+    waitBehavior?: "ok" | "timeout";
   } = {},
 ): PublicClient {
   return {
@@ -263,7 +264,18 @@ function buildPublicClient(
     readContract: async () => {
       throw new Error("readContract not stubbed");
     },
-    waitForTransactionReceipt: async () => opts.receipt ?? buildReceipt(),
+    waitForTransactionReceipt: async () => {
+      if (opts.waitBehavior === "timeout") {
+        // viem rejects waitForTransactionReceipt with a typed error on
+        // poll timeout (WaitForTransactionReceiptTimeoutError) — a
+        // BaseError subclass. Mimic that shape so submit() exercises
+        // its catch branch.
+        throw new BaseError("Timed out while waiting for transaction receipt", {
+          cause: new Error("poll deadline exceeded after 30s"),
+        });
+      }
+      return opts.receipt ?? buildReceipt();
+    },
   } as unknown as PublicClient;
 }
 
@@ -382,6 +394,20 @@ describe("settle()", () => {
       config,
     );
     expect(result).toMatchObject({ ok: false, code: "INTERNAL_ERROR" });
+  });
+
+  it("returns INTERNAL_ERROR when waitForTransactionReceipt times out", async () => {
+    const payload = await buildValidPayload();
+    const requirements = buildValidRequirements();
+    const config = buildConfig({
+      publicClient: buildPublicClient({ waitBehavior: "timeout" }),
+    });
+    const result = await settle(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      config,
+    );
+    expect(result).toMatchObject({ ok: false, code: "INTERNAL_ERROR" });
+    expect((result as { ok: false; reason: string }).reason).toContain("waitForTransactionReceipt");
   });
 
   it("returns INSUFFICIENT_FUNDS_FOR_GAS when the relayer cannot fund gas", async () => {

@@ -60,9 +60,29 @@ export async function submit(args: SubmitArgs): Promise<SubmitResult> {
   } catch (e) {
     return classifySendError(e);
   }
-  const receipt = await args.publicClient.waitForTransactionReceipt({
-    hash: txHash as `0x${string}`,
-  });
+  // `waitForTransactionReceipt` polls the RPC and can reject with a
+  // viem-typed error (`WaitForTransactionReceiptTimeoutError`,
+  // `TransactionNotFoundError`, `TransactionReceiptNotFoundError`) or
+  // any wrapped transport failure. None of those are buyer-attributable
+  // — surface them as INTERNAL_ERROR so operators can retry or inspect
+  // the provider rather than treating them like an on-chain revert.
+  // Genuine reverts land in the `receipt.status !== "success"` branch
+  // below.
+  let receipt: TransactionReceipt;
+  try {
+    receipt = await args.publicClient.waitForTransactionReceipt({
+      hash: txHash as `0x${string}`,
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      code: "INTERNAL_ERROR",
+      reason:
+        e instanceof Error
+          ? `waitForTransactionReceipt failed: ${e.message}`
+          : "waitForTransactionReceipt failed",
+    };
+  }
   if (receipt.status !== "success") {
     return {
       ok: false,
