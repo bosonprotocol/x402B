@@ -40,9 +40,7 @@ describe("pickAction", () => {
   it("throws NoCompatibleActionError for redeemMode='commit-only' when only Flow B is advertised", () => {
     const req = baseRequirements();
     req.actions.next = [{ id: "boson-createOfferCommitAndRedeem", channels: ["server"] }];
-    expect(() => pickAction(req, { redeemMode: "commit-only" })).toThrow(
-      NoCompatibleActionError,
-    );
+    expect(() => pickAction(req, { redeemMode: "commit-only" })).toThrow(NoCompatibleActionError);
   });
 
   it("returns boson-createOfferCommitAndRedeem for redeemMode='commit-and-redeem' when advertised", () => {
@@ -64,6 +62,15 @@ describe("pickAction", () => {
   it("falls back to boson-createOfferCommitAndRedeem in 'auto' mode when only Flow B is advertised", () => {
     const req = baseRequirements();
     req.actions.next = [{ id: "boson-createOfferCommitAndRedeem", channels: ["server"] }];
+    expect(pickAction(req)).toBe("boson-createOfferCommitAndRedeem");
+  });
+
+  it("falls back to Flow B in 'auto' mode when Flow A is only on non-server channels — filters per-action by channel, not just by id", () => {
+    const req = baseRequirements();
+    req.actions.next = [
+      { id: "boson-createOfferAndCommit", channels: ["facilitator"] },
+      { id: "boson-createOfferCommitAndRedeem", channels: ["server"] },
+    ];
     expect(pickAction(req)).toBe("boson-createOfferCommitAndRedeem");
   });
 

@@ -18,24 +18,27 @@ below.** All three library functions are wired up:
 - `verify()` — structural validation, EIP-712 signature recovery for
   the buyer's meta-tx and (for non-`"none"`) the token-auth payload,
   plus an on-chain `eth_call` simulation pre-flight.
-- `settle()` — calls `verify`, builds the
-  `executeMetaTransaction(...)` envelope via `@bosonprotocol/x402-evm`,
-  submits via the configured `WalletClient`, awaits the receipt, and
-  extracts `exchangeId` from the `BuyerCommitted` event.
+- `settle()` — calls `verify`, builds the strategy-appropriate
+  `MetaTransactionsHandlerFacet` envelope via
+  `@bosonprotocol/x402-evm` (`executeMetaTransaction(...)` for the
+  `none` strategy; the BPIP-12
+  `executeMetaTransactionWithTokenTransferAuthorization(...)` variant
+  for `erc3009` / `permit` / `permit2`), submits via the configured
+  `WalletClient`, awaits the receipt, and extracts `exchangeId` from
+  the `BuyerCommitted` event.
 - `performAction()` — same envelope + submit path for the eight
   post-commit transitions (redeem / complete / cancel / revoke / raise
   / retract / escalate / resolve dispute); returns the predicted
   `newExchangeState` / `newDisputeState` from the static
   `ACTION_POST_STATE` table so callers can update local state without a
-  subgraph round-trip.
+  subgraph round-trip. Does not yet wrap the BPIP-12 envelope, so
+  buyer-driven post-commit actions that need a paired token-auth
+  payload (e.g. `escalateDispute` with a non-`none` strategy) surface
+  `UNSUPPORTED_TOKEN_AUTH_STRATEGY`.
 
-All four `tokenAuthStrategy` paths (`none`, `erc3009`, `permit`,
-`permit2`) and both commit-time actions (`boson-createOfferAndCommit`
-and `boson-createOfferCommitAndRedeem`) are supported in `verify` and
-`settle`. `performAction` does not yet wrap the BPIP-12 envelope for
-buyer-driven post-commit actions that pair a meta-tx with a token-auth
-deposit (e.g. `escalateDispute` with a non-`none` strategy); those
-surface as `UNSUPPORTED_TOKEN_AUTH_STRATEGY` for now.
+Both commit-time actions (`boson-createOfferAndCommit` and
+`boson-createOfferCommitAndRedeem`) are supported in `verify` and
+`settle`.
 
 ## What it does
 
