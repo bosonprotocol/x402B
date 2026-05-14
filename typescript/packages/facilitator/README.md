@@ -85,6 +85,12 @@ import {
 const config: FacilitatorConfig = {
   url: "https://facilitator.example",
   supportedNetworks: ["eip155:1"],
+  // Server-side allowlist of trusted Boson Diamonds. `performAction()`
+  // rejects requests for unknown networks or for `escrowAddress`
+  // values that don't match the configured Diamond — prevents the
+  // facilitator from being abused as a generic gas sponsor for
+  // arbitrary contracts.
+  escrows: { "eip155:1": "0xBosonDiamondAddress…" },
   walletClient, // viem WalletClient — relayer pays gas
   publicClient, // viem PublicClient — used for eth_call + receipt waits
 };

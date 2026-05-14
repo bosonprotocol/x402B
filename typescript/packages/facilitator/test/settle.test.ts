@@ -183,6 +183,7 @@ function buildConfig(
   return {
     url: "https://facilitator.example",
     supportedNetworks: [NETWORK],
+    escrows: { [NETWORK]: ESCROW },
     walletClient: opts.walletClient ?? buildWalletClient(),
     publicClient: opts.publicClient ?? buildPublicClient(),
   };

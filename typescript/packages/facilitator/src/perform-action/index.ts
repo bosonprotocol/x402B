@@ -11,15 +11,21 @@
 //   4. Validate tokenAuthStrategy compatibility. Until the BPIP-12
 //      envelope encoder ships, performAction supports only `"none"` and
 //      rejects all token-auth-related fields on that path.
-//   5. Recover the meta-tx signer and confirm it matches metaTx.from.
+//   5. Resolve the canonical escrow address from `config.escrows[network]`
+//      and reject mismatches against `input.escrowAddress` — prevents
+//      the facilitator from being abused as a generic gas sponsor for
+//      arbitrary contracts that share the `executeMetaTransaction(...)`
+//      selector.
+//   6. Parse chain id.
+//   7. Recover the meta-tx signer and confirm it matches metaTx.from.
 //      The facilitator is signer-agnostic: it doesn't care if the role
 //      is buyer or seller — the protocol enforces that on-chain.
-//   6. Simulate `executeMetaTransaction(...)` via `eth_call` (same
+//   8. Simulate `executeMetaTransaction(...)` via `eth_call` (same
 //      pre-flight settle uses).
-//   7. Build the outer envelope (currently the `"none"` strategy only).
-//   8. Submit + wait for receipt; an on-chain revert surfaces as
+//   9. Build the outer envelope (currently the `"none"` strategy only).
+//  10. Submit + wait for receipt; an on-chain revert surfaces as
 //      ONCHAIN_REVERT.
-//   9. Look up the predicted post-state from ACTION_POST_STATE and
+//  11. Look up the predicted post-state from ACTION_POST_STATE and
 //      return it so callers can update local state without a subgraph
 //      round-trip.
 //
@@ -106,7 +112,29 @@ export async function performAction(
       };
     }
 
-    // 5. Parse chain id.
+    // 5. Resolve the canonical escrow address from the operator's
+    //    allowlist. Trusting `input.escrowAddress` directly would turn
+    //    the facilitator into a generic gas sponsor for any contract
+    //    on a supported chain that exposes a compatible
+    //    `executeMetaTransaction(...)` selector. Look up the configured
+    //    Diamond for `input.network` and reject mismatches.
+    const allowlistedEscrow = config.escrows[input.network];
+    if (!allowlistedEscrow) {
+      return {
+        ok: false,
+        code: "NETWORK_MISMATCH",
+        reason: `network "${input.network}" has no escrow configured in config.escrows`,
+      };
+    }
+    if (input.escrowAddress.toLowerCase() !== allowlistedEscrow.toLowerCase()) {
+      return {
+        ok: false,
+        code: "INVALID_PAYLOAD",
+        reason: `escrowAddress "${input.escrowAddress}" is not the configured Diamond for network "${input.network}" ("${allowlistedEscrow}")`,
+      };
+    }
+
+    // 6. Parse chain id.
     const chain = parseChainId(input.network);
     if (!chain.ok) return chain;
 
@@ -119,9 +147,9 @@ export async function performAction(
       };
     }
 
-    const escrowAddress = input.escrowAddress as `0x${string}`;
+    const escrowAddress = allowlistedEscrow as `0x${string}`;
 
-    // 6. Signature recovery — for performAction we just confirm the sig
+    // 7. Signature recovery — for performAction we just confirm the sig
     //    is self-consistent (recovered === metaTx.from). The role check
     //    (buyer vs seller vs assistant) is the protocol's job.
     const recovery = await recoverMetaTxSigner({
@@ -138,7 +166,7 @@ export async function performAction(
       };
     }
 
-    // 7. Simulate. The `none` path goes through `executeMetaTransaction`.
+    // 8. Simulate. The `none` path goes through `executeMetaTransaction`.
     const sim = await simulateExecuteMetaTransaction({
       escrowAddress,
       buyer: metaTx.from as `0x${string}`,
@@ -149,7 +177,7 @@ export async function performAction(
     });
     if (!sim.ok) return sim;
 
-    // 8. Build outer envelope.
+    // 9. Build outer envelope.
     const envelope = buildSettleEnvelope({
       escrowAddress,
       buyer: metaTx.from as `0x${string}`,
@@ -158,7 +186,7 @@ export async function performAction(
     });
     if (!envelope.ok) return envelope;
 
-    // 9. Submit + wait.
+    // 10. Submit + wait.
     const submitted = await submit({
       tx: envelope.tx,
       walletClient: config.walletClient,
@@ -166,7 +194,7 @@ export async function performAction(
     });
     if (!submitted.ok) return submitted;
 
-    // 10. New state lookup.
+    // 11. New state lookup.
     const newState = deriveNewState(input.action);
 
     return {

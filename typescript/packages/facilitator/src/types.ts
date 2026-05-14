@@ -144,6 +144,23 @@ export interface FacilitatorConfig {
   url: string;
   /** Networks the operator has provisioned a relayer wallet + RPC for. */
   supportedNetworks: readonly EvmNetwork[];
+  /**
+   * Server-side allowlist of trusted Boson Diamond addresses, keyed by
+   * `EvmNetwork`. The facilitator MUST resolve the on-chain target from
+   * this map rather than trusting client-supplied addresses — otherwise
+   * any contract on a supported chain that exposes a compatible
+   * `executeMetaTransaction(...)` selector could trick the relayer into
+   * sponsoring gas for non-Boson calls.
+   *
+   * `performAction()` consumes this today: it rejects requests for
+   * networks without an entry, and rejects requests whose body
+   * `escrowAddress` doesn't match the configured Diamond.
+   *
+   * Note: `verify()` and `settle()` still resolve the escrow from
+   * `input.requirements.escrowAddress` and should adopt the same
+   * allowlist check — tracked as a follow-up hardening.
+   */
+  escrows: Readonly<Record<EvmNetwork, Address>>;
   /** viem WalletClient — pays gas on settle / perform-action. Network must be in `supportedNetworks`. */
   walletClient: WalletClient;
   /** viem PublicClient — used to await receipts and read protocol state. */

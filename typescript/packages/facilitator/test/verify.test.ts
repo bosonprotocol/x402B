@@ -67,6 +67,7 @@ function buildConfig(opts: { client?: PublicClient } = {}): FacilitatorConfig {
   return {
     url: "https://facilitator.example",
     supportedNetworks: [NETWORK],
+    escrows: { [NETWORK]: ESCROW },
     walletClient,
     publicClient: opts.client ?? buildPublicClient({ callBehavior: "pass" }),
   };

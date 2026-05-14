@@ -184,11 +184,16 @@ function buildWalletClient(opts: { sendBehavior?: "pass" | "fail" } = {}): Walle
 }
 
 function buildConfig(
-  opts: { publicClient?: PublicClient; walletClient?: WalletClient } = {},
+  opts: {
+    publicClient?: PublicClient;
+    walletClient?: WalletClient;
+    escrows?: Record<string, Address>;
+  } = {},
 ): FacilitatorConfig {
   return {
     url: "https://facilitator.example",
     supportedNetworks: [NETWORK],
+    escrows: opts.escrows ?? { [NETWORK]: ESCROW },
     walletClient: opts.walletClient ?? buildWalletClient(),
     publicClient: opts.publicClient ?? buildPublicClient(),
   };
@@ -242,6 +247,41 @@ describe("performAction()", () => {
       buildConfig(),
     );
     expect(result).toMatchObject({ ok: false, code: "NETWORK_MISMATCH" });
+  });
+
+  it("rejects when the network has no configured escrow allowlist entry", async () => {
+    const signedPayload = await buildSignedPayload();
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-redeem",
+        signedPayload,
+      },
+      // Config has supportedNetworks but no matching escrow entry —
+      // the allowlist gate should fire before any signature work.
+      buildConfig({ escrows: {} }),
+    );
+    expect(result).toMatchObject({ ok: false, code: "NETWORK_MISMATCH" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(/no escrow configured/i);
+  });
+
+  it("rejects when escrowAddress is not the configured Diamond for the network", async () => {
+    const signedPayload = await buildSignedPayload();
+    const ATTACKER_CONTRACT: Address = "0xcafecafecafecafecafecafecafecafecafecafe";
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ATTACKER_CONTRACT,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-redeem",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(/not the configured Diamond/i);
   });
 
   it("rejects when action is not a known Boson action id", async () => {
