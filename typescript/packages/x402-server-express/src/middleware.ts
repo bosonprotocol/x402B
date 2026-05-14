@@ -33,13 +33,17 @@ export interface X402bResLocals {
   x402b: HandlerResult<CommitOk>["body"];
 }
 
-declare module "express" {
-  // The shape we add to `Locals` is exactly `X402bResLocals` — an
-  // interface-merge declaration rather than a structural type alias
-  // is the standard pattern for augmenting third-party types from a
-  // consumer package.
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  interface Locals extends X402bResLocals {}
+// Express's `Response.Locals` lives in the global `Express` namespace
+// (it ships from `@types/express-serve-static-core`), not on the
+// `"express"` module's exports — so we have to merge via
+// `declare global { namespace Express { ... } }` for `res.locals.x402b`
+// to actually be typed at the consumer.
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    interface Locals extends X402bResLocals {}
+  }
 }
 
 /**

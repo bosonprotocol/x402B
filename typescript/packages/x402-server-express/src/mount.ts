@@ -73,9 +73,9 @@ function performActionRoute(
 ): RequestHandler {
   return async (req, res, next) => {
     try {
-      const body = req.body as Partial<PerformActionInput> | undefined;
+      const body = req.body as Partial<PerformActionInput> | null | undefined;
       if (
-        body === undefined ||
+        body == null ||
         typeof body.exchangeId !== "string" ||
         typeof body.signedPayload !== "string"
       ) {

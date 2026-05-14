@@ -70,7 +70,7 @@ const baseOffer = {
 };
 
 function makeStubFetch(handler: (path: string) => unknown): FetchLike {
-  return async (url, init) => {
+  return async (url, _init) => {
     const path = url.replace(/^https?:\/\/[^/]+/, "");
     const response = handler(path);
     return {
