@@ -34,6 +34,11 @@
       "import": "./dist/esm/actions/index.js",
       "require": "./dist/cjs/actions/index.js"
     },
+    "./codec": {
+      "types": "./dist/cjs/codec/index.d.ts",
+      "import": "./dist/esm/codec/index.js",
+      "require": "./dist/cjs/codec/index.js"
+    },
     "./envelope": {
       "types": "./dist/cjs/envelope/index.d.ts",
       "import": "./dist/esm/envelope/index.js",

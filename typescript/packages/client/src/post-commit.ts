@@ -9,6 +9,12 @@
 // returned `BosonMetaTx` is the full wire-format the server consumes —
 // usually as a JSON POST body, not an `X-PAYMENT` header.
 //
+// We return both the `BosonMetaTx` envelope (useful for on-chain or MCP
+// channels) and the ABI-encoded `signedPayload` Hex consumed by the
+// server/facilitator HTTP convenience routes. The encoder lives in
+// `@bosonprotocol/x402-evm/codec` so client and facilitator share one
+// implementation.
+//
 // `boson-escalateDispute` is the one exception. If the dispute resolver
 // requires an escalation deposit, the resolver/server can return its own
 // 402 carrying an `escrow` `PaymentRequirements` and the buyer pairs this
@@ -16,8 +22,9 @@
 // we only sign the meta-tx itself; the deposit flow is a later PR.
 
 import type { CoreSDK } from "@bosonprotocol/core-sdk";
-import type { BosonMetaTx } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { BosonMetaTx, Hex as WireHex } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
+import { encodeSignedPayload } from "@bosonprotocol/x402-evm/codec";
 import type { Address, Hex } from "viem";
 
 import { randomUint256 } from "./utils/crypto.js";
@@ -72,22 +79,40 @@ export interface SignPostCommitActionDeps {
 }
 
 /**
+ * Wire-format result of `signPostCommitAction`: the signed `BosonMetaTx`
+ * envelope plus its ABI-encoded `signedPayload` Hex. Pick the one that
+ * matches the channel — the server/facilitator HTTP routes consume
+ * `signedPayload`; direct on-chain or MCP submissions use `metaTx`.
+ */
+export interface SignedPostCommitAction {
+  metaTx: BosonMetaTx;
+  /**
+   * ABI-encoded `BosonMetaTx` ready to drop into a server / facilitator
+   * route's `signedPayload` field. The hex is JSON-serialisable; we type
+   * it as the loose wire `Hex` (string) rather than viem's strict
+   * `\`0x\${string}\`` so the codec's output matches the schemes module's
+   * own `Hex` alias.
+   */
+  signedPayload: WireHex;
+}
+
+/**
  * Sign a post-commit action through the appropriate `CoreSDK.signMetaTx*`
- * mixin method. Returns the wire-format `BosonMetaTx` envelope ready to be
- * delivered to whichever channel the caller chooses (server POST,
- * facilitator, direct on-chain submission).
+ * mixin method. Returns both the wire-format `BosonMetaTx` envelope and
+ * the ABI-encoded `signedPayload` Hex ready to POST to a server /
+ * facilitator route.
  */
 export async function signPostCommitAction(
   args: SignActionArgs,
   deps: SignPostCommitActionDeps,
-): Promise<BosonMetaTx> {
+): Promise<SignedPostCommitAction> {
   const nonce = randomUint256();
   const buyer = await deps.getBuyerAddress();
   const { coreSdk } = deps.buildCoreSdk(args.network, args.escrowAddress);
 
   const signed = await callSignMetaTx(coreSdk, args, nonce);
 
-  return {
+  const metaTx: BosonMetaTx = {
     from: buyer,
     nonce: nonce.toString(),
     functionName: signed.functionName,
@@ -98,6 +123,8 @@ export async function signPostCommitAction(
       s: signed.s as Hex,
     },
   };
+
+  return { metaTx, signedPayload: encodeSignedPayload(metaTx) };
 }
 
 interface SignedMetaTxShape {

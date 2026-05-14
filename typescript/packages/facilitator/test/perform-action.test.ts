@@ -15,7 +15,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { encodeSignedPayload } from "../src/perform-action/codec.js";
+import { encodeSignedPayload } from "@bosonprotocol/x402-evm/codec";
 import { performAction } from "../src/perform-action/index.js";
 import type { FacilitatorConfig } from "../src/types.js";
 
@@ -368,7 +368,7 @@ describe("performAction()", () => {
     const signedPayload = await buildSignedPayload({ signer: buyer });
     // Mutate the decoded BosonMetaTx and re-encode so metaTx.from is
     // seller while the sig still corresponds to buyer.
-    const { decodeSignedPayload } = await import("../src/perform-action/codec.js");
+    const { decodeSignedPayload } = await import("@bosonprotocol/x402-evm/codec");
     const decoded = decodeSignedPayload(signedPayload);
     const tampered = encodeSignedPayload({ ...decoded, from: seller.address });
     const result = await performAction(
@@ -597,7 +597,7 @@ describe("performAction()", () => {
 
 describe("encodeSignedPayload / decodeSignedPayload", () => {
   it("round-trips a BosonMetaTx", async () => {
-    const { decodeSignedPayload } = await import("../src/perform-action/codec.js");
+    const { decodeSignedPayload } = await import("@bosonprotocol/x402-evm/codec");
     const original = {
       from: buyer.address,
       nonce: "42",
