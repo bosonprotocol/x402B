@@ -48,10 +48,9 @@ function buildMockAdapter(): {
       }
       const [, raw] = params as [string, string];
       const { domain, types: parsedTypes, primaryType, message: msg } = JSON.parse(raw);
-      const { EIP712Domain: _ignored, ...rest } = parsedTypes as Record<string, unknown>;
       return account.signTypedData({
         domain,
-        types: rest as Parameters<typeof account.signTypedData>[0]["types"],
+        types: parsedTypes as Parameters<typeof account.signTypedData>[0]["types"],
         primaryType,
         message: msg,
       });
@@ -146,6 +145,47 @@ describe("signerFromEthersAdapter", () => {
       { name: "name", type: "string" },
       { name: "salt", type: "bytes32" },
     ]);
+  });
+
+  it("serializes bigint domain and message values for JSON-RPC signing", async () => {
+    const { adapter, calls } = buildMockAdapter();
+    const signer = signerFromEthersAdapter(adapter);
+    const bigintDomain: TypedDataDomain = {
+      name: "Test",
+      version: "1",
+      chainId: 8453n,
+      verifyingContract: "0xdddddddddddddddddddddddddddddddddddddddd",
+    };
+    const paymentTypes = {
+      Payment: [
+        { name: "payer", type: "address" },
+        { name: "amount", type: "uint256" },
+      ],
+    } as const;
+    const paymentMessage = {
+      payer: account.address,
+      amount: 123n,
+    };
+    const sig = await signer.signTypedData({
+      domain: bigintDomain,
+      types: paymentTypes,
+      primaryType: "Payment",
+      message: paymentMessage,
+    });
+    const recovered = await recoverTypedDataAddress({
+      domain: bigintDomain,
+      types: paymentTypes,
+      primaryType: "Payment",
+      message: paymentMessage,
+      signature: sig,
+    });
+    const parsed = JSON.parse(calls[0]!.params[1] as string) as {
+      domain: { chainId: string };
+      message: { amount: string };
+    };
+    expect(recovered.toLowerCase()).toBe(account.address.toLowerCase());
+    expect(parsed.domain.chainId).toBe("8453");
+    expect(parsed.message.amount).toBe("123");
   });
 
   it("rejects when adapter.send returns a non-hex value", async () => {

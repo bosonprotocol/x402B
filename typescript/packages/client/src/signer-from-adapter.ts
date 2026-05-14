@@ -16,7 +16,14 @@
 // from `domain`'s field presence — the same rule viem applies internally
 // in `getTypesForEIP712Domain`.
 
-import type { Address, Hex, TypedDataDomain, TypedDataParameter } from "viem";
+import {
+  serializeTypedData,
+  type Address,
+  type Hex,
+  type TypedDataDomain,
+  type TypedDataDefinition,
+  type TypedDataParameter,
+} from "viem";
 
 import type { Signer } from "./types.js";
 
@@ -42,12 +49,13 @@ export function signerFromEthersAdapter(adapter: Web3LibAdapterLike): Signer {
     getAddress: async () => (await adapter.getSignerAddress()) as Address,
     signTypedData: async ({ domain, types, primaryType, message }) => {
       const from = await adapter.getSignerAddress();
-      const json = JSON.stringify({
+      const typedData = {
         domain,
         types: { EIP712Domain: deriveEip712DomainType(domain), ...types },
         primaryType,
         message,
-      });
+      };
+      const json = serializeTypedData(typedData as unknown as TypedDataDefinition);
       const sig = await adapter.send("eth_signTypedData_v4", [from, json]);
       if (typeof sig !== "string" || !sig.startsWith("0x")) {
         throw new Error(
