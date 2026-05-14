@@ -353,31 +353,38 @@ describe("validatePaymentPayload — unsupported calldata builders", () => {
   });
 });
 
+/**
+ * Minimal wire-shaped `EscrowPaymentPayload` used as a base for the
+ * decoder tests. Holds placeholder signatures + a stub offerRef —
+ * `decodeXPaymentHeader` only cares that the outer shape passes the
+ * x402-core zod parser, not that any of the inner cryptography
+ * verifies. Returns a fresh object each call so tests that spread on
+ * top stay isolated.
+ */
+function makeBaseWirePayload() {
+  return {
+    x402Version: 2,
+    scheme: "escrow" as const,
+    network: NETWORK,
+    payload: {
+      action: "boson-createOfferAndCommit",
+      tokenAuthStrategy: "none" as const,
+      offerRef: { fullOffer: {}, sellerSig: "0x00" },
+      buyer: "0x1111111111111111111111111111111111111111",
+      metaTx: {
+        from: "0x1111111111111111111111111111111111111111",
+        nonce: "1",
+        functionName: "createOfferAndCommit(...)",
+        functionSignature: "0xdeadbeef",
+        sig: { v: 27, r: `0x${"00".repeat(32)}`, s: `0x${"00".repeat(32)}` },
+      },
+    },
+  };
+}
+
 describe("decodeXPaymentHeader", () => {
   it("round-trips a base64-encoded JSON payload", () => {
-    const json = JSON.stringify({
-      x402Version: 2,
-      scheme: "escrow",
-      network: NETWORK,
-      payload: {
-        action: "boson-createOfferAndCommit",
-        tokenAuthStrategy: "none",
-        offerRef: { fullOffer: {}, sellerSig: "0x00" },
-        buyer: "0x1111111111111111111111111111111111111111",
-        metaTx: {
-          from: "0x1111111111111111111111111111111111111111",
-          nonce: "1",
-          functionName: "createOfferAndCommit(...)",
-          functionSignature: "0xdeadbeef",
-          sig: {
-            v: 27,
-            r: `0x${"00".repeat(32)}`,
-            s: `0x${"00".repeat(32)}`,
-          },
-        },
-      },
-    });
-    const header = Buffer.from(json, "utf8").toString("base64");
+    const header = Buffer.from(JSON.stringify(makeBaseWirePayload()), "utf8").toString("base64");
     const result = decodeXPaymentHeader(header);
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -422,22 +429,7 @@ describe("decodeXPaymentHeader", () => {
     // whose `fulfillment.data.name` carries multi-byte characters and
     // assert the decoder recovers UTF-8 rather than Latin-1 mojibake.
     const wirePayload = {
-      x402Version: 2,
-      scheme: "escrow",
-      network: NETWORK,
-      payload: {
-        action: "boson-createOfferAndCommit",
-        tokenAuthStrategy: "none",
-        offerRef: { fullOffer: {}, sellerSig: "0x00" },
-        buyer: "0x1111111111111111111111111111111111111111",
-        metaTx: {
-          from: "0x1111111111111111111111111111111111111111",
-          nonce: "1",
-          functionName: "createOfferAndCommit(...)",
-          functionSignature: "0xdeadbeef",
-          sig: { v: 27, r: `0x${"00".repeat(32)}`, s: `0x${"00".repeat(32)}` },
-        },
-      },
+      ...makeBaseWirePayload(),
       fulfillment: { option: "email", data: { name: "Bär ✓ — 你好" } },
     };
     const header = Buffer.from(JSON.stringify(wirePayload), "utf8").toString("base64");
