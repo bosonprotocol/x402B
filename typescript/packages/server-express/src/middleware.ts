@@ -1,11 +1,12 @@
 // `expressMiddleware` — gate an Express route with a 402 challenge.
 // If the request carries a valid `X-PAYMENT`, the middleware runs
-// the commit-and-redeem handler and attaches the result to
-// `res.locals.x402b` so the downstream route handler can read the
-// `exchangeId` / `txHash` / `nextActions`. If the header is missing,
-// the middleware responds with 402 + a fresh `PaymentRequirements`
-// body. On any other failure it responds with the structured error
-// body from the handler.
+// the selected handler (defaults to the commit handler / Flow A)
+// and attaches the result to `res.locals.x402b` so the downstream
+// route handler can read the `exchangeId` / `txHash` /
+// `nextActions`. If the header is missing, the middleware responds
+// with 402 + a fresh `PaymentRequirements` body. On any other
+// failure it responds with the structured error body from the
+// handler.
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { CommitOk, HandlerResult, X402bServer } from "@bosonprotocol/x402-server";
@@ -25,7 +26,12 @@ export interface ExpressMiddlewareOptions {
     req: Request,
     mode: "challenge" | "settle",
   ) => Promise<EscrowPaymentRequirements> | EscrowPaymentRequirements;
-  /** Optional flow selector — defaults to `commit-and-redeem` (Flow B). */
+  /**
+   * Optional flow selector — defaults to `commit` (Flow A, deferred
+   * redeem). Flow B (`commit-and-redeem`) is opt-in: it relies on
+   * the atomic `createOfferCommitAndRedeem` calldata encoder which
+   * the shipped client cannot yet sign.
+   */
   flow?: "commit" | "commit-and-redeem";
 }
 
@@ -56,7 +62,7 @@ export function expressMiddleware(
   server: X402bServer,
   opts: ExpressMiddlewareOptions,
 ): RequestHandler {
-  const flow = opts.flow ?? "commit-and-redeem";
+  const flow = opts.flow ?? "commit";
   return async (req: Request, res: Response, next: NextFunction) => {
     const header = req.header("x-payment");
     if (header === undefined || header.length === 0) {
