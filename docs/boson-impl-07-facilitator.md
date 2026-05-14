@@ -56,6 +56,21 @@ POST /perform-action?action=<ActionId>     // optional, for the "facilitator" ch
 - `${url}/settle` for commit-time actions (`boson-createOfferAndCommit`, `boson-createOfferCommitAndRedeem`).
 - `${url}/perform-action?action=${action}` for post-commit actions.
 
+## Escrow allowlist
+
+The facilitator operator MUST configure
+`FacilitatorConfig.escrows: Record<EvmNetwork, Address>` — the set of
+Boson Diamond addresses the relayer is willing to sponsor gas for.
+`verify()`, `settle()`, and `performAction()` all reject requests for
+networks without an allowlist entry, and reject requests whose
+`escrowAddress` (in `requirements` for verify/settle, in the request
+body for perform-action) doesn't match the configured Diamond.
+
+Without this gate, anyone could direct the relayer at an arbitrary
+contract on a supported chain that exposes a compatible
+`executeMetaTransaction(...)` selector — the facilitator would become
+a generic gas sponsor rather than a Boson-only relay.
+
 ## Settle path
 
 In v0.1, `verify()` performs structural validation, offer/calldata

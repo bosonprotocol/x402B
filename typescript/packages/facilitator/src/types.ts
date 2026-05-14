@@ -152,13 +152,15 @@ export interface FacilitatorConfig {
    * `executeMetaTransaction(...)` selector could trick the relayer into
    * sponsoring gas for non-Boson calls.
    *
-   * `performAction()` consumes this today: it rejects requests for
-   * networks without an entry, and rejects requests whose body
-   * `escrowAddress` doesn't match the configured Diamond.
+   * All three library functions enforce the allowlist:
    *
-   * Note: `verify()` and `settle()` still resolve the escrow from
-   * `input.requirements.escrowAddress` and should adopt the same
-   * allowlist check — tracked as a follow-up hardening.
+   * - `verify()` and `settle()` reject when
+   *   `input.requirements.escrowAddress` doesn't match
+   *   `escrows[input.network]`.
+   * - `performAction()` rejects when `input.escrowAddress` doesn't match
+   *   `escrows[input.network]`.
+   *
+   * Networks without an entry are rejected as `NETWORK_MISMATCH`.
    */
   escrows: Readonly<Record<EvmNetwork, Address>>;
   /** viem WalletClient — pays gas on settle / perform-action. Network must be in `supportedNetworks`. */

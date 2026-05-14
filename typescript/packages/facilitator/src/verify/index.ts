@@ -13,11 +13,16 @@
 //   6. Confirm `payload.tokenAuthStrategy` is in
 //      `requirements.tokenAuthStrategies` (and the cross-field rule:
 //      tokenAuth must be present iff strategy != "none").
-//   7. Recover the buyer's meta-tx signature against the Diamond domain.
-//   8. If `tokenAuthStrategy !== "none"`, recover the token-auth
+//   7. Confirm `requirements.escrowAddress` is the Boson Diamond the
+//      operator has whitelisted for this network via `config.escrows`.
+//      Prevents a malicious seller from directing the facilitator at
+//      an arbitrary contract that shares the `executeMetaTransaction`
+//      selector.
+//   8. Recover the buyer's meta-tx signature against the Diamond domain.
+//   9. If `tokenAuthStrategy !== "none"`, recover the token-auth
 //      signature against the asset's EIP-712 domain and enforce
 //      amount/deadline constraints.
-//   9. Simulate `executeMetaTransaction(...)` via `eth_call` to catch
+//  10. Simulate `executeMetaTransaction(...)` via `eth_call` to catch
 //      protocol-level reverts (duplicate nonce, expired auth, …)
 //      without spending gas.
 //
@@ -120,7 +125,31 @@ export async function verify(
     }
 
     const inner = input.payload.payload;
-    const escrowAddress = input.requirements.escrowAddress as `0x${string}`;
+
+    // Resolve the canonical escrow from the operator's allowlist —
+    // trusting `input.requirements.escrowAddress` directly would let a
+    // malicious seller direct the facilitator at any contract on a
+    // supported chain that exposes a compatible
+    // `executeMetaTransaction(...)` selector, turning the relayer into
+    // a generic gas sponsor for non-Boson calls. Reject if the network
+    // has no allowlist entry, or if the requirements advertise a
+    // Diamond the operator hasn't whitelisted.
+    const allowlistedEscrow = config.escrows[input.network];
+    if (!allowlistedEscrow) {
+      return {
+        ok: false,
+        code: "NETWORK_MISMATCH",
+        reason: `network "${input.network}" has no escrow configured in config.escrows`,
+      };
+    }
+    if (input.requirements.escrowAddress.toLowerCase() !== allowlistedEscrow.toLowerCase()) {
+      return {
+        ok: false,
+        code: "INVALID_PAYLOAD",
+        reason: `requirements.escrowAddress "${input.requirements.escrowAddress}" is not the configured Diamond for network "${input.network}" ("${allowlistedEscrow}")`,
+      };
+    }
+    const escrowAddress = allowlistedEscrow as `0x${string}`;
 
     // 8. Meta-tx signature recovery.
     const metaSig = await verifyMetaTxSignature({
