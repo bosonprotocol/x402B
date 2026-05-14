@@ -1,43 +1,71 @@
-// `settle` — submit the buyer's signed meta-tx to
-// `MetaTransactionsHandlerFacet.executeMetaTransaction` on the Boson
-// Diamond.
+// `settle` — submit the buyer's signed meta-tx to the Boson Diamond.
 //
-// In v0.1 (this scaffold) this is a stub that throws NotImplementedError.
+// Pipeline:
+//   1. Run `verify()` first — bail on any failure.
+//   2. Build the outer envelope via @bosonprotocol/x402-evm, dispatching
+//      on payload.tokenAuthStrategy. The `"none"` path is functional;
+//      the BPIP-12 token-auth queue path surfaces as
+//      UNSUPPORTED_TOKEN_AUTH_STRATEGY until x402-evm ships the encoder.
+//   3. Submit via the configured WalletClient (relayer pays gas).
+//   4. Await the receipt; an on-chain revert surfaces as ONCHAIN_REVERT.
+//   5. Parse `BuyerCommitted` from the receipt to extract `exchangeId`.
 //
-// Future implementation funnels every escrow settle through the single
-// on-chain entrypoint described in docs/boson-impl-07-facilitator.md
-// §"Settle path":
-//
-//   MetaTransactionsHandlerFacet.executeMetaTransaction(
-//     userAddress, functionName, functionSignature, nonce, packedSig
-//   )
-//
-// The inner calldata (`payload.metaTx.functionName` and
-// `payload.metaTx.functionSignature`) is passed straight through from the
-// request — the facilitator does not re-build it; the buyer's CoreSDK
-// signs both inner and outer on the client side.
-//
-// Outer envelope construction goes through
-// `@bosonprotocol/x402-evm/envelope`'s `buildExecuteMetaTransactionTx`.
-//
-// On success returns `{ ok: true, exchangeId, txHash }` with `exchangeId`
-// pulled from the receipt's `BuyerCommitted` event.
-//
-// The BPIP-12 `executeMetaTransactionWithTokenTransferAuthorization`
-// path delegates to `buildExecuteMetaTransactionWithTokenAuthTx`, which
-// currently throws `NotYetSupportedError`. We catch and map to
-// `UNSUPPORTED_TOKEN_AUTH_STRATEGY` once implemented.
+// All steps return discriminated-union results — no thrown errors leak
+// to the caller unless the underlying transport itself fails (those map
+// to INTERNAL_ERROR via toResult()).
 
-import { NotImplementedError } from "../errors.js";
 import type {
   FacilitatorConfig,
   FacilitatorSettleInput,
   FacilitatorSettleResult,
 } from "../types.js";
+import { toResult } from "../errors.js";
+import { verify } from "../verify/index.js";
+
+import { buildSettleEnvelope } from "./build-envelope.js";
+import { extractExchangeId } from "./extract-exchange-id.js";
+import { submit } from "./submit.js";
 
 export async function settle(
-  _input: FacilitatorSettleInput,
-  _config: FacilitatorConfig,
+  input: FacilitatorSettleInput,
+  config: FacilitatorConfig,
 ): Promise<FacilitatorSettleResult> {
-  throw new NotImplementedError("settle");
+  try {
+    // 1. Verify first. The verify() result type doesn't carry a success
+    //    payload, so we can re-emit failures as-is and proceed on ok.
+    const v = await verify(input, config);
+    if (!v.ok) return v;
+
+    const inner = input.payload.payload;
+    const escrowAddress = input.requirements.escrowAddress as `0x${string}`;
+
+    // 2. Build outer envelope.
+    const envelope = buildSettleEnvelope({
+      escrowAddress,
+      buyer: inner.buyer as `0x${string}`,
+      metaTx: inner.metaTx,
+      strategy: inner.tokenAuthStrategy,
+    });
+    if (!envelope.ok) return envelope;
+
+    // 3 + 4. Submit and wait for receipt.
+    const submitted = await submit({
+      tx: envelope.tx,
+      walletClient: config.walletClient,
+      publicClient: config.publicClient,
+    });
+    if (!submitted.ok) return submitted;
+
+    // 5. Extract exchangeId from BuyerCommitted.
+    const extracted = extractExchangeId(submitted.receipt);
+    if (!extracted.ok) return extracted;
+
+    return {
+      ok: true,
+      exchangeId: extracted.exchangeId,
+      txHash: submitted.txHash,
+    };
+  } catch (e) {
+    return toResult(e);
+  }
 }
