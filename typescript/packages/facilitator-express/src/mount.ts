@@ -25,6 +25,11 @@ import {
 } from "@bosonprotocol/x402-facilitator";
 import { Router, type RequestHandler } from "express";
 
+export const INVALID_REQUEST_BODY = {
+  code: "INVALID_REQUEST_BODY",
+  reason: "expected JSON body — did you install express.json()?",
+} as const;
+
 /**
  * Build the Express router. Apply with
  * `app.use(mountFacilitator(config))`, or with a prefix via
@@ -48,10 +53,7 @@ function verifyRoute(config: FacilitatorConfig): RequestHandler {
       // validation kicks in.
       const body = req.body as FacilitatorVerifyInput | undefined;
       if (body === undefined) {
-        res.status(400).json({
-          code: "INVALID_REQUEST_BODY",
-          reason: "expected JSON body — did you install express.json()?",
-        });
+        res.status(400).json(INVALID_REQUEST_BODY);
         return;
       }
       const result = await verify(body, config);
@@ -67,10 +69,7 @@ function settleRoute(config: FacilitatorConfig): RequestHandler {
     try {
       const body = req.body as FacilitatorSettleInput | undefined;
       if (body === undefined) {
-        res.status(400).json({
-          code: "INVALID_REQUEST_BODY",
-          reason: "expected JSON body — did you install express.json()?",
-        });
+        res.status(400).json(INVALID_REQUEST_BODY);
         return;
       }
       const result = await settle(body, config);
@@ -86,10 +85,7 @@ function performActionRoute(config: FacilitatorConfig): RequestHandler {
     try {
       const body = req.body as FacilitatorPerformActionInput | undefined;
       if (body === undefined) {
-        res.status(400).json({
-          code: "INVALID_REQUEST_BODY",
-          reason: "expected JSON body — did you install express.json()?",
-        });
+        res.status(400).json(INVALID_REQUEST_BODY);
         return;
       }
       const result = await performAction(body, config);
