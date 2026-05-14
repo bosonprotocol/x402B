@@ -252,6 +252,9 @@ importers:
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../core
+      '@bosonprotocol/x402-evm':
+        specifier: workspace:^
+        version: link:../evm
       viem:
         specifier: ^2.39.3
         version: 2.48.11(typescript@5.9.3)(zod@3.25.76)
