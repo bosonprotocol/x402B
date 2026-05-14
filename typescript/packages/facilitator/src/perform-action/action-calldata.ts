@@ -135,7 +135,8 @@ export function validatePerformActionMetaTx(input: {
     return {
       ok: false,
       code: "INVALID_PAYLOAD",
-      reason: "signedPayload functionSignature does not encode exchangeId as the first uint256 argument",
+      reason:
+        "signedPayload functionSignature does not encode exchangeId as the first uint256 argument",
     };
   }
   if (actualExchangeId !== expectedExchangeId) {
