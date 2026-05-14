@@ -4,12 +4,14 @@
 // the spec.
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
-import type {
-  CommitHandlerInput,
-  PerformActionInput,
-  X402bServer,
+import {
+  encodeXPaymentResponse,
+  X_PAYMENT_RESPONSE_HEADER,
+  type CommitHandlerInput,
+  type PerformActionInput,
+  type X402bServer,
 } from "@bosonprotocol/x402-server";
-import { Router, type Request, type RequestHandler } from "express";
+import { Router, type Request, type RequestHandler, type Response } from "express";
 
 export interface MountX402bOptions {
   /**
@@ -57,6 +59,7 @@ function commitRoute(
       };
       const handler = kind === "commit" ? server.handlers.commit : server.handlers.commitAndRedeem;
       const result = await handler(input);
+      stampXPaymentResponseIfOk(res, result);
       res.status(result.status).json(result.body);
     } catch (e) {
       next(e);
@@ -90,9 +93,22 @@ function performActionRoute(
         signedPayload: body.signedPayload as `0x${string}`,
       };
       const result = await server.handlers[action](input);
+      stampXPaymentResponseIfOk(res, result);
       res.status(result.status).json(result.body);
     } catch (e) {
       next(e);
     }
   };
+}
+
+// Helper shared by every successful route. Stamps base64(JSON.stringify(body))
+// onto the `X-PAYMENT-RESPONSE` header so the buyer's client can read the
+// exchange metadata without parsing the resource body.
+function stampXPaymentResponseIfOk(
+  res: Response,
+  result: { ok: true; body: unknown } | { ok: false },
+): void {
+  if (result.ok) {
+    res.setHeader(X_PAYMENT_RESPONSE_HEADER, encodeXPaymentResponse(result.body));
+  }
 }

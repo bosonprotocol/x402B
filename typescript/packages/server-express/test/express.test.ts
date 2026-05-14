@@ -226,6 +226,14 @@ describe("mountX402b — convenience routes", () => {
     expect(res.body.exchangeId).toBe("42");
     expect(res.body.txHash).toBe("0xabc");
     expect(res.body.nextActions.exchangeId).toBe("42");
+
+    // X-PAYMENT-RESPONSE mirrors the JSON body so the buyer's client
+    // can pick up exchange metadata without reading the resource body.
+    const xpr = res.headers["x-payment-response"];
+    expect(typeof xpr).toBe("string");
+    const decoded = JSON.parse(Buffer.from(xpr as string, "base64").toString("utf8"));
+    expect(decoded.exchangeId).toBe("42");
+    expect(decoded.txHash).toBe("0xabc");
   });
 
   it("POST /x402b/complete forwards to performAction and returns 200", async () => {
@@ -280,6 +288,12 @@ describe("mountX402b — convenience routes", () => {
     });
     expect(res.status).toBe(200);
     expect(res.body.txHash).toBe("0xfed");
+
+    // Post-commit success path also stamps X-PAYMENT-RESPONSE.
+    const xpr = res.headers["x-payment-response"];
+    expect(typeof xpr).toBe("string");
+    const decoded = JSON.parse(Buffer.from(xpr as string, "base64").toString("utf8"));
+    expect(decoded.txHash).toBe("0xfed");
   });
 
   it("POST /x402b/complete rejects malformed body with 400", async () => {
@@ -342,6 +356,13 @@ describe("expressMiddleware — 402 challenge + settle gating", () => {
     expect(res.status).toBe(200);
     expect(res.body.kpi).toBe(42);
     expect(res.body.x402b.exchangeId).toBe("99");
+
+    // The middleware also stamps X-PAYMENT-RESPONSE on successful settle.
+    const xpr = res.headers["x-payment-response"];
+    expect(typeof xpr).toBe("string");
+    const decoded = JSON.parse(Buffer.from(xpr as string, "base64").toString("utf8"));
+    expect(decoded.exchangeId).toBe("99");
+    expect(decoded.txHash).toBe("0xfeedface");
   });
 
   it("defaults to the commit handler (Flow A) when `flow` is omitted", async () => {

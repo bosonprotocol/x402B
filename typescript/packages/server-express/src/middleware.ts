@@ -9,7 +9,13 @@
 // handler.
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
-import type { CommitOk, HandlerResult, X402bServer } from "@bosonprotocol/x402-server";
+import {
+  encodeXPaymentResponse,
+  X_PAYMENT_RESPONSE_HEADER,
+  type CommitOk,
+  type HandlerResult,
+  type X402bServer,
+} from "@bosonprotocol/x402-server";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 export interface ExpressMiddlewareOptions {
@@ -83,6 +89,10 @@ export function expressMiddleware(
         res.status(result.status).json(result.body);
         return;
       }
+      // The buyer's client reads `X-PAYMENT-RESPONSE` to pick up the
+      // exchange metadata without parsing the resource body. Mirror
+      // base x402's base64-of-JSON convention.
+      res.setHeader(X_PAYMENT_RESPONSE_HEADER, encodeXPaymentResponse(result.body));
       res.locals.x402b = result.body;
       next();
     } catch (e) {

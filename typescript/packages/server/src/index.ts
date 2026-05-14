@@ -78,3 +78,7 @@ export {
   type VerifyExchangeOptions,
   type VerifyExchangeResult,
 } from "./onchain/index.js";
+export {
+  encodeXPaymentResponse,
+  X_PAYMENT_RESPONSE_HEADER,
+} from "./internal/x-payment-response.js";
