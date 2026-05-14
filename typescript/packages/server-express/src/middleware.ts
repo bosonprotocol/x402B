@@ -18,6 +18,8 @@ import {
 } from "@bosonprotocol/x402-server";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
+import { respondWithChallenge } from "./internal/x402-challenge.js";
+
 export interface ExpressMiddlewareOptions {
   /**
    * Resolve the `EscrowPaymentRequirements` for this request — typically
@@ -74,7 +76,7 @@ export function expressMiddleware(
     if (header === undefined || header.length === 0) {
       try {
         const requirements = await opts.resolveRequirements(req, "challenge");
-        res.status(402).json({ x402Version: 2, accepts: [requirements] });
+        respondWithChallenge(res, requirements);
       } catch (e) {
         next(e);
       }
