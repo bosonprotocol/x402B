@@ -32,6 +32,7 @@ import type {
 } from "@bosonprotocol/x402-facilitator";
 
 import { FacilitatorHttpError } from "./errors.js";
+import { noopLogger, type Logger } from "../logger.js";
 
 export type FetchLike = (
   input: string,
@@ -87,6 +88,8 @@ export interface CreateFacilitatorClientOptions {
   setTimeout?: typeof setTimeout;
   /** Override for `clearTimeout` — paired with `setTimeout`. */
   clearTimeout?: typeof clearTimeout;
+  /** Optional structured logger. Defaults to no-op. Receives `warn` on errored requests; `debug` on each call. */
+  logger?: Logger;
 }
 
 export interface FacilitatorClient {
@@ -123,6 +126,7 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
   const newIdempotencyKey = opts.idempotencyKey ?? (() => globalThis.crypto.randomUUID());
   const setTimeoutImpl = opts.setTimeout ?? setTimeout;
   const clearTimeoutImpl = opts.clearTimeout ?? clearTimeout;
+  const logger: Logger = opts.logger ?? noopLogger;
 
   const postOnce = async <Req, Res>(
     path: string,
@@ -144,6 +148,11 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
       });
     } catch (cause) {
       const aborted = controller.signal.aborted;
+      logger.warn(aborted ? "facilitator request timed out" : "facilitator network error", {
+        path,
+        timeoutMs: aborted ? timeoutMs : undefined,
+        error: cause instanceof Error ? cause.message : String(cause),
+      });
       throw new FacilitatorHttpError(
         aborted
           ? `facilitator request timed out after ${timeoutMs}ms (${path})`
@@ -192,6 +201,12 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
         return parsed;
       }
       const facilitatorCode = extractFacilitatorCode(parsed);
+      logger.warn("facilitator HTTP non-2xx", {
+        path,
+        status: res.status,
+        facilitatorCode,
+        reason: reasonString(parsed),
+      });
       throw new FacilitatorHttpError(
         `facilitator HTTP ${res.status} (${path}): ${reasonString(parsed) ?? text}`,
         {

@@ -24,6 +24,7 @@ import type { CoreSdkReadAdapter } from "./onchain/core-sdk-read.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
 import { isStore, type Store } from "./store.js";
 import type { FacilitatorRetryOptions } from "./facilitator/client.js";
+import type { Logger } from "./logger.js";
 
 /**
  * Minimal signing surface needed by `signFullOffer`. Structurally
@@ -141,6 +142,14 @@ export interface X402bServerConfig {
    * `FULFILLMENT_CHANNELS_NOT_CONFIGURED`.
    */
   fulfillmentChannels?: readonly RedeemFulfillmentChannel[];
+  /**
+   * Optional structured logger. Threaded through the handlers + the
+   * facilitator HTTP client; events emitted include recovery-store
+   * writes, channel-`onCommit` failures, facilitator retry attempts,
+   * and boot diagnostics. Defaults to a no-op so the SDK is silent
+   * unless the host opts in.
+   */
+  logger?: Logger;
 }
 
 /**
@@ -245,6 +254,15 @@ export const x402bServerConfigSchema = z
       .custom<Store<FulfillmentRecoveryEntry>>(isStore, {
         message: "must implement the async Store<V> interface (get/set/delete/entries)",
       })
+      .optional(),
+    logger: z
+      .object({
+        debug: z.function(),
+        info: z.function(),
+        warn: z.function(),
+        error: z.function(),
+      })
+      .passthrough()
       .optional(),
     fulfillmentChannels: z
       .array(fulfillmentChannelShallowSchema)

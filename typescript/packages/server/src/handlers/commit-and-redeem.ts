@@ -22,6 +22,7 @@ import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
 import type { FulfillmentRecoveryEntry, X402bServerConfig } from "../config.js";
 import type { Store } from "../store.js";
+import { noopLogger, type Logger } from "../logger.js";
 
 export interface CommitHandlerInput {
   /** Raw `X-PAYMENT` header value (base64'd JSON). */
@@ -41,6 +42,8 @@ export interface CommitHandlerContext {
    * is constrained to the offer's own channel set.
    */
   exchangeFulfillmentOptionStore: Store<readonly string[]>;
+  /** Optional structured logger. Defaults to no-op when absent. */
+  logger?: Logger;
 }
 
 export interface CommitOk {
@@ -91,6 +94,7 @@ async function handleCommitImpl(
   ctx: CommitHandlerContext,
   expected: { expectedAction: ActionId; expectedState: ExchangeState },
 ): Promise<HandlerResult<CommitOk>> {
+  const logger = ctx.logger ?? noopLogger;
   const decoded = decodeXPaymentHeader(input.paymentHeader);
   if (!decoded.ok) {
     const status = decoded.code === "MISSING_HEADER" ? 402 : 400;
@@ -220,6 +224,10 @@ async function handleCommitImpl(
       recordedAt: Date.now(),
     };
     await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, pending);
+    logger.debug("x402-server: fulfillment recovery entry recorded (Flow B)", {
+      exchangeId: settleResult.exchangeId,
+      option: decoded.payload.fulfillment.option,
+    });
 
     const channel = channelById.get(decoded.payload.fulfillment.option);
     if (channel === undefined) {
@@ -227,6 +235,10 @@ async function handleCommitImpl(
       await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
         ...pending,
         error: reason,
+      });
+      logger.error("x402-server: Flow B channel adapter missing post-settle", {
+        exchangeId: settleResult.exchangeId,
+        option: decoded.payload.fulfillment.option,
       });
       // Validation should have caught this (rule 13 rejects an option
       // with no registered adapter). Surface a warning rather than
@@ -244,10 +256,19 @@ async function handleCommitImpl(
       try {
         await channel.onCommit(settleResult.exchangeId, decoded.payload.fulfillment.data);
         await ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
+        logger.debug("x402-server: Flow B channel onCommit succeeded", {
+          exchangeId: settleResult.exchangeId,
+          option: decoded.payload.fulfillment.option,
+        });
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
         await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
           ...pending,
+          error: reason,
+        });
+        logger.warn("x402-server: Flow B channel onCommit failed; recovery entry retained", {
+          exchangeId: settleResult.exchangeId,
+          option: decoded.payload.fulfillment.option,
           error: reason,
         });
         warnings.push({

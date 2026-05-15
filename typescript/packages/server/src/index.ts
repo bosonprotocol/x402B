@@ -117,3 +117,4 @@ export {
 } from "./internal/x-payment-response.js";
 export { isStore, mapAsStore, type Store } from "./store.js";
 export { createKeyedMutex, type KeyedMutex } from "./concurrency.js";
+export { noopLogger, type Logger } from "./logger.js";
