@@ -90,7 +90,11 @@ function performActionRoute(
 ): RequestHandler {
   return async (req, res, next) => {
     try {
-      const body = req.body as Partial<RedeemHandlerInput> | null | undefined;
+      // The common post-commit body is just `{ exchangeId, signedPayload }`.
+      // `fulfillment` is redeem-specific and is left as `unknown` here —
+      // `handleRedeemRoute` narrows it via `isRedeemFulfillment` before
+      // assembling the typed `RedeemHandlerInput`.
+      const body = req.body as PostCommitBody | null | undefined;
       if (
         body == null ||
         typeof body.exchangeId !== "string" ||
@@ -108,7 +112,7 @@ function performActionRoute(
       };
       const result =
         action === "redeem"
-          ? await handleRedeemRoute(server, baseInput, body, res)
+          ? await handleRedeemRoute(server, baseInput, body.fulfillment, res)
           : await server.handlers[action](baseInput);
       if (result === undefined) return;
       // No `X-PAYMENT-RESPONSE` here — post-commit actions (redeem,
@@ -123,33 +127,40 @@ function performActionRoute(
   };
 }
 
+interface PostCommitBody {
+  exchangeId?: unknown;
+  signedPayload?: unknown;
+  /** Redeem-only; untyped here and narrowed by `isRedeemFulfillment`. */
+  fulfillment?: unknown;
+}
+
 async function handleRedeemRoute(
   server: X402bServer,
   baseInput: PerformActionInput,
-  body: Partial<RedeemHandlerInput>,
+  fulfillment: unknown,
   res: Response,
 ) {
-  const input = buildRedeemInput(baseInput, body, res);
+  const input = buildRedeemInput(baseInput, fulfillment, res);
   if (input === undefined) return undefined;
   return await server.handlers.redeem(input);
 }
 
 function buildRedeemInput(
   baseInput: PerformActionInput,
-  body: Partial<RedeemHandlerInput>,
+  fulfillment: unknown,
   res: Response,
 ): RedeemHandlerInput | undefined {
-  if (body.fulfillment === undefined) {
+  if (fulfillment === undefined) {
     return baseInput;
   }
-  if (!isRedeemFulfillment(body.fulfillment)) {
+  if (!isRedeemFulfillment(fulfillment)) {
     res.status(400).json({
       code: "INVALID_REQUEST_BODY",
       reason: "expected fulfillment to be { option: string, data: object | null } when present",
     });
     return undefined;
   }
-  return { ...baseInput, fulfillment: body.fulfillment };
+  return { ...baseInput, fulfillment };
 }
 
 function isRedeemFulfillment(value: unknown): value is RedeemHandlerInput["fulfillment"] {
