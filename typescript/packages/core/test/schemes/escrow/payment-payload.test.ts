@@ -49,9 +49,9 @@ describe("EscrowPaymentPayload — happy path", () => {
     });
   }
 
-  it("accepts null fulfillment data for schemaless options", () => {
+  it("accepts the option-only commit-time fulfillment slot", () => {
     const parsed = parseEscrowPaymentPayload(validPayloadNone);
-    expect(parsed.fulfillment).toEqual({ option: "inline", data: null });
+    expect(parsed.fulfillment).toEqual({ option: "inline" });
     expect(ajvValidate(validPayloadNone)).toBe(true);
   });
 });
@@ -102,5 +102,27 @@ describe("EscrowPaymentPayload — rejection cases", () => {
     bad.payload.tokenAuth.data.validBefore = -1;
     expect(escrowPaymentPayloadSchema.safeParse(bad).success).toBe(false);
     expect(ajvValidate(bad)).toBe(false);
+  });
+
+  it("accepts a commit-time payload with fulfillment.option only (Flow A shape)", () => {
+    // Two-step Flow A defers buyer-supplied delivery data to the
+    // redeem POST body, so the commit-time payload is option-only.
+    const ok = JSON.parse(JSON.stringify(validPayloadNone));
+    ok.fulfillment = { option: "inline" };
+    expect(escrowPaymentPayloadSchema.safeParse(ok).success).toBe(true);
+    expect(ajvValidate(ok)).toBe(true);
+  });
+
+  it("accepts a commit-time payload with fulfillment.{option, data} (Flow B shape)", () => {
+    // Atomic Flow B has no later round trip for the buyer to attach
+    // delivery data, so the commit-time payload carries both option
+    // and data. The action-conditional rule (Flow A rejects data,
+    // Flow B requires it) lives in the server validator, not in the
+    // structural Zod / JSON Schema.
+    const ok = JSON.parse(JSON.stringify(validPayloadNone));
+    ok.payload.action = "boson-createOfferCommitAndRedeem";
+    ok.fulfillment = { option: "email", data: { email: "buyer@example.com" } };
+    expect(escrowPaymentPayloadSchema.safeParse(ok).success).toBe(true);
+    expect(ajvValidate(ok)).toBe(true);
   });
 });
