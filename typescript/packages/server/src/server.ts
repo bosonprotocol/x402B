@@ -49,6 +49,7 @@ import { stampFacilitatorEndpoints } from "./internal/facilitator-endpoints.js";
 import { asCoreSdkReadAdapter, type CoreSdkReadAdapter } from "./onchain/core-sdk-read.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
 import { mapAsStore, type Store } from "./store.js";
+import { createKeyedMutex } from "./concurrency.js";
 
 /** Per-offer inputs for `server.buildPaymentRequirements` — everything the offer-level args carry, minus the per-server context the factory already holds. */
 export interface BuildRequirementsInput {
@@ -110,6 +111,14 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   assertChannelRegistryEscrowMatch(validated);
 
   const facilitator = createFacilitatorClient({ url: validated.facilitator.url });
+
+  // Serialize the exchange-keyed handlers (redeem / complete / dispute*)
+  // per `exchangeId`. Two concurrent redeems on the same exchange would
+  // otherwise both pass the facilitator round-trip and race the
+  // post-settle channel.onCommit + store writes. Process-local only —
+  // multi-instance hosts rely on the new idempotency-key + on-chain
+  // state checks for cross-process safety.
+  const exchangeMutex = createKeyedMutex<string>();
   // Default to a fresh in-memory store when the host doesn't supply
   // one. Single shared reference for the lifetime of this server — so
   // commit-time writes and redeem-time reads observe the same backing
@@ -204,43 +213,55 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           exchangeFulfillmentOptionStore,
         }),
       redeem: async (input) =>
-        handleRedeem(input, {
-          config: validated,
-          facilitator,
-          exchangeReader: await requireReader("redeem"),
-          exchangeFulfillmentOptionStore,
-          fulfillmentRecoveryStore,
-        }),
+        exchangeMutex.runExclusive(input.exchangeId, async () =>
+          handleRedeem(input, {
+            config: validated,
+            facilitator,
+            exchangeReader: await requireReader("redeem"),
+            exchangeFulfillmentOptionStore,
+            fulfillmentRecoveryStore,
+          }),
+        ),
       complete: async (input) =>
-        handleComplete(input, {
-          config: validated,
-          facilitator,
-          exchangeReader: await requireReader("complete"),
-        }),
+        exchangeMutex.runExclusive(input.exchangeId, async () =>
+          handleComplete(input, {
+            config: validated,
+            facilitator,
+            exchangeReader: await requireReader("complete"),
+          }),
+        ),
       disputeRaise: async (input) =>
-        handleDisputeRaise(input, {
-          config: validated,
-          facilitator,
-          exchangeReader: await requireReader("disputeRaise"),
-        }),
+        exchangeMutex.runExclusive(input.exchangeId, async () =>
+          handleDisputeRaise(input, {
+            config: validated,
+            facilitator,
+            exchangeReader: await requireReader("disputeRaise"),
+          }),
+        ),
       disputeResolve: async (input) =>
-        handleDisputeResolve(input, {
-          config: validated,
-          facilitator,
-          exchangeReader: await requireReader("disputeResolve"),
-        }),
+        exchangeMutex.runExclusive(input.exchangeId, async () =>
+          handleDisputeResolve(input, {
+            config: validated,
+            facilitator,
+            exchangeReader: await requireReader("disputeResolve"),
+          }),
+        ),
       disputeRetract: async (input) =>
-        handleDisputeRetract(input, {
-          config: validated,
-          facilitator,
-          exchangeReader: await requireReader("disputeRetract"),
-        }),
+        exchangeMutex.runExclusive(input.exchangeId, async () =>
+          handleDisputeRetract(input, {
+            config: validated,
+            facilitator,
+            exchangeReader: await requireReader("disputeRetract"),
+          }),
+        ),
       disputeEscalate: async (input) =>
-        handleDisputeEscalate(input, {
-          config: validated,
-          facilitator,
-          exchangeReader: await requireReader("disputeEscalate"),
-        }),
+        exchangeMutex.runExclusive(input.exchangeId, async () =>
+          handleDisputeEscalate(input, {
+            config: validated,
+            facilitator,
+            exchangeReader: await requireReader("disputeEscalate"),
+          }),
+        ),
       withdrawFunds: async (input) =>
         handleWithdrawFunds(input, {
           config: validated,
