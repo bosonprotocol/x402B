@@ -8,11 +8,9 @@
 import type { Address } from "@bosonprotocol/x402-core/schemes/escrow";
 
 import type { CoreSdkReadAdapter } from "../onchain/core-sdk-read.js";
+import { ADDRESS_RE, DECIMAL_UINT_RE } from "./entity-input-validators.js";
 import { handlerErr, plainHandlerOk, type PlainHandlerResult } from "./types.js";
 import { resolveEntityId } from "./resolve-entity.js";
-
-const DECIMAL_UINT_RE = /^\d+$/;
-const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 export interface AvailableFundsEntry {
   tokenAddress: Address;
@@ -102,11 +100,12 @@ export async function handleGetAvailableFunds(
 
 function omitErrorMetadata(resolved: {
   code: string;
-  sellerId?: string;
-  buyerId?: string;
-}): Record<string, string> | undefined {
-  if (resolved.code === "AMBIGUOUS" && resolved.sellerId && resolved.buyerId) {
-    return { sellerId: resolved.sellerId, buyerId: resolved.buyerId };
-  }
-  return undefined;
+  sellerIds?: string[];
+  buyerIds?: string[];
+}): Record<string, string[]> | undefined {
+  if (resolved.code !== "AMBIGUOUS") return undefined;
+  const details: Record<string, string[]> = {};
+  if (resolved.sellerIds !== undefined) details.sellerIds = resolved.sellerIds;
+  if (resolved.buyerIds !== undefined) details.buyerIds = resolved.buyerIds;
+  return Object.keys(details).length > 0 ? details : undefined;
 }

@@ -139,14 +139,22 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
     return validated.exchangeReader;
   };
 
+  // Lazy-memoised read-only core-sdk. The construction itself is cheap
+  // but happens on every `handlers.withdrawFunds()` /
+  // `handlers.getAvailableFunds()` call — caching the adapter keeps the
+  // hot path allocation-free and shares one subgraph client across
+  // requests. `validated.coreSdkRead`, when supplied by the host, is
+  // already shared.
+  let cachedCoreSdkRead: CoreSdkReadAdapter | undefined;
   const requireCoreSdkRead = (action: string): CoreSdkReadAdapter => {
     if (validated.coreSdkRead !== undefined) return validated.coreSdkRead;
+    if (cachedCoreSdkRead !== undefined) return cachedCoreSdkRead;
     if (validated.subgraphUrl === undefined) {
       throw new Error(
         `x402-server: handlers.${action}() requires either \`coreSdkRead\` or \`subgraphUrl\` in config (subgraph read step).`,
       );
     }
-    return asCoreSdkReadAdapter(
+    cachedCoreSdkRead = asCoreSdkReadAdapter(
       new CoreSDK({
         web3Lib: createReadOnlyWeb3LibStub(),
         subgraphUrl: validated.subgraphUrl,
@@ -154,6 +162,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
         chainId: validated.chainId,
       }),
     );
+    return cachedCoreSdkRead;
   };
 
   return {

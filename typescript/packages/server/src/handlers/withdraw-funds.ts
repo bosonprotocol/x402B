@@ -19,11 +19,9 @@ import type { X402bServerConfig } from "../config.js";
 import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
 import type { CoreSdkReadAdapter } from "../onchain/core-sdk-read.js";
+import { ADDRESS_RE, DECIMAL_UINT_RE } from "./entity-input-validators.js";
 import { resolveEntityId } from "./resolve-entity.js";
 import { handlerErr, plainHandlerOk, type PlainHandlerResult } from "./types.js";
-
-const DECIMAL_UINT_RE = /^\d+$/;
-const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 export interface WithdrawFundsBaseInput {
   /** ABI-encoded `BosonMetaTx` tuple — see `encodeSignedPayload` in `@bosonprotocol/x402-evm/codec`. */
@@ -78,7 +76,10 @@ export async function handleWithdrawFunds(
         resolved.code === "NOT_FOUND" ? 404 : resolved.code === "AMBIGUOUS" ? 409 : 502;
       const details =
         resolved.code === "AMBIGUOUS"
-          ? { sellerId: resolved.sellerId, buyerId: resolved.buyerId }
+          ? {
+              ...(resolved.sellerIds !== undefined ? { sellerIds: resolved.sellerIds } : {}),
+              ...(resolved.buyerIds !== undefined ? { buyerIds: resolved.buyerIds } : {}),
+            }
           : undefined;
       return handlerErr(status, resolved.code, resolved.reason, details);
     }

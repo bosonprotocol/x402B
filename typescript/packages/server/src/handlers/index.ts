@@ -46,6 +46,7 @@ export {
   type ResolveEntityOk,
   type ResolveEntityResult,
 } from "./resolve-entity.js";
+export { ADDRESS_RE, DECIMAL_UINT_RE, HEX_BYTES_RE } from "./entity-input-validators.js";
 export { emitNextActions, type EmitNextActionsInput } from "./next-actions.js";
 export {
   handlerErr,

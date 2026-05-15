@@ -5,7 +5,10 @@
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
+  ADDRESS_RE,
+  DECIMAL_UINT_RE,
   encodeXPaymentResponse,
+  HEX_BYTES_RE,
   X_PAYMENT_RESPONSE_HEADER,
   type AvailableFundsQuery,
   type CommitHandlerInput,
@@ -21,11 +24,6 @@ import { respondWithChallenge } from "./internal/x402-challenge.js";
 
 /** Shared error code for malformed `POST /x402b/*` bodies. */
 export const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
-
-/** Hex-string check matching the `0x[0-9a-fA-F]*` shape `signedPayload` is typed as. */
-const HEX_BYTES_RE = /^0x[0-9a-fA-F]*$/;
-const DECIMAL_UINT_RE = /^\d+$/;
-const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 export interface MountX402bOptions {
   /**
@@ -153,7 +151,7 @@ function withdrawFundsRoute(server: X402bServer): RequestHandler {
       const body = req.body as Record<string, unknown> | null | undefined;
       if (body == null || typeof body.signedPayload !== "string") {
         res.status(400).json({
-          code: "INVALID_REQUEST_BODY",
+          code: INVALID_REQUEST_BODY,
           reason: "expected JSON body with { signedPayload, entityId? | (address, role?) }",
         });
         return;
@@ -169,7 +167,7 @@ function withdrawFundsRoute(server: X402bServer): RequestHandler {
       const hasAddress = typeof body.address === "string";
       if (hasEntityId === hasAddress) {
         res.status(400).json({
-          code: "INVALID_REQUEST_BODY",
+          code: INVALID_REQUEST_BODY,
           reason: "exactly one of `entityId` or `address` must be set",
         });
         return;
@@ -177,15 +175,29 @@ function withdrawFundsRoute(server: X402bServer): RequestHandler {
 
       let input: WithdrawFundsInput;
       if (hasEntityId) {
+        if (!DECIMAL_UINT_RE.test(body.entityId as string)) {
+          res.status(400).json({
+            code: INVALID_REQUEST_BODY,
+            reason: "entityId must be a decimal uint256 string",
+          });
+          return;
+        }
         input = {
           signedPayload: body.signedPayload as Hex,
           entityId: body.entityId as string,
         };
       } else {
+        if (!ADDRESS_RE.test(body.address as string)) {
+          res.status(400).json({
+            code: INVALID_REQUEST_BODY,
+            reason: "address must be a 20-byte 0x-prefixed hex string",
+          });
+          return;
+        }
         const role = body.role;
         if (role !== undefined && role !== "buyer" && role !== "seller") {
           res.status(400).json({
-            code: "INVALID_REQUEST_BODY",
+            code: INVALID_REQUEST_BODY,
             reason: 'role must be "buyer" or "seller" when set',
           });
           return;

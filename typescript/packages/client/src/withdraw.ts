@@ -27,6 +27,34 @@ import { randomUint256 } from "./utils/crypto.js";
 // declared deps. Callers usually pass decimal strings (the wire format).
 type BigNumberish = string | number | bigint;
 
+const DECIMAL_UINT_RE = /^\d+$/;
+
+/**
+ * Coerce a caller-supplied `entityId` to its canonical wire form (a
+ * non-negative integer decimal string). Rejects NaN, fractional, and
+ * negative values up-front — passing them on to core-sdk would either
+ * trip a downstream BigInt conversion or, worse, produce a signed
+ * payload that always reverts on-chain.
+ */
+function normalizeEntityId(value: BigNumberish): string {
+  if (typeof value === "bigint") {
+    if (value < 0n) throw new Error(`entityId must be non-negative, got ${value.toString()}`);
+    return value.toString();
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+      throw new Error(`entityId must be a non-negative integer, got ${String(value)}`);
+    }
+    return value.toString();
+  }
+  // typeof value === "string"
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || !DECIMAL_UINT_RE.test(trimmed)) {
+    throw new Error(`entityId must be a decimal non-negative integer string, got "${value}"`);
+  }
+  return trimmed;
+}
+
 /**
  * Resolution targets accepted by the "withdraw all" helper. Either
  * pass the raw `entityId` (numeric Boson account id) or an EVM
@@ -112,9 +140,13 @@ export async function signWithdrawFunds(
   args: SignWithdrawFundsArgs,
   deps: SignWithdrawDeps,
 ): Promise<SignedWithdrawFunds> {
-  const { coreSdk } = deps.buildCoreSdk(args.network, args.escrowAddress);
+  const normalised: SignWithdrawFundsArgs = {
+    ...args,
+    entityId: normalizeEntityId(args.entityId),
+  };
+  const { coreSdk } = deps.buildCoreSdk(normalised.network, normalised.escrowAddress);
   const from = await deps.getSignerAddress();
-  return signWithdrawFundsInternal(args, coreSdk as unknown as WithdrawCoreSdkLike, from);
+  return signWithdrawFundsInternal(normalised, coreSdk as unknown as WithdrawCoreSdkLike, from);
 }
 
 /**
@@ -185,7 +217,7 @@ async function signWithdrawFundsInternal(
   return {
     metaTx,
     signedPayload: encodeSignedPayload(metaTx),
-    entityId: String(args.entityId),
+    entityId: normalizeEntityId(args.entityId),
     tokenList: args.tokenList,
     tokenAmounts: args.tokenAmounts.map((a) => String(a)),
   };
@@ -195,7 +227,7 @@ async function resolveEntityIdClientSide(
   coreSdk: WithdrawCoreSdkLike,
   selector: WithdrawEntitySelector,
 ): Promise<string> {
-  if ("entityId" in selector) return String(selector.entityId);
+  if ("entityId" in selector) return normalizeEntityId(selector.entityId);
   const address = selector.address.toLowerCase();
   const role = selector.role;
   const [sellers, buyers] = await Promise.all([

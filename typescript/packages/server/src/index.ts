@@ -88,6 +88,9 @@ export {
   type WithdrawFundsContext,
   type WithdrawFundsInput,
   type WithdrawFundsOk,
+  ADDRESS_RE,
+  DECIMAL_UINT_RE,
+  HEX_BYTES_RE,
 } from "./handlers/index.js";
 export {
   asCoreSdkReadAdapter,

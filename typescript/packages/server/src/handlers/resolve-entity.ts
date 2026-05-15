@@ -6,6 +6,12 @@
 // buyersFilter: { wallet: addr.toLowerCase() } })` covers buyer-side.
 // There is no single-call helper that returns "the entityId for this
 // wallet"; we call both in parallel and disambiguate.
+//
+// Both branches can also legitimately return *multiple* entities for
+// one address — one wallet can be the admin of several Boson sellers,
+// for example. When that happens we refuse to guess: the caller must
+// re-issue with an explicit `entityId` so the withdraw signature
+// commits to a single account.
 
 import type { CoreSdkReadAdapter } from "../onchain/core-sdk-read.js";
 
@@ -26,8 +32,10 @@ export type ResolveEntityError =
       ok: false;
       code: "AMBIGUOUS";
       reason: string;
-      sellerId: string;
-      buyerId: string;
+      /** Seller ids matching the address (one or many). Absent when no sellers matched. */
+      sellerIds?: string[];
+      /** Buyer ids matching the address (one or many). Absent when no buyers matched. */
+      buyerIds?: string[];
     }
   | { ok: false; code: "SUBGRAPH_FAILURE"; reason: string };
 
@@ -56,45 +64,83 @@ export async function resolveEntityId(
     };
   }
 
-  const sellerId = sellers[0]?.id;
-  const buyerId = buyers[0]?.id;
+  const sellerIds = sellers.map((s) => s.id);
+  const buyerIds = buyers.map((b) => b.id);
 
   if (input.role === "seller") {
-    if (sellerId === undefined) {
+    if (sellerIds.length === 0) {
       return {
         ok: false,
         code: "NOT_FOUND",
         reason: `no seller entity found for address ${address}`,
       };
     }
-    return { ok: true, entityId: sellerId, role: "seller" };
+    if (sellerIds.length > 1) {
+      return {
+        ok: false,
+        code: "AMBIGUOUS",
+        reason: `address ${address} resolves to multiple seller entities (ids ${sellerIds.join(", ")}); pass entityId to disambiguate`,
+        sellerIds,
+      };
+    }
+    return { ok: true, entityId: sellerIds[0]!, role: "seller" };
   }
   if (input.role === "buyer") {
-    if (buyerId === undefined) {
+    if (buyerIds.length === 0) {
       return {
         ok: false,
         code: "NOT_FOUND",
         reason: `no buyer entity found for address ${address}`,
       };
     }
-    return { ok: true, entityId: buyerId, role: "buyer" };
+    if (buyerIds.length > 1) {
+      return {
+        ok: false,
+        code: "AMBIGUOUS",
+        reason: `address ${address} resolves to multiple buyer entities (ids ${buyerIds.join(", ")}); pass entityId to disambiguate`,
+        buyerIds,
+      };
+    }
+    return { ok: true, entityId: buyerIds[0]!, role: "buyer" };
   }
 
-  // role unspecified — exactly-one rule.
-  if (sellerId !== undefined && buyerId !== undefined) {
+  // role unspecified — exactly-one rule across both sides.
+  const totalMatches = sellerIds.length + buyerIds.length;
+  if (totalMatches === 0) {
+    return {
+      ok: false,
+      code: "NOT_FOUND",
+      reason: `no seller or buyer entity found for address ${address}`,
+    };
+  }
+  if (totalMatches > 1) {
     return {
       ok: false,
       code: "AMBIGUOUS",
-      reason: `address ${address} resolves to both a seller (id ${sellerId}) and a buyer (id ${buyerId}); pass role to disambiguate`,
-      sellerId,
-      buyerId,
+      reason: `address ${address} resolves to ${describeMatches(sellerIds, buyerIds)}; pass role and/or entityId to disambiguate`,
+      ...(sellerIds.length > 0 ? { sellerIds } : {}),
+      ...(buyerIds.length > 0 ? { buyerIds } : {}),
     };
   }
-  if (sellerId !== undefined) return { ok: true, entityId: sellerId, role: "seller" };
-  if (buyerId !== undefined) return { ok: true, entityId: buyerId, role: "buyer" };
-  return {
-    ok: false,
-    code: "NOT_FOUND",
-    reason: `no seller or buyer entity found for address ${address}`,
-  };
+  if (sellerIds.length === 1) return { ok: true, entityId: sellerIds[0]!, role: "seller" };
+  return { ok: true, entityId: buyerIds[0]!, role: "buyer" };
+}
+
+function describeMatches(sellerIds: string[], buyerIds: string[]): string {
+  const parts: string[] = [];
+  if (sellerIds.length > 0) {
+    parts.push(
+      sellerIds.length === 1
+        ? `seller (id ${sellerIds[0]})`
+        : `${sellerIds.length} sellers (ids ${sellerIds.join(", ")})`,
+    );
+  }
+  if (buyerIds.length > 0) {
+    parts.push(
+      buyerIds.length === 1
+        ? `buyer (id ${buyerIds[0]})`
+        : `${buyerIds.length} buyers (ids ${buyerIds.join(", ")})`,
+    );
+  }
+  return parts.join(" and ");
 }

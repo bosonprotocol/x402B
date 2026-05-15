@@ -71,7 +71,36 @@ describe("resolveEntityId", () => {
       getBuyers: vi.fn(async () => [{ id: "9" }]),
     });
     const result = await resolveEntityId(coreSdk, { address: ADDRESS });
-    expect(result).toMatchObject({ ok: false, code: "AMBIGUOUS", sellerId: "1", buyerId: "9" });
+    expect(result).toMatchObject({
+      ok: false,
+      code: "AMBIGUOUS",
+      sellerIds: ["1"],
+      buyerIds: ["9"],
+    });
+  });
+
+  it("returns AMBIGUOUS when one role resolves to multiple entities", async () => {
+    const coreSdk = makeCoreSdkRead({
+      getSellersByAddress: vi.fn(async () => [{ id: "1" }, { id: "2" }]),
+    });
+    const result = await resolveEntityId(coreSdk, { address: ADDRESS, role: "seller" });
+    expect(result).toMatchObject({
+      ok: false,
+      code: "AMBIGUOUS",
+      sellerIds: ["1", "2"],
+    });
+  });
+
+  it("returns AMBIGUOUS when role is unspecified and one side has multiple matches", async () => {
+    const coreSdk = makeCoreSdkRead({
+      getSellersByAddress: vi.fn(async () => [{ id: "1" }, { id: "2" }]),
+    });
+    const result = await resolveEntityId(coreSdk, { address: ADDRESS });
+    expect(result).toMatchObject({
+      ok: false,
+      code: "AMBIGUOUS",
+      sellerIds: ["1", "2"],
+    });
   });
 
   it("respects an explicit role and skips the other lookup", async () => {
@@ -176,7 +205,7 @@ describe("handleGetAvailableFunds", () => {
     expect(result).toMatchObject({
       ok: false,
       status: 409,
-      body: { code: "AMBIGUOUS", details: { sellerId: "1", buyerId: "9" } },
+      body: { code: "AMBIGUOUS", details: { sellerIds: ["1"], buyerIds: ["9"] } },
     });
   });
 
