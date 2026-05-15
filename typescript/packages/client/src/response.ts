@@ -61,10 +61,15 @@ export function parsePaymentResponse(response: ResponseLike): ExchangeSummary | 
       !Array.isArray(obj.nextActions)
     ) {
       const na = obj.nextActions as Record<string, unknown>;
-      const exchange = typeof na.exchangeState === "string" ? na.exchangeState : undefined;
-      const dispute = typeof na.disputeState === "string" ? na.disputeState : undefined;
+      const exchange = pickString(na, ["exchangeState"]);
+      const dispute = pickString(na, ["disputeState"]);
       if (exchange !== undefined) {
-        const candidate = dispute !== undefined ? { exchange, dispute } : exchange;
+        let candidate: unknown;
+        if (exchange === "DISPUTED") {
+          candidate = dispute !== undefined ? { exchange, dispute } : undefined;
+        } else {
+          candidate = { exchange };
+        }
         if (isClientStateShape(candidate)) {
           summary.state = candidate;
         }
@@ -89,7 +94,7 @@ function isClientStateShape(v: unknown): v is NonNullable<ExchangeSummary["state
   if (typeof v === "string") return v.length > 0;
   if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
   const rec = v as Record<string, unknown>;
-  if (typeof rec.exchange !== "string") return false;
+  if (typeof rec.exchange !== "string" || rec.exchange.length === 0) return false;
   if ("dispute" in rec && rec.dispute !== undefined && typeof rec.dispute !== "string") {
     return false;
   }

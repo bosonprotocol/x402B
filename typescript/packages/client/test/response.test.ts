@@ -32,7 +32,7 @@ describe("parsePaymentResponse", () => {
     });
   });
 
-  it("lifts state from nextActions.exchangeState when top-level state is absent", () => {
+  it("lifts a non-DISPUTED { exchange } shape from nextActions", () => {
     const payload = {
       exchangeId: "42",
       txHash: "0xabc",
@@ -50,7 +50,7 @@ describe("parsePaymentResponse", () => {
     });
 
     expect(parsed?.exchangeId).toBe("42");
-    expect(parsed?.state).toBe("REDEEMED");
+    expect(parsed?.state).toEqual({ exchange: "REDEEMED" });
   });
 
   it("lifts a DISPUTED { exchange, dispute } shape from nextActions", () => {
@@ -72,6 +72,26 @@ describe("parsePaymentResponse", () => {
     });
 
     expect(parsed?.state).toEqual({ exchange: "DISPUTED", dispute: "RESOLVING" });
+  });
+
+  it("does not lift DISPUTED nextActions without a disputeState", () => {
+    const payload = {
+      exchangeId: "8",
+      txHash: "0xaaa",
+      nextActions: {
+        exchangeId: "8",
+        exchangeState: "DISPUTED",
+        next: [],
+      },
+    };
+    const header = Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
+
+    const parsed = parsePaymentResponse({
+      headers: { get: () => header },
+    });
+
+    expect(parsed?.exchangeId).toBe("8");
+    expect(parsed?.state).toBeUndefined();
   });
 
   it("prefers top-level state over nextActions.exchangeState", () => {
