@@ -30,12 +30,8 @@ coverage/
 # logs / env
 *.log
 **/*.log
-.env
-.env.local
-.env.*.local
-**/.env
-**/.env.local
-**/.env.*.local
+.env*
+**/.env*
 
 # git / CI / tooling
 .git/
