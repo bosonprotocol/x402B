@@ -8,10 +8,20 @@
 
 import type { EscrowNextActions } from "@bosonprotocol/x402-actions";
 
-export type HandlerStatus = 200 | 400 | 402 | 500 | 502;
+export type HandlerStatus = 200 | 400 | 402 | 404 | 409 | 500 | 502;
 
 export type HandlerResult<TBody> =
   | { ok: true; status: 200; body: TBody & { nextActions: EscrowNextActions } }
+  | { ok: false; status: Exclude<HandlerStatus, 200>; body: HandlerErrorBody };
+
+/**
+ * Result shape for handlers whose success body does NOT carry a
+ * `nextActions` envelope — used by entity-keyed actions
+ * (`boson-withdrawFunds`) and the read-only `available-funds`
+ * endpoint, neither of which advance the exchange state machine.
+ */
+export type PlainHandlerResult<TBody> =
+  | { ok: true; status: 200; body: TBody }
   | { ok: false; status: Exclude<HandlerStatus, 200>; body: HandlerErrorBody };
 
 export interface HandlerErrorBody {
@@ -36,12 +46,16 @@ export function handlerOk<TBody>(
   return { ok: true, status: 200, body };
 }
 
+export function plainHandlerOk<TBody>(body: TBody): PlainHandlerResult<TBody> {
+  return { ok: true, status: 200, body };
+}
+
 export function handlerErr(
   status: Exclude<HandlerStatus, 200>,
   code: string,
   reason: string,
   details?: unknown,
-): HandlerResult<never> {
+): HandlerResult<never> & PlainHandlerResult<never> {
   const body: HandlerErrorBody = { code, reason };
   if (details !== undefined) body.details = details;
   return { ok: false, status, body };

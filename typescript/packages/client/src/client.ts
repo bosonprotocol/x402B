@@ -30,6 +30,13 @@ import {
   type SignedPostCommitAction,
 } from "./post-commit.js";
 import { parsePaymentResponse } from "./response.js";
+import {
+  signWithdrawAllAvailableFunds,
+  signWithdrawFunds,
+  type SignWithdrawAllAvailableFundsArgs,
+  type SignWithdrawFundsArgs,
+  type SignedWithdrawFunds,
+} from "./withdraw.js";
 import { buildAndSignTokenAuth } from "./token-auth/index.js";
 import { MaxAmountExceededError } from "./errors.js";
 import type { ExchangeSummary, X402bClientConfig } from "./types.js";
@@ -58,6 +65,24 @@ export interface X402bClient {
    * of MVP.
    */
   signAction(args: SignActionArgs): Promise<SignedPostCommitAction>;
+
+  /**
+   * Sign a `withdrawFunds(entityId, tokenList, tokenAmounts)` meta-tx.
+   * Caller-resolved entity + tokens snapshot — see
+   * `signWithdrawAllAvailableFunds` for the read-from-subgraph "withdraw
+   * everything" sugar.
+   */
+  signWithdrawFunds(args: SignWithdrawFundsArgs): Promise<SignedWithdrawFunds>;
+
+  /**
+   * Read available funds for the given entity from the subgraph and
+   * sign a meta-tx withdrawing the entire current balance set. Accepts
+   * either an `entityId` directly or an `address` (with optional
+   * `role` for ambiguous wallets).
+   */
+  signWithdrawAllAvailableFunds(
+    args: SignWithdrawAllAvailableFundsArgs,
+  ): Promise<SignedWithdrawFunds>;
 
   /**
    * Best-effort decode of `X-PAYMENT-RESPONSE` after a successful retry.
@@ -120,6 +145,17 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
 
     signAction(args) {
       return signPostCommitAction(args, { buildCoreSdk, getBuyerAddress });
+    },
+
+    signWithdrawFunds(args) {
+      return signWithdrawFunds(args, { buildCoreSdk, getSignerAddress: getBuyerAddress });
+    },
+
+    signWithdrawAllAvailableFunds(args) {
+      return signWithdrawAllAvailableFunds(args, {
+        buildCoreSdk,
+        getSignerAddress: getBuyerAddress,
+      });
     },
 
     parsePaymentResponse(response) {

@@ -20,6 +20,7 @@ import {
 import type { Hex } from "viem";
 import { z } from "zod";
 
+import type { CoreSdkReadAdapter } from "./onchain/core-sdk-read.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
 
 /**
@@ -67,6 +68,22 @@ export interface X402bServerConfig {
    * for the interface.
    */
   exchangeReader?: ExchangeReader;
+  /**
+   * URL of the Boson Protocol subgraph for this network. Used by the
+   * read-only `available-funds` handler and the address→entityId
+   * resolver shared with `withdraw-funds`. Optional at config time
+   * (legacy commit/redeem handlers don't need it); required at runtime
+   * by `handlers.withdrawFunds` / `handlers.getAvailableFunds`.
+   */
+  subgraphUrl?: string;
+  /**
+   * Pre-built read-only core-sdk client. If omitted, the server
+   * constructs one internally from `subgraphUrl` + `escrow` + `chainId`
+   * with a throwing `Web3LibAdapter` stub. Provide your own for tests
+   * or when you want to share a single core-sdk instance with the
+   * rest of your service.
+   */
+  coreSdkRead?: CoreSdkReadAdapter;
   /**
    * Server-side store of the buyer wallet that originally committed
    * each exchange (keyed by `exchangeId`). Populated on Flow A commit
@@ -158,6 +175,14 @@ const exchangeReaderShallowSchema = z
   })
   .passthrough();
 
+const coreSdkReadShallowSchema = z
+  .object({
+    getFunds: z.function().args(z.unknown()).returns(z.unknown()),
+    getSellersByAddress: z.function().args(z.unknown()).returns(z.unknown()),
+    getBuyers: z.function().args(z.unknown()).returns(z.unknown()),
+  })
+  .passthrough();
+
 const fulfillmentChannelShallowSchema = z
   .object({
     id: z.string().min(1),
@@ -186,6 +211,8 @@ export const x402bServerConfigSchema = z
       .strict(),
     channelRegistry: channelRegistryZodSchema,
     exchangeReader: exchangeReaderShallowSchema.optional(),
+    subgraphUrl: httpUrlSchema.optional(),
+    coreSdkRead: coreSdkReadShallowSchema.optional(),
     exchangeBuyerStore: z.instanceof(Map).optional(),
     exchangeFulfillmentOptionStore: z.instanceof(Map).optional(),
     redeemFulfillmentUpdateStore: z.instanceof(Map).optional(),

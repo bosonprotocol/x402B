@@ -400,6 +400,93 @@ describe("handlers.disputeRaise — DISPUTED post-state path", () => {
   });
 });
 
+describe("handlers.disputeResolve — withdraw carved into next[]", () => {
+  it("surfaces boson-withdrawFunds in nextActions after resolveDispute", async () => {
+    // Once `resolveDispute` lands, both parties' escrowed funds are
+    // released to their available balances. `clientLegalActions` for
+    // `(DISPUTED, RESOLVED)` returns just `boson-withdrawFunds` so the
+    // 200 envelope nudges the buyer (or seller) straight at the withdraw
+    // endpoint — no out-of-band knowledge required.
+    const fx = await makePaymentFixture();
+    const reader = makeSequenceReader([
+      {
+        state: ExchangeState.DISPUTED,
+        disputeState: DisputeState.RESOLVING,
+        seller: fx.requirements.offer.creator,
+        exchangeToken: TOKEN,
+        price: fx.requirements.amount,
+      },
+      {
+        state: ExchangeState.DISPUTED,
+        disputeState: DisputeState.RESOLVED,
+        seller: fx.requirements.offer.creator,
+        exchangeToken: TOKEN,
+        price: fx.requirements.amount,
+      },
+    ]);
+    const stub = makeStubFacilitatorFetch(() => ({
+      ok: true,
+      txHash: "0x222",
+      newExchangeState: "DISPUTED",
+      newDisputeState: "RESOLVED",
+    }));
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = stub.fetch as unknown as typeof globalThis.fetch;
+    try {
+      const seller = privateKeyToAccount(TEST_SELLER_PK);
+      const server = createX402bServer({
+        network: NETWORK,
+        chainId: CHAIN_ID,
+        escrow: ESCROW,
+        signer: seller,
+        facilitator: { url: facilitatorUrl },
+        channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
+        exchangeReader: reader,
+      });
+
+      const result = await server.handlers.disputeResolve({
+        exchangeId: "42",
+        signedPayload: "0xdef",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.body.nextActions.exchangeState).toBe(ExchangeState.DISPUTED);
+        // `disputeState` is part of the DISPUTED-branch envelope shape;
+        // assert it is present AND set, so the test fails loudly if the
+        // field is ever dropped (a previous `if ("disputeState" in ...)`
+        // guard would have silently passed in that case).
+        expect("disputeState" in result.body.nextActions).toBe(true);
+        if ("disputeState" in result.body.nextActions) {
+          expect(result.body.nextActions.disputeState).toBe("RESOLVED");
+        }
+
+        const ids = result.body.nextActions.next.map((entry) => entry.id);
+        expect(ids).toEqual(["boson-withdrawFunds"]);
+
+        // Facilitator URL for withdraw routes through the same
+        // `/perform-action?action=...` endpoint as every other
+        // post-commit action — the relayer dispatches on the
+        // signed metaTx, not the action's keying.
+        const withdraw = result.body.nextActions.next[0]!;
+        expect(withdraw.channels).toContain("facilitator");
+        expect(withdraw.channels).toContain("onchain");
+        expect(withdraw.endpoints?.facilitator).toBe(
+          `${facilitatorUrl}/perform-action?action=${encodeURIComponent("boson-withdrawFunds")}`,
+        );
+
+        // Onchain fallback for the withdraw entry points at the funds
+        // facet, sourced from the central `ACTION_FACETS` map.
+        expect(result.body.nextActions.fallback?.onchainHints?.actionFacets).toMatchObject({
+          "boson-withdrawFunds": "FundsHandlerFacet",
+        });
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
   function makeRedeemSignedPayload(from: string): Hex {
     const metaTx: BosonMetaTx = {

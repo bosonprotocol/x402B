@@ -40,14 +40,18 @@ type BigNumberish = string | number | bigint;
  * by excluding:
  *
  *  - the commit-time ids, which the buyer signs via `handle402`;
- *  - `boson-revokeVoucher`, which is seller-only.
- *
- * `boson-resolveDispute` is included here but discriminated separately
- * in `SignActionArgs` because it takes extra parameters.
+ *  - `boson-revokeVoucher`, which is seller-only;
+ *  - entity-keyed actions (`boson-withdrawFunds`), which are signed via
+ *    `client.signWithdrawFunds` / `client.signWithdrawAllAvailableFunds`
+ *    because they take an `entityId` + token list rather than an
+ *    `exchangeId`.
  */
 type BuyerPostCommitActionId = Exclude<
   ActionId,
-  "boson-createOfferAndCommit" | "boson-createOfferCommitAndRedeem" | "boson-revokeVoucher"
+  | "boson-createOfferAndCommit"
+  | "boson-createOfferCommitAndRedeem"
+  | "boson-revokeVoucher"
+  | "boson-withdrawFunds"
 >;
 
 /** Caller-supplied arguments for `client.signAction`. */

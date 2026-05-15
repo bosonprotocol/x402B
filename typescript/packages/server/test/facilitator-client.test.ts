@@ -104,6 +104,14 @@ const performActionInput: FacilitatorPerformActionInput = {
   signedPayload: "0xc0ffee",
 };
 
+const performActionEntityKeyedInput: FacilitatorPerformActionInput = {
+  network: NETWORK,
+  escrowAddress: ESCROW,
+  entityId: "42",
+  action: "boson-withdrawFunds",
+  signedPayload: "0xc0ffee",
+};
+
 describe("createFacilitatorClient", () => {
   it("POSTs `/verify` with JSON body and returns the parsed result", async () => {
     const stub = makeStubFetch(() => ({ body: { ok: true } }));
@@ -218,13 +226,33 @@ describe("createFacilitatorClient", () => {
     });
   });
 
-  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) on partial perform-action success body", async () => {
-    // `ok: true` for /perform-action requires `txHash` + `newExchangeState`.
-    // A response that drops `newExchangeState` would otherwise typecheck
-    // away to undefined at the call site.
+  it("accepts a perform-action success body with just txHash (entity-keyed variant)", async () => {
+    // Entity-keyed actions (`boson-withdrawFunds`) return just
+    // `{ ok: true, txHash }` — no `newExchangeState`. Exercise that
+    // shape end-to-end: send an entity-keyed request and assert the
+    // response validator accepts the bare `{ txHash }` body.
     const stub = makeStubFetch(() => ({
       status: 200,
-      body: { ok: true, txHash: "0xabc" }, // newExchangeState missing
+      body: { ok: true, txHash: "0xabc" },
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    await expect(client.performAction(performActionEntityKeyedInput)).resolves.toEqual({
+      ok: true,
+      txHash: "0xabc",
+    });
+    // Body must be the entity-keyed shape (entityId, no exchangeId)
+    // and the action query string must reflect `boson-withdrawFunds`.
+    expect(stub.calls[0]!.url).toBe(
+      `${BASE_URL}/perform-action?action=${encodeURIComponent("boson-withdrawFunds")}`,
+    );
+    expect(JSON.parse(stub.calls[0]!.init!.body!)).toEqual(performActionEntityKeyedInput);
+  });
+
+  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) when txHash is missing from a 2xx success body", async () => {
+    const stub = makeStubFetch(() => ({
+      status: 200,
+      body: { ok: true, newExchangeState: "COMPLETED" }, // txHash missing
     }));
     const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
 

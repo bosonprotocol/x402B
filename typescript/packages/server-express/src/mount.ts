@@ -5,22 +5,25 @@
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
+  ADDRESS_RE,
+  DECIMAL_UINT_RE,
   encodeXPaymentResponse,
+  HEX_BYTES_RE,
   X_PAYMENT_RESPONSE_HEADER,
+  type AvailableFundsQuery,
   type CommitHandlerInput,
   type PerformActionInput,
   type RedeemHandlerInput,
+  type WithdrawFundsInput,
   type X402bServer,
 } from "@bosonprotocol/x402-server";
 import { Router, type Request, type RequestHandler, type Response } from "express";
+import type { Hex } from "viem";
 
 import { respondWithChallenge } from "./internal/x402-challenge.js";
 
 /** Shared error code for malformed `POST /x402b/*` bodies. */
 export const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
-
-/** Hex-string check matching the `0x[0-9a-fA-F]*` shape `signedPayload` is typed as. */
-const HEX_BYTES_RE = /^0x[0-9a-fA-F]*$/;
 
 export interface MountX402bOptions {
   /**
@@ -50,6 +53,8 @@ export function mountX402b(server: X402bServer, opts: MountX402bOptions): Router
   router.post(`${basePath}/dispute/resolve`, performActionRoute(server, "disputeResolve"));
   router.post(`${basePath}/dispute/retract`, performActionRoute(server, "disputeRetract"));
   router.post(`${basePath}/dispute/escalate`, performActionRoute(server, "disputeEscalate"));
+  router.post(`${basePath}/withdraw-funds`, withdrawFundsRoute(server));
+  router.get(`${basePath}/available-funds`, availableFundsRoute(server));
 
   return router;
 }
@@ -133,6 +138,133 @@ function performActionRoute(
       // a payment. The header is reserved for commit-time settlements;
       // a future deposit-paying `escalateDispute` flow will re-add it
       // on that specific path.
+      res.status(result.status).json(result.body);
+    } catch (e) {
+      next(e);
+    }
+  };
+}
+
+function withdrawFundsRoute(server: X402bServer): RequestHandler {
+  return async (req, res, next) => {
+    try {
+      const body = req.body as Record<string, unknown> | null | undefined;
+      if (body == null || typeof body.signedPayload !== "string") {
+        res.status(400).json({
+          code: INVALID_REQUEST_BODY,
+          reason: "expected JSON body with { signedPayload, entityId? | (address, role?) }",
+        });
+        return;
+      }
+      if (!HEX_BYTES_RE.test(body.signedPayload)) {
+        res.status(400).json({
+          code: INVALID_REQUEST_BODY,
+          reason: "signedPayload must be a 0x-prefixed hex string",
+        });
+        return;
+      }
+      const hasEntityId = typeof body.entityId === "string";
+      const hasAddress = typeof body.address === "string";
+      if (hasEntityId === hasAddress) {
+        res.status(400).json({
+          code: INVALID_REQUEST_BODY,
+          reason: "exactly one of `entityId` or `address` must be set",
+        });
+        return;
+      }
+
+      let input: WithdrawFundsInput;
+      if (hasEntityId) {
+        if (!DECIMAL_UINT_RE.test(body.entityId as string)) {
+          res.status(400).json({
+            code: INVALID_REQUEST_BODY,
+            reason: "entityId must be a decimal uint256 string",
+          });
+          return;
+        }
+        input = {
+          signedPayload: body.signedPayload as Hex,
+          entityId: body.entityId as string,
+        };
+      } else {
+        if (!ADDRESS_RE.test(body.address as string)) {
+          res.status(400).json({
+            code: INVALID_REQUEST_BODY,
+            reason: "address must be a 20-byte 0x-prefixed hex string",
+          });
+          return;
+        }
+        const role = body.role;
+        if (role !== undefined && role !== "buyer" && role !== "seller") {
+          res.status(400).json({
+            code: INVALID_REQUEST_BODY,
+            reason: 'role must be "buyer" or "seller" when set',
+          });
+          return;
+        }
+        input = {
+          signedPayload: body.signedPayload as Hex,
+          address: body.address as string,
+          ...(role !== undefined ? { role: role as "buyer" | "seller" } : {}),
+        };
+      }
+
+      const result = await server.handlers.withdrawFunds(input);
+      res.status(result.status).json(result.body);
+    } catch (e) {
+      next(e);
+    }
+  };
+}
+
+function availableFundsRoute(server: X402bServer): RequestHandler {
+  return async (req, res, next) => {
+    try {
+      const entityIdRaw = req.query.entityId;
+      const addressRaw = req.query.address;
+      const roleRaw = req.query.role;
+      const hasEntityId = typeof entityIdRaw === "string";
+      const hasAddress = typeof addressRaw === "string";
+      if (hasEntityId === hasAddress) {
+        res.status(400).json({
+          code: "INVALID_REQUEST_QUERY",
+          reason: "exactly one of `entityId` or `address` must be set",
+        });
+        return;
+      }
+
+      let query: AvailableFundsQuery;
+      if (hasEntityId) {
+        if (!DECIMAL_UINT_RE.test(entityIdRaw as string)) {
+          res.status(400).json({
+            code: "INVALID_ENTITY_ID",
+            reason: "entityId must be a decimal uint256 string",
+          });
+          return;
+        }
+        query = { entityId: entityIdRaw as string };
+      } else {
+        if (!ADDRESS_RE.test(addressRaw as string)) {
+          res.status(400).json({
+            code: "INVALID_ADDRESS",
+            reason: "address must be a 20-byte 0x-prefixed hex string",
+          });
+          return;
+        }
+        if (roleRaw !== undefined && roleRaw !== "buyer" && roleRaw !== "seller") {
+          res.status(400).json({
+            code: "INVALID_ROLE",
+            reason: 'role must be "buyer" or "seller" when set',
+          });
+          return;
+        }
+        query = {
+          address: addressRaw as string,
+          ...(roleRaw !== undefined ? { role: roleRaw as "buyer" | "seller" } : {}),
+        };
+      }
+
+      const result = await server.handlers.getAvailableFunds(query);
       res.status(result.status).json(result.body);
     } catch (e) {
       next(e);

@@ -178,7 +178,12 @@ function isPerformActionResult(parsed: unknown): parsed is FacilitatorPerformAct
   if (!isObject(parsed)) return false;
   if (parsed.ok === true) {
     if (typeof parsed.txHash !== "string") return false;
-    if (typeof parsed.newExchangeState !== "string") return false;
+    // Entity-keyed actions (e.g. `boson-withdrawFunds`) return just
+    // `{ ok: true, txHash }` — no exchange state transition. Accept
+    // that shape; only require `newExchangeState` when present.
+    if (parsed.newExchangeState !== undefined && typeof parsed.newExchangeState !== "string") {
+      return false;
+    }
     if (parsed.newDisputeState !== undefined && typeof parsed.newDisputeState !== "string") {
       return false;
     }

@@ -193,7 +193,10 @@ describe("deriveNextActions — DISPUTED state by dispute sub-state", () => {
       ["boson-resolveDispute", "boson-escalateDispute", "boson-retractDispute"],
     ],
     [DisputeState.ESCALATED, []],
-    [DisputeState.RESOLVED, []],
+    // RESOLVED carves in `boson-withdrawFunds` so either party can drain
+    // their freshly-released available balance from the very next
+    // envelope (see core/state-machine/transitions.ts).
+    [DisputeState.RESOLVED, ["boson-withdrawFunds"]],
     [DisputeState.RETRACTED, []],
     [DisputeState.DECIDED, []],
     [DisputeState.REFUSED, []],

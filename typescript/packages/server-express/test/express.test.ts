@@ -369,6 +369,183 @@ describe("mountX402b — convenience routes", () => {
     expect(res.body.code).toBe(INVALID_REQUEST_BODY);
   });
 
+  it("POST /x402b/withdraw-funds forwards to performAction and returns 200", async () => {
+    const stubCoreSdk = {
+      getFunds: async () => [],
+      getSellersByAddress: async () => [],
+      getBuyers: async () => [],
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = makeStubFetch((path) => {
+      if (path.startsWith("/perform-action")) {
+        return { ok: true, txHash: "0xfed" };
+      }
+      return { ok: false, code: "INTERNAL_ERROR", reason: "unexpected path" };
+    }) as unknown as typeof globalThis.fetch;
+    let server;
+    try {
+      server = createX402bServer({
+        network: NETWORK,
+        chainId: CHAIN_ID,
+        escrow: ESCROW,
+        signer: privateKeyToAccount(SELLER_PK),
+        facilitator: { url: "https://facilitator.example" },
+        channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
+        coreSdkRead: stubCoreSdk,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+      entityId: "42",
+      signedPayload: "0xc0ffee",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ txHash: "0xfed", entityId: "42" });
+  });
+
+  it("POST /x402b/withdraw-funds 400s when entityId and address are both set", async () => {
+    const server = await buildServer(makeStubFetch(() => ({ ok: true })));
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+      entityId: "42",
+      address: "0x1111111111111111111111111111111111111111",
+      signedPayload: "0xc0ffee",
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_REQUEST_BODY");
+  });
+
+  it("POST /x402b/withdraw-funds rejects a non-hex signedPayload with 400", async () => {
+    const withdrawFunds = vi.fn();
+    const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+      entityId: "42",
+      signedPayload: "not-hex",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(withdrawFunds).not.toHaveBeenCalled();
+  });
+
+  it("POST /x402b/withdraw-funds rejects a non-decimal entityId with 400", async () => {
+    const withdrawFunds = vi.fn();
+    const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+      entityId: "4two",
+      signedPayload: "0xc0ffee",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(withdrawFunds).not.toHaveBeenCalled();
+  });
+
+  it("POST /x402b/withdraw-funds rejects a malformed address with 400", async () => {
+    const withdrawFunds = vi.fn();
+    const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+      address: "0xnotanaddress",
+      signedPayload: "0xc0ffee",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(withdrawFunds).not.toHaveBeenCalled();
+  });
+
+  it("POST /x402b/withdraw-funds rejects an invalid role with 400", async () => {
+    const withdrawFunds = vi.fn();
+    const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+      address: "0x1111111111111111111111111111111111111111",
+      role: "admin",
+      signedPayload: "0xc0ffee",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(withdrawFunds).not.toHaveBeenCalled();
+  });
+
+  it("GET /x402b/available-funds returns the reshaped funds list", async () => {
+    const stubCoreSdk = {
+      getFunds: async (queryVars: { fundsFilter: { accountId: string } }) => {
+        expect(queryVars.fundsFilter.accountId).toBe("42");
+        return [
+          {
+            accountId: "42",
+            availableAmount: "1500000",
+            token: {
+              address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              decimals: "6",
+              symbol: "USDC",
+              name: "USD Coin",
+            },
+          },
+        ];
+      },
+      getSellersByAddress: async () => [],
+      getBuyers: async () => [],
+    };
+    const server = createX402bServer({
+      network: NETWORK,
+      chainId: CHAIN_ID,
+      escrow: ESCROW,
+      signer: privateKeyToAccount(SELLER_PK),
+      facilitator: { url: "https://facilitator.example" },
+      channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
+      coreSdkRead: stubCoreSdk,
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).get("/x402b/available-funds?entityId=42");
+    expect(res.status).toBe(200);
+    expect(res.body.entityId).toBe("42");
+    expect(res.body.funds).toHaveLength(1);
+    expect(res.body.funds[0].tokenSymbol).toBe("USDC");
+    expect(res.body.funds[0].availableAmount).toBe("1500000");
+  });
+
+  it("GET /x402b/available-funds 400s when neither entityId nor address is set", async () => {
+    const server = await buildServer(makeStubFetch(() => ({ ok: true })));
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).get("/x402b/available-funds");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_REQUEST_QUERY");
+  });
+
   it.each([["/x402b/commit"], ["/x402b/commit-and-redeem"]])(
     "POST %s without X-PAYMENT returns the canonical x402 challenge",
     async (path) => {

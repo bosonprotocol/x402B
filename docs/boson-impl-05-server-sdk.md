@@ -46,8 +46,64 @@ app.get("/datafeed", expressMiddleware(requireEscrow));
 - `POST /x402B/redeem` — server-side wrapper for `redeemVoucher`.
 - `POST /x402B/complete` — wrapper for `completeExchange`.
 - `POST /x402B/dispute/raise|resolve|escalate|retract` — wrappers for the dispute primitives.
+- `POST /x402b/withdraw-funds` — wrapper for the entity-keyed `withdrawFunds` meta-tx (see below).
+- `GET /x402b/available-funds` — read-only lookup of an entity's currently available funds (see below).
 
 Each endpoint is opt-in and configurable. The server MUST advertise the endpoint URL in the `nextActions[].endpoints.server` only if it actually implements the wrapper; otherwise it lists `["facilitator", "onchain", "mcp"]` only.
+
+### `POST /x402b/withdraw-funds`
+
+Entity-keyed action `boson-withdrawFunds`. Body:
+
+```jsonc
+{
+  "signedPayload": "0x...",          // ABI-encoded BosonMetaTx tuple
+  // Exactly one of:
+  "entityId":  "12345",
+  "address":   "0xabc...",
+  "role":      "buyer" | "seller"    // optional; required only when `address` resolves to both
+}
+```
+
+The server forwards `signedPayload` to the facilitator's `/perform-action?action=boson-withdrawFunds`. On success:
+
+```jsonc
+200 OK
+{ "txHash": "0x...", "entityId": "12345", "role": "seller" }
+```
+
+The response intentionally carries **no** `nextActions` envelope — withdraw doesn't transition the exchange state machine.
+
+### `GET /x402b/available-funds`
+
+Read-only. Returns the current funds entity for a buyer or seller via the protocol subgraph (`coreSdk.getFunds`). Query parameters:
+
+```text
+?entityId=12345
+  or
+?address=0xabc...&role=buyer    // role optional
+```
+
+Response:
+
+```jsonc
+200 OK
+{
+  "entityId": "12345",
+  "role": "seller",                // omitted when looked up by entityId
+  "funds": [
+    {
+      "tokenAddress": "0xeee...",
+      "tokenSymbol": "USDC",
+      "tokenName":   "USD Coin",
+      "decimals":    6,
+      "availableAmount": "1500000"
+    }
+  ]
+}
+```
+
+Failure modes: `400` for malformed `entityId` / `address` / `role`; `404` when the address resolves to no entity; `409` when the address resolves ambiguously — either to both roles with `role` omitted, or to multiple entities within a single role (one wallet registered as admin of several Boson sellers, for example). The 409 body includes `details.sellerIds` and/or `details.buyerIds` (arrays of the matching entity ids) so the caller can re-issue with an explicit `entityId`. `502` on subgraph failure.
 
 ## Sections to write
 
