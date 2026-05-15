@@ -150,6 +150,25 @@ export interface X402bServerConfig {
    * unless the host opts in.
    */
   logger?: Logger;
+  /**
+   * Operational mode. Default `"development"` accepts everything the
+   * type system allows. `"production"` adds a boot-time `superRefine`
+   * that requires:
+   *
+   * - `exchangeReader` (post-settle state verification is non-optional)
+   * - one of `coreSdkRead` / `subgraphUrl` (withdraw / available-funds
+   *   require a read client)
+   * - `exchangeFulfillmentOptionStore` (otherwise the Flow A redeem-time
+   *   option gate silently relaxes after a restart)
+   * - `fulfillmentRecoveryStore` (otherwise post-settle channel-onCommit
+   *   failures lose their replay handle)
+   *
+   * Without `mode: "production"`, those fields default at runtime; a
+   * misconfigured deploy boots clean and only explodes on the first
+   * request. `mode: "production"` makes the misconfiguration a synchronous
+   * `ZodError` at `createX402bServer` time instead.
+   */
+  mode?: "development" | "production";
 }
 
 /**
@@ -283,6 +302,7 @@ export const x402bServerConfigSchema = z
         }
       })
       .optional(),
+    mode: z.enum(["development", "production"]).optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {
@@ -297,6 +317,44 @@ export const x402bServerConfigSchema = z
         path: ["chainId"],
         message: `chainId (${cfg.chainId}) must match network (${cfg.network})`,
       });
+    }
+
+    // Production mode tightens the optional fields that defaulted at
+    // runtime in development. Each missing prerequisite becomes a
+    // synchronous ZodError at `createX402bServer` rather than a runtime
+    // throw on the first request.
+    if (cfg.mode === "production") {
+      if (cfg.exchangeReader === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["exchangeReader"],
+          message: "required when mode is 'production' (post-settle state verification)",
+        });
+      }
+      if (cfg.coreSdkRead === undefined && cfg.subgraphUrl === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["subgraphUrl"],
+          message:
+            "one of `coreSdkRead` or `subgraphUrl` is required when mode is 'production' (read client for withdraw / available-funds)",
+        });
+      }
+      if (cfg.exchangeFulfillmentOptionStore === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["exchangeFulfillmentOptionStore"],
+          message:
+            "required when mode is 'production'; without a persistent store the Flow A redeem-time option gate silently relaxes after a restart",
+        });
+      }
+      if (cfg.fulfillmentRecoveryStore === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["fulfillmentRecoveryStore"],
+          message:
+            "required when mode is 'production'; without a persistent store, post-settle channel-onCommit failures lose their replay handle",
+        });
+      }
     }
   });
 
