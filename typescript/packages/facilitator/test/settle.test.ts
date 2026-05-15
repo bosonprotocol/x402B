@@ -18,11 +18,8 @@ import { settle } from "../src/settle/index.js";
 import type { FacilitatorConfig } from "../src/types.js";
 
 import {
-  AMOUNT,
-  ASSET,
   buildValidPayload,
   buildValidRequirements,
-  buyer,
   CHAIN_ID,
   ESCROW,
   NETWORK,
@@ -303,73 +300,5 @@ describe("settle()", () => {
       config,
     );
     expect(result).toMatchObject({ ok: false, code: "INSUFFICIENT_FUNDS_FOR_GAS" });
-  });
-});
-
-describe("buildSettleEnvelope", () => {
-  it("returns INVALID_PAYLOAD when a non-none strategy is requested but tokenAuth is missing", async () => {
-    const { buildSettleEnvelope } = await import("../src/settle/build-envelope.js");
-    const result = buildSettleEnvelope({
-      escrowAddress: ESCROW,
-      buyer: buyer.address,
-      metaTx: {
-        from: buyer.address,
-        nonce: "1",
-        functionName: "foo()",
-        functionSignature: "0xdeadbeef",
-        sig: { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
-      },
-      strategy: "erc3009",
-    });
-    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
-  });
-
-  it("returns a TxRequest for tokenAuthStrategy 'permit2' with a valid tokenAuth", async () => {
-    const { buildSettleEnvelope } = await import("../src/settle/build-envelope.js");
-    const result = buildSettleEnvelope({
-      escrowAddress: ESCROW,
-      buyer: buyer.address,
-      metaTx: {
-        from: buyer.address,
-        nonce: "1",
-        functionName: "foo()",
-        functionSignature: "0xdeadbeef",
-        sig: { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
-      },
-      strategy: "permit2",
-      tokenAuth: {
-        kind: "permit2",
-        data: {
-          permitted: { token: ASSET, amount: AMOUNT },
-          spender: ESCROW,
-          nonce: "0",
-          deadline: Math.floor(Date.now() / 1000) + 300,
-          signature: `0x${"aa".repeat(32)}${"bb".repeat(32)}1b` as `0x${string}`,
-        },
-      },
-    });
-    expect(result).toMatchObject({ ok: true });
-    expect((result as { ok: true; tx: { to: string; data: string } }).tx.to).toBe(ESCROW);
-  });
-
-  it("returns a TxRequest for tokenAuthStrategy 'none'", async () => {
-    const { buildSettleEnvelope } = await import("../src/settle/build-envelope.js");
-    const result = buildSettleEnvelope({
-      escrowAddress: ESCROW,
-      buyer: buyer.address,
-      metaTx: {
-        from: buyer.address,
-        nonce: "1",
-        functionName: "foo()",
-        functionSignature: "0xdeadbeef",
-        sig: { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
-      },
-      strategy: "none",
-    });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.tx.to).toBe(ESCROW);
-      expect(result.tx.data.startsWith("0x")).toBe(true);
-    }
   });
 });

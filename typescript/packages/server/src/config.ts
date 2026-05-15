@@ -84,6 +84,71 @@ export interface X402bServerConfig {
    * rest of your service.
    */
   coreSdkRead?: CoreSdkReadAdapter;
+  /**
+   * Server-side store of the buyer wallet that originally committed
+   * each exchange (keyed by `exchangeId`). Populated on Flow A commit
+   * acceptance and read at redeem time to detect voucher transfers —
+   * a redeemer whose wallet differs from the recorded committer MUST
+   * supply fresh `fulfillment` data; same-wallet redeemers MAY.
+   *
+   * Optional in the config: when omitted, `createX402bServer` wires up
+   * an in-memory `Map`. Hosts that need cross-process / persistent
+   * tracking supply their own `Map`-shaped backing store.
+   */
+  exchangeBuyerStore?: Map<string, Address>;
+  /**
+   * Server-side store of the fulfillment option ids advertised for
+   * each Flow A exchange (keyed by `exchangeId`). Populated from the
+   * original `PaymentRequirements` after commit verification and read
+   * at redeem time so re-submitted fulfillment data cannot switch to a
+   * channel the offer never advertised.
+   *
+   * Optional in the config: when omitted, `createX402bServer` wires up
+   * an in-memory `Map`. Hosts that provide `exchangeBuyerStore` for
+   * cross-process tracking should normally provide this store too.
+   */
+  exchangeFulfillmentOptionStore?: Map<string, readonly string[]>;
+  /**
+   * Pending fulfillment updates that reached REDEEMED on-chain but
+   * failed the server-side `channel.onCommit(...)` upsert. The redeem
+   * handler records the update here before attempting the channel write,
+   * deletes it on success, and leaves it behind with the error message
+   * on failure so the host can replay/reconcile out of band.
+   */
+  redeemFulfillmentUpdateStore?: Map<string, RedeemFulfillmentUpdate>;
+  /**
+   * Fulfillment channels the server accepts at redeem time when the
+   * client re-submits delivery data. Structurally a subset of
+   * `@bosonprotocol/x402-fulfillment`'s `FulfillmentChannel` — only
+   * `id`, `validate`, and `onCommit` are read here, so existing
+   * channel instances pass through directly. Required iff a host
+   * wants to accept redeem-time fulfillment updates; absent means
+   * redeem requests carrying `fulfillment` are rejected with
+   * `FULFILLMENT_CHANNELS_NOT_CONFIGURED`.
+   */
+  fulfillmentChannels?: readonly RedeemFulfillmentChannel[];
+}
+
+/**
+ * Minimal structural slice of `FulfillmentChannel` the redeem
+ * handler needs. Kept inline so `@bosonprotocol/x402-server` does
+ * not depend on `@bosonprotocol/x402-fulfillment` (avoids a hard
+ * coupling between the resource-server SDK and a specific channel
+ * package); any real channel implementation is type-compatible.
+ */
+export interface RedeemFulfillmentChannel {
+  readonly id: string;
+  validate(data: Record<string, unknown> | null): { ok: true } | { ok: false; reason: string };
+  onCommit(exchangeId: string, data: Record<string, unknown> | null): Promise<void>;
+}
+
+export interface RedeemFulfillmentUpdate {
+  exchangeId: string;
+  option: string;
+  data: Record<string, unknown> | null;
+  redeemer: Address;
+  recordedAt: number;
+  error?: string;
 }
 
 const httpUrlSchema = z
@@ -118,6 +183,14 @@ const coreSdkReadShallowSchema = z
   })
   .passthrough();
 
+const fulfillmentChannelShallowSchema = z
+  .object({
+    id: z.string().min(1),
+    validate: z.function(),
+    onCommit: z.function(),
+  })
+  .passthrough();
+
 /**
  * zod validator for `X402bServerConfig`. Shallow on the signer +
  * exchange reader (viem account types bring their own structural
@@ -140,6 +213,28 @@ export const x402bServerConfigSchema = z
     exchangeReader: exchangeReaderShallowSchema.optional(),
     subgraphUrl: httpUrlSchema.optional(),
     coreSdkRead: coreSdkReadShallowSchema.optional(),
+    exchangeBuyerStore: z.instanceof(Map).optional(),
+    exchangeFulfillmentOptionStore: z.instanceof(Map).optional(),
+    redeemFulfillmentUpdateStore: z.instanceof(Map).optional(),
+    fulfillmentChannels: z
+      .array(fulfillmentChannelShallowSchema)
+      .superRefine((channels, ctx) => {
+        // Duplicate ids would let one channel silently shadow another
+        // (the redeem handler picks via `find(c => c.id === option)`).
+        const seen = new Set<string>();
+        const duplicates = new Set<string>();
+        for (const c of channels) {
+          if (seen.has(c.id)) duplicates.add(c.id);
+          seen.add(c.id);
+        }
+        if (duplicates.size > 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `fulfillmentChannels has duplicate id(s): ${[...duplicates].join(", ")}`,
+          });
+        }
+      })
+      .optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {

@@ -11,14 +11,15 @@ import {
   signFullOffer,
   type ExchangeReader,
   type FetchLike,
+  type X402bServer,
 } from "@bosonprotocol/x402-server";
 import express from "express";
 import supertest from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseSignature } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { expressMiddleware, mountX402b } from "../src/index.js";
+import { expressMiddleware, INVALID_REQUEST_BODY, mountX402b } from "../src/index.js";
 
 const ESCROW = "0xdddddddddddddddddddddddddddddddddddddddd" as const;
 const TOKEN = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" as const;
@@ -295,6 +296,68 @@ describe("mountX402b — convenience routes", () => {
     expect(res.headers["x-payment-response"]).toBeUndefined();
   });
 
+  it("POST /x402b/redeem forwards optional fulfillment data", async () => {
+    const redeem = vi.fn(async () => ({
+      ok: true as const,
+      status: 200 as const,
+      body: { txHash: "0xfed", nextActions: { next: [] } },
+    }));
+    const server = { handlers: { redeem } } as unknown as X402bServer;
+
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const fulfillment = { option: "email", data: { email: "new@example.com" } };
+    const res = await supertest(app).post("/x402b/redeem").send({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+      fulfillment,
+    });
+
+    expect(res.status).toBe(200);
+    expect(redeem).toHaveBeenCalledWith({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+      fulfillment,
+    });
+  });
+
+  it("POST /x402b/redeem rejects a non-hex signedPayload with 400", async () => {
+    const redeem = vi.fn();
+    const server = { handlers: { redeem } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/redeem").send({
+      exchangeId: "42",
+      signedPayload: "not-hex",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(redeem).not.toHaveBeenCalled();
+  });
+
+  it("POST /x402b/redeem rejects malformed fulfillment payload with 400", async () => {
+    const redeem = vi.fn();
+    const server = { handlers: { redeem } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/redeem").send({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+      fulfillment: "not-an-object",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(redeem).not.toHaveBeenCalled();
+  });
+
   it("POST /x402b/complete rejects malformed body with 400", async () => {
     const server = await buildServer(makeStubFetch(() => ({ ok: true, txHash: "0x" })));
     const app = express();
@@ -303,7 +366,7 @@ describe("mountX402b — convenience routes", () => {
 
     const res = await supertest(app).post("/x402b/complete").send({ foo: "bar" });
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe("INVALID_REQUEST_BODY");
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
   });
 
   it("POST /x402b/withdraw-funds forwards to performAction and returns 200", async () => {

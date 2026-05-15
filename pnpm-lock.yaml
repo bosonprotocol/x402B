@@ -61,11 +61,11 @@ importers:
   typescript/packages/client:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0-alpha.3
-        version: 1.33.0-alpha.3
+        specifier: 1.33.0-alpha.4
+        version: 1.33.0-alpha.4
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0-alpha.2
-        version: 1.48.0-alpha.2
+        specifier: 1.48.0-alpha.3
+        version: 1.48.0-alpha.3
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../core
@@ -114,11 +114,11 @@ importers:
   typescript/packages/core:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0-alpha.3
-        version: 1.33.0-alpha.3
+        specifier: 1.33.0-alpha.4
+        version: 1.33.0-alpha.4
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0-alpha.2
-        version: 1.48.0-alpha.2
+        specifier: 1.48.0-alpha.3
+        version: 1.48.0-alpha.3
       '@x402/core':
         specifier: ^2.11.0
         version: 2.11.0
@@ -157,11 +157,11 @@ importers:
   typescript/packages/evm:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0-alpha.3
-        version: 1.33.0-alpha.3
+        specifier: 1.33.0-alpha.4
+        version: 1.33.0-alpha.4
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0-alpha.2
-        version: 1.48.0-alpha.2
+        specifier: 1.48.0-alpha.3
+        version: 1.48.0-alpha.3
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../core
@@ -185,8 +185,11 @@ importers:
   typescript/packages/facilitator:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0-alpha.3
-        version: 1.33.0-alpha.3
+        specifier: 1.33.0-alpha.4
+        version: 1.33.0-alpha.4
+      '@bosonprotocol/core-sdk':
+        specifier: 1.48.0-alpha.3
+        version: 1.48.0-alpha.3
       '@bosonprotocol/x402-actions':
         specifier: workspace:^
         version: link:../actions
@@ -281,11 +284,11 @@ importers:
   typescript/packages/server:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0-alpha.3
-        version: 1.33.0-alpha.3
+        specifier: 1.33.0-alpha.4
+        version: 1.33.0-alpha.4
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0-alpha.2
-        version: 1.48.0-alpha.2
+        specifier: 1.48.0-alpha.3
+        version: 1.48.0-alpha.3
       '@bosonprotocol/x402-actions':
         specifier: workspace:^
         version: link:../actions
@@ -373,11 +376,11 @@ packages:
     resolution: {integrity: sha512-JiDShH45zKHWyGe4ZNVRrCjBz8Nh9TMmZG1kh4QTK8hCBTWBi8Da+i7s1fJw7/lYpM4ccepSNfqzZ/QvABBi5g==}
     engines: {node: '>=6.9.0'}
 
-  '@bosonprotocol/common@1.33.0-alpha.3':
-    resolution: {integrity: sha512-R/78/5RL5Xn4NAUNTIYDViPN/dfz33c2mmXtmOGOaPr1GhLPpI1lpOUe/JDo2lVUBOnSLiqBZd996+T9UJg4XQ==}
+  '@bosonprotocol/common@1.33.0-alpha.4':
+    resolution: {integrity: sha512-oZmp01kIF3yt7qgnHxFQvpl1j/GG6ESirNWZDO5aKqlEiu3q4hELjOCU9u+clzu4Emcb7BXL26JWSNvgxGNrDg==}
 
-  '@bosonprotocol/core-sdk@1.48.0-alpha.2':
-    resolution: {integrity: sha512-TeKo+CM2IMkGtalbs4Flef6xX7vLD+ynm+HqtnBpM5Lh5jhePjC2aVcglsTFdZfYAyncuno9OsR4iiDiZaRZnA==}
+  '@bosonprotocol/core-sdk@1.48.0-alpha.3':
+    resolution: {integrity: sha512-xHZhp7jnOncLHkFbYJiytCSBukUft4zgpPys/n8uvoutgWXHU8SgwU97JiRj8UJxhjndxqkVnIOIkcFRVeAvEg==}
 
   '@bosonprotocol/metadata-storage@1.0.1':
     resolution: {integrity: sha512-f2W2SQAvY5IKD6L9JwaiNye7gGRIIPd/HOB0i+otWLzMPBlwQtbN4JeWSuKeJvuaqu8tyMy7CHzN8EkhrJDB+A==}
@@ -2662,7 +2665,7 @@ snapshots:
 
   '@babel/runtime@7.29.2': {}
 
-  '@bosonprotocol/common@1.33.0-alpha.3':
+  '@bosonprotocol/common@1.33.0-alpha.4':
     dependencies:
       '@bosonprotocol/metadata': 1.16.3
       '@ethersproject/abi': 5.8.0
@@ -2671,9 +2674,9 @@ snapshots:
       '@ethersproject/constants': 5.8.0
       '@ethersproject/units': 5.8.0
 
-  '@bosonprotocol/core-sdk@1.48.0-alpha.2':
+  '@bosonprotocol/core-sdk@1.48.0-alpha.3':
     dependencies:
-      '@bosonprotocol/common': 1.33.0-alpha.3
+      '@bosonprotocol/common': 1.33.0-alpha.4
       '@ethersproject/abi': 5.8.0
       '@ethersproject/address': 5.8.0
       '@ethersproject/bignumber': 5.8.0

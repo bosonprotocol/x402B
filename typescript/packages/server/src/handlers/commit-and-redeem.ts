@@ -6,7 +6,7 @@
 // envelope.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
-import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { Address, EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 
 import { emitNextActions } from "./next-actions.js";
@@ -33,6 +33,19 @@ export interface CommitHandlerContext {
   config: X402bServerConfig;
   facilitator: FacilitatorClient;
   exchangeReader: ExchangeReader;
+  /**
+   * Committer-wallet store. Flow A writes the buyer address keyed by
+   * the new `exchangeId` so the redeem handler can detect
+   * voucher-transfer mid-flight. Flow B (atomic commit+redeem) skips
+   * the write — the redeem step has already happened on-chain.
+   */
+  exchangeBuyerStore: Map<string, Address>;
+  /**
+   * Per-exchange fulfillment option policy. Flow A writes the ids
+   * advertised by the original requirements so redeem-time updates are
+   * constrained to the offer's own channel set.
+   */
+  exchangeFulfillmentOptionStore: Map<string, readonly string[]>;
 }
 
 export interface CommitOk {
@@ -147,6 +160,17 @@ async function handleCommitImpl(
         expected: verifyResult.expected,
         got: verifyResult.got,
       },
+    );
+  }
+
+  // Flow A only: persist the committer wallet so the redeem handler
+  // can detect a voucher transfer between commit and redeem. Flow B
+  // is already in REDEEMED — there is no later redeem step to gate.
+  if (expected.expectedState === ExchangeState.COMMITTED) {
+    ctx.exchangeBuyerStore.set(settleResult.exchangeId, decoded.payload.payload.buyer);
+    ctx.exchangeFulfillmentOptionStore.set(
+      settleResult.exchangeId,
+      input.requirements.fulfillment?.options.map((option) => option.id) ?? [],
     );
   }
 

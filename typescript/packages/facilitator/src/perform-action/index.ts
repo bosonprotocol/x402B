@@ -1,6 +1,6 @@
 // `performAction` — relay a post-commit transition (redeem / complete /
-// cancel / revoke / raise / retract / escalate / resolve dispute, or
-// the entity-keyed `boson-withdrawFunds`) on behalf of the signer.
+// cancel / revoke / raise / retract / escalate / resolve dispute, or the
+// entity-keyed `boson-withdrawFunds`) on behalf of the signer.
 //
 // Pipeline:
 //   1. Decode signedPayload (ABI-encoded BosonMetaTx) — INVALID_PAYLOAD
@@ -9,9 +9,11 @@
 //   3. Validate action is a post-commit action and that signed calldata
 //      matches `input.action` + (`input.exchangeId` for exchange-keyed
 //      actions, `input.entityId` for entity-keyed actions).
-//   4. Validate tokenAuthStrategy compatibility. Until the BPIP-12
-//      envelope encoder ships, performAction supports only `"none"` and
-//      rejects all token-auth-related fields on that path.
+//   4. Validate tokenAuthStrategy + cross-field shape: for `"none"`,
+//      every token-auth field must be absent; for any other strategy,
+//      `tokenAuth`, `asset`, `amount`, and `maxTimeoutSeconds` are all
+//      required. The signer also signed an EIP-712 token-auth payload
+//      that we recover and cross-check (mirrors the verify/settle path).
 //   5. Resolve the canonical escrow address from `config.escrows[network]`
 //      and reject mismatches against `input.escrowAddress` — prevents
 //      the facilitator from being abused as a generic gas sponsor for
@@ -22,14 +24,17 @@
 //      The facilitator is signer-agnostic: it doesn't care if the role
 //      is buyer or seller — the protocol enforces that on-chain.
 //   8. Simulate `executeMetaTransaction(...)` via `eth_call` (same
-//      pre-flight settle uses).
-//   9. Build the outer envelope (currently the `"none"` strategy only).
-//  10. Submit + wait for receipt; an on-chain revert surfaces as
-//      ONCHAIN_REVERT.
-//  11. For exchange-keyed actions, look up the predicted post-state
+//      pre-flight settle uses); the simulator routes through the BPIP-12
+//      token-auth envelope automatically when a `tokenAuth` is provided.
+//   9. Submit via `coreSdk.executeMetaTransaction(...)` — the unified
+//      core-sdk entrypoint that routes between `executeMetaTransaction`
+//      and `executeMetaTransactionWithTokenTransferAuthorization` based
+//      on whether `transferAuthorizations` is supplied. An on-chain
+//      revert surfaces as ONCHAIN_REVERT.
+//  10. For exchange-keyed actions, look up the predicted post-state
 //      from ACTION_POST_STATE and return it. Entity-keyed actions
-//      return just `{ ok: true, txHash }` — they don't transition the
-//      exchange state machine.
+//      (`boson-withdrawFunds`) return just `{ ok: true, txHash }` —
+//      they don't transition the exchange state machine.
 //
 // Signed by buyer for redeem / raise / retract / escalate, by seller
 // for revoke, by either for cancel / complete / resolve-dispute (the
@@ -37,10 +42,15 @@
 // and by the funds entity's authorised signer for withdrawFunds.
 
 import { isEntityKeyedAction } from "@bosonprotocol/x402-core/state-machine";
+import { decodeSignedPayload } from "@bosonprotocol/x402-evm/codec";
 
 import { toResult } from "../errors.js";
-import { buildSettleEnvelope } from "../settle/build-envelope.js";
-import { submit } from "../settle/submit.js";
+import { createFacilitatorCoreSdk } from "../internal/core-sdk-factory.js";
+import {
+  bosonTokenAuthToTransferAuthorization,
+  type TransferAuthorization,
+} from "../internal/token-auth-lift.js";
+import { mapSubmitError } from "../settle/index.js";
 import type {
   FacilitatorConfig,
   FacilitatorPerformActionInput,
@@ -49,8 +59,7 @@ import type {
 import { recoverMetaTxSigner } from "../verify/meta-tx-signature.js";
 import { simulateExecuteMetaTransaction } from "../verify/simulate.js";
 import { parseChainId } from "../verify/structural.js";
-
-import { decodeSignedPayload } from "@bosonprotocol/x402-evm/codec";
+import { verifyTokenAuthSignature } from "../verify/token-auth-signature.js";
 
 import {
   validatePerformEntityActionMetaTx,
@@ -104,29 +113,47 @@ export async function performAction(
         });
     if (!validation.ok) return validation;
 
-    // 4. Resolve and validate token-auth strategy. BPIP-12 post-commit
-    //    token-auth envelopes are not wired yet, so non-"none" fails
-    //    before signature recovery or RPC work.
+    // 4. Token-auth strategy + cross-field shape. core-sdk's
+    //    `executeMetaTransaction` handles both the bare envelope and the
+    //    BPIP-12 token-transfer-authorization variant, so any strategy
+    //    is now wireable — we just need a coherent `tokenAuth` /
+    //    `asset` / `amount` / `maxTimeoutSeconds` tuple when one is
+    //    declared.
     const tokenAuthStrategy = input.tokenAuthStrategy ?? "none";
-    if (tokenAuthStrategy !== "none") {
-      return {
-        ok: false,
-        code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY",
-        reason: `tokenAuthStrategy "${tokenAuthStrategy}" requires the BPIP-12 token-auth envelope, which is not yet wired in performAction()`,
-      };
-    }
-    if (
-      input.tokenAuth !== undefined ||
-      input.asset !== undefined ||
-      input.amount !== undefined ||
-      input.maxTimeoutSeconds !== undefined
-    ) {
-      return {
-        ok: false,
-        code: "INVALID_PAYLOAD",
-        reason:
-          'tokenAuth, asset, amount, and maxTimeoutSeconds must be omitted when tokenAuthStrategy is "none"',
-      };
+    if (tokenAuthStrategy === "none") {
+      if (
+        input.tokenAuth !== undefined ||
+        input.asset !== undefined ||
+        input.amount !== undefined ||
+        input.maxTimeoutSeconds !== undefined
+      ) {
+        return {
+          ok: false,
+          code: "INVALID_PAYLOAD",
+          reason:
+            'tokenAuth, asset, amount, and maxTimeoutSeconds must be omitted when tokenAuthStrategy is "none"',
+        };
+      }
+    } else {
+      const missing: string[] = [];
+      if (input.tokenAuth === undefined) missing.push("tokenAuth");
+      if (input.asset === undefined) missing.push("asset");
+      if (input.amount === undefined) missing.push("amount");
+      if (input.maxTimeoutSeconds === undefined) missing.push("maxTimeoutSeconds");
+      if (missing.length > 0) {
+        return {
+          ok: false,
+          code: "INVALID_PAYLOAD",
+          reason: `tokenAuthStrategy "${tokenAuthStrategy}" requires ${missing.join(", ")}`,
+        };
+      }
+      if (input.tokenAuth!.kind !== tokenAuthStrategy) {
+        return {
+          ok: false,
+          code: "INVALID_PAYLOAD",
+          reason: `tokenAuth.kind "${input.tokenAuth!.kind}" must match tokenAuthStrategy "${tokenAuthStrategy}"`,
+        };
+      }
     }
 
     // 5. Resolve the canonical escrow address from the operator's
@@ -183,45 +210,104 @@ export async function performAction(
       };
     }
 
-    // 8. Simulate. The `none` path goes through `executeMetaTransaction`.
+    // 7b. Token-auth signature recovery (skip for "none"). Same checks
+    //     verify() runs on the settle path: recovered signer must match
+    //     metaTx.from, asset/spender/amount/deadline must agree with the
+    //     declared metadata.
+    if (tokenAuthStrategy !== "none") {
+      const tokenAuthSig = await verifyTokenAuthSignature({
+        chainId: chain.chainId,
+        asset: input.asset! as `0x${string}`,
+        buyer: metaTx.from as `0x${string}`,
+        escrowAddress,
+        tokenAuth: input.tokenAuth!,
+        amount: input.amount!,
+        maxTimeoutSeconds: input.maxTimeoutSeconds!,
+        publicClient: config.publicClient,
+      });
+      if (!tokenAuthSig.ok) return tokenAuthSig;
+    }
+
+    // 8. Simulate. The simulator routes through the BPIP-12 token-auth
+    //    envelope when a tokenAuth is provided.
     const sim = await simulateExecuteMetaTransaction({
       escrowAddress,
       buyer: metaTx.from as `0x${string}`,
       metaTx,
       tokenAuthStrategy,
+      tokenAuth: input.tokenAuth,
       publicClient: config.publicClient,
       relayerAddress: relayer,
     });
     if (!sim.ok) return sim;
 
-    // 9. Build outer envelope.
-    const envelope = buildSettleEnvelope({
-      escrowAddress,
-      buyer: metaTx.from as `0x${string}`,
-      metaTx,
-      strategy: tokenAuthStrategy,
-    });
-    if (!envelope.ok) return envelope;
-
-    // 10. Submit + wait.
-    const submitted = await submit({
-      tx: envelope.tx,
+    // 9. Submit via coreSdk.executeMetaTransaction. The mixin dispatches
+    //    on `transferAuthorizations` length; the relayer wallet pays gas
+    //    through the viem-backed Web3LibAdapter. Same submit path for
+    //    exchange-keyed and entity-keyed actions — only the inner
+    //    `metaTx.functionSignature` differs.
+    const coreSdk = createFacilitatorCoreSdk({
       walletClient: config.walletClient,
       publicClient: config.publicClient,
+      chainId: chain.chainId,
+      escrowAddress,
     });
-    if (!submitted.ok) return submitted;
 
-    // 11. New state lookup — only exchange-keyed actions transition the
+    const transferAuthorizations: TransferAuthorization[] | undefined =
+      tokenAuthStrategy === "none"
+        ? undefined
+        : [bosonTokenAuthToTransferAuthorization(input.tokenAuth!)];
+
+    let txHash: `0x${string}`;
+    let receipt;
+    try {
+      const response = await coreSdk.executeMetaTransaction(
+        {
+          functionName: metaTx.functionName,
+          functionSignature: metaTx.functionSignature,
+          nonce: metaTx.nonce,
+          sigR: metaTx.sig.r,
+          sigS: metaTx.sig.s,
+          sigV: metaTx.sig.v,
+          transferAuthorizations,
+        },
+        { userAddress: metaTx.from as `0x${string}`, contractAddress: escrowAddress },
+      );
+      txHash = response.hash as `0x${string}`;
+    } catch (e) {
+      return mapSubmitError(e);
+    }
+    try {
+      receipt = await config.publicClient.waitForTransactionReceipt({ hash: txHash });
+    } catch (e) {
+      return {
+        ok: false,
+        code: "INTERNAL_ERROR",
+        reason:
+          e instanceof Error
+            ? `waitForTransactionReceipt failed: ${e.message}`
+            : "waitForTransactionReceipt failed",
+      };
+    }
+    if (receipt.status !== "success") {
+      return {
+        ok: false,
+        code: "ONCHAIN_REVERT",
+        reason: `transaction ${txHash} reverted on-chain`,
+      };
+    }
+
+    // 10. New state lookup — only exchange-keyed actions transition the
     //     state machine. Entity-keyed actions return just txHash.
     if (isEntityKeyed) {
-      return { ok: true, txHash: submitted.txHash };
+      return { ok: true, txHash };
     }
     const newState = deriveNewState(
       (input as { action: Parameters<typeof deriveNewState>[0] }).action,
     );
     return {
       ok: true,
-      txHash: submitted.txHash,
+      txHash,
       newExchangeState: newState.newExchangeState,
       newDisputeState: newState.newDisputeState,
     };

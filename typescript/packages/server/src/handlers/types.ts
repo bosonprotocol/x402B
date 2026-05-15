@@ -32,6 +32,14 @@ export interface HandlerErrorBody {
   details?: unknown;
 }
 
+export interface HandlerWarning {
+  /** Stable identifier — caller branches on this rather than the human-readable `reason`. */
+  code: string;
+  reason: string;
+  /** Optional rich detail — tx hash, exchange id, deferred operation, etc. */
+  details?: unknown;
+}
+
 export function handlerOk<TBody>(
   body: TBody & { nextActions: EscrowNextActions },
 ): HandlerResult<TBody> {

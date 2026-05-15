@@ -77,32 +77,42 @@ export type FacilitatorSettleResult =
   | { ok: true; exchangeId: string; txHash: Hex }
   | { ok: false; code: FacilitatorErrorCode; reason: string };
 
-/** Fields shared across every `/perform-action` variant. */
+/**
+ * Fields shared across every `/perform-action` variant. See the per-variant
+ * interfaces below for the action-specific keying (`exchangeId` vs
+ * `entityId`).
+ *
+ * `signedPayload` is the ABI-encoded `BosonMetaTx` tuple
+ * `(address from, string functionName, bytes functionSignature,
+ *   uint256 nonce, uint8 v, bytes32 r, bytes32 s)` —
+ * the buyer / seller's pre-signed envelope ready to be wrapped in
+ * `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
+ *
+ * Most post-commit actions are non-payable: the relayer just submits
+ * the meta-tx and `tokenAuthStrategy` defaults to `"none"`. The one
+ * action that may need value transfer today is `boson-escalateDispute`,
+ * which is `payable` on the Diamond. `performAction()` routes through
+ * `coreSdk.executeMetaTransaction(...)`, which accepts any
+ * `tokenAuthStrategy` — the SDK dispatches between the bare envelope
+ * and the BPIP-12 token-transfer-authorization variant internally.
+ * When `tokenAuthStrategy !== "none"`, `tokenAuth`, `asset`, `amount`,
+ * and `maxTimeoutSeconds` are all required so the facilitator can
+ * verify the token-auth signature and cross-check the declared
+ * metadata; when it is `"none"`, all four must be omitted.
+ */
 interface FacilitatorPerformActionInputBase {
   network: EvmNetwork;
   escrowAddress: Address;
   signedPayload: Hex;
-  /**
-   * Defaults to `"none"`. Only `boson-escalateDispute` accepts non-`"none"`
-   * once the BPIP-12 post-commit envelope is wired.
-   */
+  /** Defaults to `"none"`. */
   tokenAuthStrategy?: TokenAuthStrategy;
-  /** Reserved for the future BPIP-12 post-commit envelope. Omit while strategy is `"none"`. */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   tokenAuth?: BosonTokenAuth;
-  /**
-   * Reserved for the future BPIP-12 post-commit envelope. Omit while
-   * strategy is `"none"`.
-   */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   asset?: Address;
-  /**
-   * Reserved for the future BPIP-12 post-commit envelope. Omit while
-   * strategy is `"none"`.
-   */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   amount?: string;
-  /**
-   * Reserved for the future BPIP-12 post-commit envelope. Omit while
-   * strategy is `"none"`.
-   */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   maxTimeoutSeconds?: number;
 }
 
@@ -122,29 +132,7 @@ export interface FacilitatorPerformEntityActionInput extends FacilitatorPerformA
   entityId: string;
 }
 
-/** Body of `POST /perform-action` (per spec §"Endpoints").
- *
- * Carries enough context for the facilitator to dispatch a post-commit
- * meta-tx without re-fetching protocol state: `network` selects which
- * relayer wallet / RPC to use, and `escrowAddress` is the Boson Diamond
- * the signed meta-tx was bound to (its EIP-712 verifyingContract).
- *
- * `signedPayload` is the ABI-encoded `BosonMetaTx` tuple
- * `(address from, string functionName, bytes functionSignature,
- *   uint256 nonce, uint8 v, bytes32 r, bytes32 s)` —
- * the buyer / seller's pre-signed envelope ready to be wrapped in
- * `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
- *
- * Most post-commit actions are non-payable: the relayer just submits
- * the meta-tx and `tokenAuthStrategy` defaults to `"none"`. The one
- * exception today is `boson-escalateDispute`, which is `payable` on
- * the Diamond. The BPIP-12 post-commit token-auth envelope is not wired
- * yet, so `performAction()` returns `UNSUPPORTED_TOKEN_AUTH_STRATEGY`
- * for `tokenAuthStrategy !== "none"` until that encoder ships.
- *
- * Discriminated on `action`: exchange-keyed actions carry `exchangeId`,
- * entity-keyed actions carry `entityId`.
- */
+/** Body of `POST /perform-action` (per spec §"Endpoints"). Discriminated on `action`. */
 export type FacilitatorPerformActionInput =
   | FacilitatorPerformExchangeActionInput
   | FacilitatorPerformEntityActionInput;

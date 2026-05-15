@@ -23,6 +23,8 @@ export {
   type PerformActionContext,
   type PerformActionInput,
   type PerformActionOk,
+  type RedeemHandlerContext,
+  type RedeemHandlerInput,
 } from "./perform-action.js";
 export {
   handleWithdrawFunds,
@@ -52,5 +54,6 @@ export {
   type HandlerErrorBody,
   type HandlerResult,
   type HandlerStatus,
+  type HandlerWarning,
   type PlainHandlerResult,
 } from "./types.js";

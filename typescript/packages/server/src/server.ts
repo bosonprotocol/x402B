@@ -7,6 +7,7 @@
 import { CoreSDK } from "@bosonprotocol/core-sdk";
 import type { UnsignedFullOffer } from "@bosonprotocol/x402-core/eip712";
 import type {
+  Address,
   BosonOfferRef,
   EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
@@ -18,6 +19,7 @@ import { signFullOffer } from "./challenge/sign-full-offer.js";
 import {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
+  type RedeemFulfillmentUpdate,
   type X402bServerConfig,
 } from "./config.js";
 import { createFacilitatorClient, type FacilitatorClient } from "./facilitator/client.js";
@@ -40,6 +42,7 @@ import {
   type PerformActionInput,
   type PerformActionOk,
   type PlainHandlerResult,
+  type RedeemHandlerInput,
   type WithdrawFundsInput,
   type WithdrawFundsOk,
 } from "./handlers/index.js";
@@ -72,7 +75,7 @@ export interface X402bServer {
   readonly handlers: {
     commit(input: CommitHandlerInput): Promise<HandlerResult<CommitOk>>;
     commitAndRedeem(input: CommitHandlerInput): Promise<HandlerResult<CommitOk>>;
-    redeem(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
+    redeem(input: RedeemHandlerInput): Promise<HandlerResult<PerformActionOk>>;
     complete(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
     disputeRaise(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
     disputeResolve(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
@@ -107,6 +110,17 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   assertChannelRegistryEscrowMatch(validated);
 
   const facilitator = createFacilitatorClient({ url: validated.facilitator.url });
+  // Default to a fresh in-memory store when the host doesn't supply
+  // one. Single shared reference for the lifetime of this server — so
+  // commit-time writes and redeem-time reads observe the same Map.
+  const exchangeBuyerStore: Map<string, Address> = validated.exchangeBuyerStore ?? new Map();
+  const exchangeFulfillmentOptionStore: Map<string, readonly string[]> =
+    validated.exchangeFulfillmentOptionStore ?? new Map();
+  const redeemFulfillmentUpdateStore: Map<string, RedeemFulfillmentUpdate> =
+    validated.redeemFulfillmentUpdateStore ?? new Map();
+  validated.exchangeBuyerStore = exchangeBuyerStore;
+  validated.exchangeFulfillmentOptionStore = exchangeFulfillmentOptionStore;
+  validated.redeemFulfillmentUpdateStore = redeemFulfillmentUpdateStore;
 
   const signOffer = (unsigned: UnsignedFullOffer): Promise<BosonOfferRef> =>
     signFullOffer({
@@ -168,18 +182,25 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("commit"),
+          exchangeBuyerStore,
+          exchangeFulfillmentOptionStore,
         }),
       commitAndRedeem: async (input) =>
         handleCommitAndRedeem(input, {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("commitAndRedeem"),
+          exchangeBuyerStore,
+          exchangeFulfillmentOptionStore,
         }),
       redeem: async (input) =>
         handleRedeem(input, {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("redeem"),
+          exchangeBuyerStore,
+          exchangeFulfillmentOptionStore,
+          redeemFulfillmentUpdateStore,
         }),
       complete: async (input) =>
         handleComplete(input, {
