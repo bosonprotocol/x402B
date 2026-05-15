@@ -125,7 +125,7 @@ describe("deriveNextActions — non-DISPUTED states", () => {
     );
     const redeem = envelope.next.find((e) => e.id === "boson-redeem");
     expect(redeem?.endpoints).toEqual({
-      server: "https://seller.example/x402B/redeem",
+      server: "https://seller.example/x402b/redeem",
     });
     expect(redeem?.channels).toEqual(["server", "facilitator", "onchain", "mcp", "xmtp"]);
   });

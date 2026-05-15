@@ -36,9 +36,9 @@ export interface ExpressMiddlewareOptions {
   ) => Promise<EscrowPaymentRequirements> | EscrowPaymentRequirements;
   /**
    * Optional flow selector — defaults to `commit` (Flow A, deferred
-   * redeem). Flow B (`commit-and-redeem`) is opt-in: it relies on
-   * the atomic `createOfferCommitAndRedeem` calldata encoder which
-   * the shipped client cannot yet sign.
+   * redeem). Flow B (`commit-and-redeem`) is opt-in and routes the
+   * commit through the atomic `createOfferCommitAndRedeem` entry
+   * point so the buyer redeems in the same transaction.
    */
   flow?: "commit" | "commit-and-redeem";
 }

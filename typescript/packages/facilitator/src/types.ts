@@ -37,7 +37,6 @@ export type { ActionId, EntityActionId, ExchangeActionId };
  * v0.1 — subject to growth as the facilitator's responsibilities widen.
  */
 export type FacilitatorErrorCode =
-  | "NOT_IMPLEMENTED"
   | "INVALID_PAYLOAD"
   | "SCHEME_MISMATCH"
   | "NETWORK_MISMATCH"

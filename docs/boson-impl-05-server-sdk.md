@@ -41,11 +41,11 @@ app.get("/datafeed", expressMiddleware(requireEscrow));
 
 ## Endpoints exposed (optional convenience)
 
-- `POST /x402B/commit` — accepts `X-PAYMENT` with `action=boson-createOfferAndCommit`, relays the meta-tx + optional token-auth to the facilitator (or directly to the matching `MetaTransactionsHandlerFacet` meta-tx entrypoint), returns 200.
-- `POST /x402B/commit-and-redeem` — same, with `action=boson-createOfferCommitAndRedeem` (atomic on-chain redeem; the actual delivery may be sync or async per `fulfillment.option`).
-- `POST /x402B/redeem` — server-side wrapper for `redeemVoucher`.
-- `POST /x402B/complete` — wrapper for `completeExchange`.
-- `POST /x402B/dispute/raise|resolve|escalate|retract` — wrappers for the dispute primitives.
+- `POST /x402b/commit` — accepts `X-PAYMENT` with `action=boson-createOfferAndCommit`, relays the meta-tx + optional token-auth to the facilitator (or directly to the matching `MetaTransactionsHandlerFacet` meta-tx entrypoint), returns 200.
+- `POST /x402b/commit-and-redeem` — same, with `action=boson-createOfferCommitAndRedeem` (atomic on-chain redeem; the actual delivery may be sync or async per `fulfillment.option`).
+- `POST /x402b/redeem` — server-side wrapper for `redeemVoucher`.
+- `POST /x402b/complete` — wrapper for `completeExchange`.
+- `POST /x402b/dispute/raise|resolve|escalate|retract` — wrappers for the dispute primitives.
 - `POST /x402b/withdraw-funds` — wrapper for the entity-keyed `withdrawFunds` meta-tx (see below).
 - `GET /x402b/available-funds` — read-only lookup of an entity's currently available funds (see below).
 

@@ -65,7 +65,7 @@ Use Flow B when the buyer wants to assert "consider this redeemed now" up front.
 - Asynchronous delivery — the resource takes time to produce (e.g. a generated report) but the buyer is happy to redeem on commit and receive the deliverable later through whichever fulfillment channel they negotiated. The post-200 dispute window is the buyer's protection if delivery never arrives.
 - Pre-staged delivery — the resource is already available off-chain (IPFS, gated URL) and the redeem is just the on-chain proof.
 
-The mechanics are identical regardless of delivery timing — `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` from PR #1105 handles the on-chain side, and the chosen `fulfillment.option` handles the delivery side.
+The mechanics are identical regardless of delivery timing — `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` handles the on-chain side, and the chosen `fulfillment.option` handles the delivery side.
 
 ```mermaid
 sequenceDiagram
@@ -100,7 +100,7 @@ sequenceDiagram
 
 Notes:
 
-- `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (PR #1105) emits `OfferCreated`, `BuyerCommitted`, and `VoucherRedeemed` in a single tx. The committer (and thus the redeemer) is `_msgSender()` — under the meta-tx entrypoint that is the buyer recovered from the meta-tx signature, so no extra redeem signature is needed.
+- `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` emits `OfferCreated`, `BuyerCommitted`, and `VoucherRedeemed` in a single tx. The committer (and thus the redeemer) is `_msgSender()` — under the meta-tx entrypoint that is the buyer recovered from the meta-tx signature, so no extra redeem signature is needed.
 - Dispute window still applies post-redeem; see Flow C.
 
 ## Flow C — Dispute path
@@ -134,7 +134,7 @@ sequenceDiagram
     end
 ```
 
-The buyer reaches the dispute primitives through whichever channel `nextActions.fallback` advertises. The server's convenience endpoint (e.g. `POST /x402B/dispute/raise`) is one option; the others are facilitator, on-chain direct, MCP, XMTP-to-seller. See [boson-impl-04-state-machine-and-next-actions.md](./boson-impl-04-state-machine-and-next-actions.md) for the full channel registry.
+The buyer reaches the dispute primitives through whichever channel `nextActions.fallback` advertises. The server's convenience endpoint (e.g. `POST /x402b/dispute/raise`) is one option; the others are facilitator, on-chain direct, MCP, XMTP-to-seller. See [boson-impl-04-state-machine-and-next-actions.md](./boson-impl-04-state-machine-and-next-actions.md) for the full channel registry.
 
 ## Flow D — Channel fallback (when the server is unreachable)
 
@@ -149,7 +149,7 @@ sequenceDiagram
     participant M as MCP
     participant D as Boson Diamond
 
-    C->>Sv: POST /x402B/redeem (preferred)
+    C->>Sv: POST /x402b/redeem (preferred)
     Sv-->>C: timeout / 5xx
 
     C->>F: POST /redeem (next preferred)

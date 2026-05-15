@@ -94,7 +94,7 @@ function baseRequirements(): EscrowPaymentRequirements {
         {
           id: "boson-createOfferAndCommit",
           channels: ["server", "facilitator", "onchain"],
-          endpoints: { server: "https://seller.example/x402B/commit" },
+          endpoints: { server: "https://seller.example/x402b/commit" },
         },
       ],
     },

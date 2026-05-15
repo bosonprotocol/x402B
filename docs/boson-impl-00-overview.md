@@ -67,7 +67,7 @@ All packages publish under `@bosonprotocol/`.
 
 - `@bosonprotocol/core-sdk` — contract calls, subgraph reads, meta-tx helpers, dispute helpers.
 - `@bosonprotocol/metadata` — offer metadata schemas (extend with seller channel registry, see [09](./boson-impl-09-seller-metadata.md)).
-- `@bosonprotocol/common` — EIP-712 hashing helpers (FullOffer hash matches PR #1105).
+- `@bosonprotocol/common` — EIP-712 hashing helpers (FullOffer hash matches BPIP-10 / `OrchestrationHandlerFacet2`).
 - `bosonprotocol/agentic-commerce` — MCP exposing on-chain Boson actions, used by `x402-agent`.
 - The Boson Redemption Widget backend hook — for human buyers of physical goods, surfaced as one of the fulfillment channels ([03](./boson-impl-03-fulfillment-channels.md)).
 

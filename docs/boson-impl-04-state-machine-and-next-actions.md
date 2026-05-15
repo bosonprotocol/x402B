@@ -73,19 +73,19 @@ Example for an exchange that is `DISPUTED` with a dispute in `RESOLVING` — the
     {
       "id": "boson-resolveDispute",
       "channels": ["server", "facilitator", "onchain", "mcp"],
-      "endpoints": { "server": "https://seller.example/x402B/dispute/resolve" },
+      "endpoints": { "server": "https://seller.example/x402b/dispute/resolve" },
       "deadline": "2026-05-15T00:00:00Z"  // optional, absolute — dispute resolution window
     },
     {
       "id": "boson-escalateDispute",
       "channels": ["server", "facilitator", "onchain", "mcp"],
-      "endpoints": { "server": "https://seller.example/x402B/dispute/escalate" },
+      "endpoints": { "server": "https://seller.example/x402b/dispute/escalate" },
       "deadline": "2026-05-15T00:00:00Z"
     },
     {
       "id": "boson-retractDispute",
       "channels": ["server", "facilitator", "onchain", "mcp", "xmtp"],
-      "endpoints": { "server": "https://seller.example/x402B/dispute/retract" }
+      "endpoints": { "server": "https://seller.example/x402b/dispute/retract" }
     }
   ],
   "fallback": {

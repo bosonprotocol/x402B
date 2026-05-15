@@ -55,12 +55,12 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
           {
             "id": "boson-createOfferAndCommit",                  // -> ExchangeCommitFacet.createOfferAndCommit
             "channels": ["server", "facilitator", "onchain", "mcp"],
-            "endpoints": { "server": "https://seller.example/x402B/commit" }
+            "endpoints": { "server": "https://seller.example/x402b/commit" }
           },
           {
             "id": "boson-createOfferCommitAndRedeem",            // -> OrchestrationHandlerFacet2.createOfferCommitAndRedeem
             "channels": ["server", "facilitator", "onchain", "mcp"],
-            "endpoints": { "server": "https://seller.example/x402B/commit-and-redeem" }
+            "endpoints": { "server": "https://seller.example/x402b/commit-and-redeem" }
           }
         ],
         "fallback": {
@@ -98,7 +98,7 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
 | `escrowAddress` | yes | Boson Diamond. The custodian. |
 | `recipientId` | yes | Routing-only. May be a numeric `sellerId`, a `did:boson:seller:N`, or a wallet address. Server uses it to dispatch verify-of-state queries. |
 | `maxTimeoutSeconds` | yes | Upper bound for `validBefore` in payment auth signatures. |
-| `offer.fullOffer` | yes | `BosonTypes.FullOffer` from PR #1105. Used both as the on-chain create payload and to compute `offerHash`. |
+| `offer.fullOffer` | yes | `BosonTypes.FullOffer` (BPIP-10). Used both as the on-chain create payload and to compute `offerHash`. |
 | `offer.sellerSig` | yes | EIP-712 sig over `FullOffer` under the protocol domain. Validated by the protocol's `verifyOffer` (`EIP712Lib.verify`) — supports ECDSA and ERC-1271. |
 | `offer.creator` | yes | The address whose key signed `sellerSig` (seller assistant). |
 | `tokenAuthStrategies` | yes | Subset of `["none", "erc3009", "permit", "permit2"]` ([BPIP-12](https://github.com/zajck/BPIPs/blob/authorized-token-transfer-metaTx/content/BPIP-12.md)). The token-transfer authorization strategies the protocol will accept for this asset. `none` requires the buyer to pre-approve the Diamond. |
@@ -241,7 +241,7 @@ type:    MetaTransaction(
 `functionName` is one of:
 
 - `"createOfferAndCommit(BosonTypes.FullOffer,address,bytes,uint256)"` — deferred path (`ExchangeCommitFacet`).
-- `"createOfferCommitAndRedeem(BosonTypes.FullOffer,address,bytes,uint256)"` — atomic path (`OrchestrationHandlerFacet2`, [PR #1105](https://github.com/bosonprotocol/boson-protocol-contracts/pull/1105)).
+- `"createOfferCommitAndRedeem(BosonTypes.FullOffer,address,bytes,uint256)"` — atomic path (`OrchestrationHandlerFacet2`).
 
 `functionSignature` is the ABI encoding of the function parameters — including the `FullOffer` and the seller's signature, which echoes `requirements.offer.fullOffer` and `requirements.offer.sellerSig`.
 
@@ -269,7 +269,7 @@ For `permit`'s "diversion guard" (BPIP-12) — if current allowance already cove
 
 ### 4.4 No separate redeem signature
 
-For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomically inside the protocol call (`OrchestrationHandlerFacet2.createOfferCommitAndRedeem`, [PR #1105](https://github.com/bosonprotocol/boson-protocol-contracts/pull/1105)). The committer is `_msgSender()` of the meta-tx, so the meta-tx signature in §4.2 already authorises the redeem. **No additional buyer signature is needed for atomic on-chain redeem.** Note that this is independent of delivery timing — the resource itself may still be delivered later via the negotiated fulfillment channel.
+For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomically inside the protocol call (`OrchestrationHandlerFacet2.createOfferCommitAndRedeem`). The committer is `_msgSender()` of the meta-tx, so the meta-tx signature in §4.2 already authorises the redeem. **No additional buyer signature is needed for atomic on-chain redeem.** Note that this is independent of delivery timing — the resource itself may still be delivered later via the negotiated fulfillment channel.
 
 ## 5. Validation rules (server side, before forwarding to the facilitator)
 
@@ -301,7 +301,7 @@ A server may simultaneously advertise an `exact` and an `escrow` accept entry, l
 
 ## 8. Open items
 
-- **Multi-chain offer hashing:** PR #1105's `getOfferHashInternal` is per-chain — confirm the SDK exposes it with the right `chainId` defaulting.
+- **Multi-chain offer hashing:** `OrchestrationHandlerFacet2`'s `getOfferHashInternal` is per-chain — confirm the SDK exposes it with the right `chainId` defaulting.
 - **ERC-1271 sellers:** offer signatures from contract-wallets work on-chain via ERC-1271. The 402 sender side needs the seller's contract address surfaced in `offer.creator` so the verifier knows to call `isValidSignature`.
 - **`expires_at` on the requirements:** consider promoting `maxTimeoutSeconds` to an absolute `expiresAt` to make the 402 cacheable. Not in v0.1.
 - **Exact MetaTransaction type:** verify against `MetaTransactionsHandlerFacet` in the contracts repo — the `MetaTransaction(uint256 nonce, address from, address contractAddress, string functionName, bytes functionSignature)` shape above is BPIP-9 era; confirm it matches the BPIP-12 entrypoint expectations exactly.

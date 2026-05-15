@@ -46,13 +46,13 @@ export const validRequirements: EscrowPaymentRequirements = {
       {
         id: "boson-createOfferAndCommit",
         channels: ["server", "facilitator", "onchain"],
-        endpoints: { server: "https://seller.example/x402B/commit" },
+        endpoints: { server: "https://seller.example/x402b/commit" },
       },
       {
         id: "boson-createOfferCommitAndRedeem",
         channels: ["server", "facilitator", "onchain", "mcp"],
         endpoints: {
-          server: "https://seller.example/x402B/commit-and-redeem",
+          server: "https://seller.example/x402b/commit-and-redeem",
         },
       },
     ],
