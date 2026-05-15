@@ -52,6 +52,7 @@ the build:
 ```sh
 docker build -t x402b-facilitator-http -f examples/facilitator-http/Dockerfile .
 docker run --rm -p 8889:8889 \
+  --add-host=host.docker.internal:host-gateway \
   -e FACILITATOR_URL=http://localhost:8889 \
   -e RPC_NODE=http://host.docker.internal:8545 \
   -e ESCROW_ADDRESS=0x... \
