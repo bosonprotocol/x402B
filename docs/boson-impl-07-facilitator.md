@@ -151,6 +151,16 @@ The token-auth entry is encoded per BPIP-12's `TokenTransferAuthorizationLib` qu
 | `permit` | tag + ABI-encoded `(owner, spender, value, deadline, v, r, s)` |
 | `permit2` | tag + ABI-encoded Permit2 `PermitTransferFrom` + signature |
 
+## Client-side transport hardening
+
+The `@bosonprotocol/x402-server` facilitator HTTP client enforces transport-layer reliability that the wire spec leaves to the implementation. Hosts tune these via `X402bServerConfig.facilitator`:
+
+- **Per-attempt timeout** (`timeoutMs`, default 30 s). The client wraps every `fetch` in an `AbortController`; an elapsed timeout surfaces as `FacilitatorHttpError` with code `TIMEOUT` and is retried under the same policy as `NETWORK_ERROR`.
+- **Linear-backoff retry** (`retry: { attempts, backoffMs }`, default `{ attempts: 3, backoffMs: 200 }`). Retries `NETWORK_ERROR`, `TIMEOUT`, and HTTP 5xx. HTTP 4xx is treated as a definitive answer and not retried. Sleeps are `backoffMs * attemptIndex` (0 / 200 / 400 ms by default).
+- **Idempotency key** (`idempotencyKey`, default `crypto.randomUUID`). The client generates a single key per logical `/settle` call, attaches it as the `x-x402b-idempotency-key` header, and reuses the same key across every retry attempt of that call. `/verify` and `/perform-action` do not carry the header (verify is read-only; perform-action carries an on-chain nonce in the signed payload that already pins idempotency).
+
+Facilitator-side recognition of the `x-x402b-idempotency-key` header — a dedup table that returns the cached settle response when a retried request arrives — is intentionally out of scope for this client-side change; the header is harmless to a facilitator that ignores it.
+
 ## Sections to write
 
 - Exact byte layout of each `tokenTransferAuthorizations[i]` entry — pin against `TokenTransferAuthorizationLib` once PR #1104 finalizes.
@@ -160,4 +170,5 @@ The token-auth entry is encoded per BPIP-12's `TokenTransferAuthorizationLib` qu
 - Multi-chain routing.
 - Operator authorization (none for v1 — facilitator is permissionless).
 - Health-check, metrics, structured errors.
+- Server-side dedup table that recognises `x-x402b-idempotency-key` on retried `/settle` calls.
 - Reference deployment (Sepolia + Base) for examples.
