@@ -13,6 +13,13 @@
 // down, non-JSON body, schema-mismatched body) throw
 // `FacilitatorHttpError` so the composition layer can distinguish
 // "facilitator said no" from "we couldn't reach the facilitator".
+//
+// Transport hardening: every request enforces a per-attempt timeout via
+// `AbortController` and retries `NETWORK_ERROR` / `TIMEOUT` / 5xx with
+// linear backoff. `/settle` calls additionally carry a stable
+// `x-x402b-idempotency-key` header so a facilitator-side dedup table
+// (separate package) can recognise a retried request as the same
+// underlying intent.
 
 import type {
   FacilitatorErrorCode,
@@ -28,13 +35,25 @@ import { FacilitatorHttpError } from "./errors.js";
 
 export type FetchLike = (
   input: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string },
+  init?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    signal?: AbortSignal;
+  },
 ) => Promise<{
   ok: boolean;
   status: number;
   text: () => Promise<string>;
   json?: () => Promise<unknown>;
 }>;
+
+export interface FacilitatorRetryOptions {
+  /** Total attempt budget (initial try + retries). Default 3. */
+  attempts: number;
+  /** Linear-backoff multiplier in ms: sleep `backoffMs * attemptIndex` between attempts. Default 200. */
+  backoffMs: number;
+}
 
 export interface CreateFacilitatorClientOptions {
   /** Base URL of the facilitator service (no trailing slash needed). */
@@ -43,6 +62,31 @@ export interface CreateFacilitatorClientOptions {
   fetch?: FetchLike;
   /** Optional headers attached to every request — e.g. an `Authorization` for hosted facilitators. */
   headers?: Record<string, string>;
+  /**
+   * Per-attempt timeout in ms. Default 30_000. The `AbortController`
+   * aborts in-flight fetches when this elapses; the error surfaces as
+   * `FacilitatorHttpError` with code `TIMEOUT` and is retried under
+   * the same policy as `NETWORK_ERROR`.
+   */
+  timeoutMs?: number;
+  /**
+   * Retry policy applied to `NETWORK_ERROR`, `TIMEOUT`, and HTTP 5xx
+   * responses. Defaults to `{ attempts: 3, backoffMs: 200 }` — three
+   * attempts total at 0/200/400 ms. Set `{ attempts: 1, backoffMs: 0 }`
+   * to disable.
+   */
+  retry?: FacilitatorRetryOptions;
+  /**
+   * Factory for the `x-x402b-idempotency-key` header attached to
+   * `/settle` calls. Called once per logical request — *not* once per
+   * retry attempt — so the facilitator's dedup table can recognise
+   * retries of the same intent. Defaults to `crypto.randomUUID`.
+   */
+  idempotencyKey?: () => string;
+  /** Override for `setTimeout` — tests use this to skip real backoff sleeps. */
+  setTimeout?: typeof setTimeout;
+  /** Override for `clearTimeout` — paired with `setTimeout`. */
+  clearTimeout?: typeof clearTimeout;
 }
 
 export interface FacilitatorClient {
@@ -50,6 +94,12 @@ export interface FacilitatorClient {
   settle(input: FacilitatorSettleInput): Promise<FacilitatorSettleResult>;
   performAction(input: FacilitatorPerformActionInput): Promise<FacilitatorPerformActionResult>;
 }
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_RETRY: FacilitatorRetryOptions = { attempts: 3, backoffMs: 200 };
+
+/** Idempotency-key header name. Stable so a facilitator-side dedup table can recognise it. */
+export const IDEMPOTENCY_KEY_HEADER = "x-x402b-idempotency-key";
 
 /**
  * Construct a typed HTTP client for the facilitator. The returned
@@ -68,24 +118,43 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
   }
   const baseUrl = opts.url.replace(/\/+$/, "");
   const baseHeaders = { "content-type": "application/json", ...(opts.headers ?? {}) };
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const retry = opts.retry ?? DEFAULT_RETRY;
+  const newIdempotencyKey = opts.idempotencyKey ?? (() => globalThis.crypto.randomUUID());
+  const setTimeoutImpl = opts.setTimeout ?? setTimeout;
+  const clearTimeoutImpl = opts.clearTimeout ?? clearTimeout;
 
-  const post = async <Req, Res>(
+  const postOnce = async <Req, Res>(
     path: string,
     body: Req,
     validate: (parsed: unknown) => parsed is Res,
+    extraHeaders: Record<string, string>,
   ): Promise<Res> => {
+    const controller = new AbortController();
+    const timer = setTimeoutImpl(() => controller.abort(), timeoutMs);
+    const headers = { ...baseHeaders, ...extraHeaders };
+
     let res: Awaited<ReturnType<FetchLike>>;
     try {
       res = await fetchImpl(`${baseUrl}${path}`, {
         method: "POST",
-        headers: baseHeaders,
+        headers,
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
     } catch (cause) {
-      throw new FacilitatorHttpError(`facilitator network error (${path})`, {
-        code: "NETWORK_ERROR",
-        cause,
-      });
+      const aborted = controller.signal.aborted;
+      throw new FacilitatorHttpError(
+        aborted
+          ? `facilitator request timed out after ${timeoutMs}ms (${path})`
+          : `facilitator network error (${path})`,
+        {
+          code: aborted ? "TIMEOUT" : "NETWORK_ERROR",
+          cause,
+        },
+      );
+    } finally {
+      clearTimeoutImpl(timer);
     }
 
     let text: string;
@@ -142,11 +211,39 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
     return parsed;
   };
 
+  const post = async <Req, Res>(
+    path: string,
+    body: Req,
+    validate: (parsed: unknown) => parsed is Res,
+    extraHeaders: Record<string, string> = {},
+  ): Promise<Res> => {
+    let lastError: FacilitatorHttpError | undefined;
+    for (let attempt = 0; attempt < retry.attempts; attempt += 1) {
+      if (attempt > 0) {
+        await sleep(retry.backoffMs * attempt, setTimeoutImpl);
+      }
+      try {
+        return await postOnce(path, body, validate, extraHeaders);
+      } catch (e) {
+        if (e instanceof FacilitatorHttpError && isRetryable(e)) {
+          lastError = e;
+          continue;
+        }
+        throw e;
+      }
+    }
+    // Non-null assertion: the loop above sets `lastError` on every retryable
+    // failure and only falls through after the final attempt also failed.
+    throw lastError as FacilitatorHttpError;
+  };
+
   return {
     verify: (input) =>
       post<FacilitatorVerifyInput, FacilitatorVerifyResult>("/verify", input, isVerifyResult),
     settle: (input) =>
-      post<FacilitatorSettleInput, FacilitatorSettleResult>("/settle", input, isSettleResult),
+      post<FacilitatorSettleInput, FacilitatorSettleResult>("/settle", input, isSettleResult, {
+        [IDEMPOTENCY_KEY_HEADER]: newIdempotencyKey(),
+      }),
     performAction: (input) =>
       post<FacilitatorPerformActionInput, FacilitatorPerformActionResult>(
         `/perform-action?action=${encodeURIComponent(input.action)}`,
@@ -154,6 +251,19 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
         isPerformActionResult,
       ),
   };
+}
+
+function isRetryable(e: FacilitatorHttpError): boolean {
+  if (e.code === "NETWORK_ERROR" || e.code === "TIMEOUT") return true;
+  if (e.code === "BAD_HTTP_STATUS" && e.status !== undefined && e.status >= 500) return true;
+  return false;
+}
+
+function sleep(ms: number, setTimeoutImpl: typeof setTimeout): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    setTimeoutImpl(resolve, ms);
+  });
 }
 
 // --- Response-shape type guards ----------------------------------------

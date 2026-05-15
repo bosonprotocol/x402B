@@ -108,7 +108,16 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   const validated = x402bServerConfigSchema.parse(config) as X402bServerConfig;
   assertChannelRegistryEscrowMatch(validated);
 
-  const facilitator = createFacilitatorClient({ url: validated.facilitator.url });
+  const facilitator = createFacilitatorClient({
+    url: validated.facilitator.url,
+    ...(validated.facilitator.timeoutMs !== undefined
+      ? { timeoutMs: validated.facilitator.timeoutMs }
+      : {}),
+    ...(validated.facilitator.retry !== undefined ? { retry: validated.facilitator.retry } : {}),
+    ...(validated.facilitator.idempotencyKey !== undefined
+      ? { idempotencyKey: validated.facilitator.idempotencyKey }
+      : {}),
+  });
   // Default to a fresh in-memory store when the host doesn't supply
   // one. Single shared reference for the lifetime of this server — so
   // commit-time writes and redeem-time reads observe the same Map.

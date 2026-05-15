@@ -22,6 +22,7 @@ import { z } from "zod";
 
 import type { CoreSdkReadAdapter } from "./onchain/core-sdk-read.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
+import type { FacilitatorRetryOptions } from "./facilitator/client.js";
 
 /**
  * Minimal signing surface needed by `signFullOffer`. Structurally
@@ -56,8 +57,21 @@ export interface X402bServerConfig {
   escrow: Address;
   /** Seller signer (signs the FullOffer EIP-712 typed-data). */
   signer: SellerSigner;
-  /** Facilitator service the server forwards meta-tx envelopes to. The URL is also advertised in `nextActions[].endpoints.facilitator`. */
-  facilitator: { url: string };
+  /**
+   * Facilitator service the server forwards meta-tx envelopes to. The
+   * URL is also advertised in `nextActions[].endpoints.facilitator`.
+   *
+   * `timeoutMs`, `retry`, and `idempotencyKey` tune the HTTP client at
+   * `./facilitator/client.ts`. Defaults: 30 s timeout; 3 attempts at
+   * 0 / 200 / 400 ms; idempotency key sourced from `crypto.randomUUID()`
+   * on every `/settle` call.
+   */
+  facilitator: {
+    url: string;
+    timeoutMs?: number;
+    retry?: FacilitatorRetryOptions;
+    idempotencyKey?: () => string;
+  };
   /** Per-seller channel + endpoint registry consumed by `deriveNextActions`. */
   channelRegistry: ChannelRegistry;
   /**
@@ -196,6 +210,15 @@ export const x402bServerConfigSchema = z
     facilitator: z
       .object({
         url: httpUrlSchema,
+        timeoutMs: z.number().int().positive().optional(),
+        retry: z
+          .object({
+            attempts: z.number().int().positive(),
+            backoffMs: z.number().int().nonnegative(),
+          })
+          .strict()
+          .optional(),
+        idempotencyKey: z.function().args().returns(z.string()).optional(),
       })
       .strict(),
     channelRegistry: channelRegistryZodSchema,
