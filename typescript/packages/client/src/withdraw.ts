@@ -16,7 +16,11 @@
 // added later without a wire-format change.
 
 import type { CoreSDK } from "@bosonprotocol/core-sdk";
-import type { BosonMetaTx, Hex as WireHex } from "@bosonprotocol/x402-core/schemes/escrow";
+import {
+  DECIMAL_UINT,
+  type BosonMetaTx,
+  type Hex as WireHex,
+} from "@bosonprotocol/x402-core/schemes/escrow";
 import { encodeSignedPayload } from "@bosonprotocol/x402-evm/codec";
 import type { Address, Hex } from "viem";
 
@@ -26,8 +30,6 @@ import { randomUint256 } from "./utils/crypto.js";
 // runtime, without pulling `@ethersproject/bignumber` into this package's
 // declared deps. Callers usually pass decimal strings (the wire format).
 type BigNumberish = string | number | bigint;
-
-const DECIMAL_UINT_RE = /^\d+$/;
 
 /**
  * Coerce a caller-supplied `entityId` to its canonical wire form (a
@@ -49,7 +51,7 @@ function normalizeEntityId(value: BigNumberish): string {
   }
   // typeof value === "string"
   const trimmed = value.trim();
-  if (trimmed.length === 0 || !DECIMAL_UINT_RE.test(trimmed)) {
+  if (trimmed.length === 0 || !DECIMAL_UINT.test(trimmed)) {
     throw new Error(`entityId must be a decimal non-negative integer string, got "${value}"`);
   }
   return trimmed;

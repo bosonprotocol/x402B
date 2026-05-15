@@ -2,7 +2,7 @@
 // (exchangeId or entityId) match the Boson method embedded in the
 // signed meta-transaction.
 
-import type { BosonMetaTx } from "@bosonprotocol/x402-core/schemes/escrow";
+import { DECIMAL_UINT, type BosonMetaTx } from "@bosonprotocol/x402-core/schemes/escrow";
 import type {
   ActionId,
   EntityActionId,
@@ -83,7 +83,6 @@ const POST_COMMIT_ABI = parseAbi([
 ]);
 
 const UINT256_MAX = (1n << 256n) - 1n;
-const DECIMAL_UINT_RE = /^\d+$/;
 
 export type ValidatePerformActionMetaTxResult =
   | { ok: true }
@@ -106,7 +105,7 @@ function parseUint256(
   label: string,
   value: string,
 ): { ok: true; value: bigint } | ValidatePerformActionMetaTxResult {
-  if (!DECIMAL_UINT_RE.test(value)) {
+  if (!DECIMAL_UINT.test(value)) {
     return {
       ok: false,
       code: "INVALID_PAYLOAD",
