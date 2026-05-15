@@ -1,0 +1,32 @@
+{
+  "name": "@bosonprotocol/x402-example-resource-server",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Reference Express host for @bosonprotocol/x402-server-express. Boots a working x402B resource server from environment variables; doubles as the runtime image for the x402B e2e suite.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "lint": "eslint src --max-warnings 0",
+    "clean": "rm -rf .turbo"
+  },
+  "dependencies": {
+    "@bosonprotocol/x402-actions": "workspace:^",
+    "@bosonprotocol/x402-core": "workspace:^",
+    "@bosonprotocol/x402-server": "workspace:^",
+    "@bosonprotocol/x402-server-express": "workspace:^",
+    "express": "^4.21.2",
+    "tsx": "^4.19.2",
+    "viem": "^2.39.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.10",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
