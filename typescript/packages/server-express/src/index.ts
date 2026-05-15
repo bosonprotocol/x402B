@@ -6,7 +6,7 @@
 //   `PaymentRequirements` body when the buyer hasn't sent
 //   `X-PAYMENT` yet.
 // - `mountX402b(server, opts)`: an `express.Router` wiring the eight
-//   `POST /x402b/*` convenience routes.
+//   `POST /x402B/*` convenience routes.
 
 export {
   expressMiddleware,

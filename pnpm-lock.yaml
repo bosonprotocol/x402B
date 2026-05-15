@@ -119,9 +119,6 @@ importers:
       '@bosonprotocol/core-sdk':
         specifier: 1.48.0-alpha.3
         version: 1.48.0-alpha.3
-      '@x402/core':
-        specifier: ^2.11.0
-        version: 2.11.0
       '@x402/evm':
         specifier: ^2.11.0
         version: 2.11.0(typescript@5.9.3)

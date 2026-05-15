@@ -16,12 +16,11 @@ All packages publish under `@bosonprotocol/`.
 |---|---|
 | `x402-core` | `escrow` scheme JSON schemas + TypeScript types; EIP-712 builders for FullOffer (protocol domain), the protocol meta-tx envelope, and the four BPIP-12 token-auth strategies (ERC-3009 ReceiveWithAuthorization, EIP-2612 Permit, Permit2, plain approve); exchange state machine model. |
 | `x402-evm` | EVM-specific implementation. Calldata builders for `ExchangeCommitFacet.createOfferAndCommit` (deferred), `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (atomic on-chain redeem), and the `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization` envelope that carries them. Wraps `@bosonprotocol/core-sdk`. |
-| `x402-server` | Framework-agnostic resource server. 402 builder, FullOffer signer wrapper, fulfillment negotiator, `nextActions` emitter, post-redeem endpoint set. Adapter sub-packages: `x402-server-express`, `x402-server-hono`, `x402-server-next`. |
-| `x402-client` | Framework-agnostic client. Interceptor that parses the 402, picks a fulfillment channel option and a token-auth strategy, signs the meta-tx + token authorization(s), retries, then drives post-redeem actions through whichever channel is preferred. Adapters: `x402-client-axios`, `x402-client-fetch`. |
-| `x402-facilitator` | Reference verify + settle service for the `escrow` scheme. Submits via `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`. |
+| `x402-server` | Framework-agnostic resource server. 402 builder, FullOffer signer wrapper, fulfillment negotiator, `nextActions` emitter, post-redeem endpoint set. Adapter sub-package: `x402-server-express` (further adapters planned). |
+| `x402-client` | Framework-agnostic client. Interceptor that parses the 402, picks a fulfillment channel option and a token-auth strategy, signs the meta-tx + token authorization(s), retries, then drives post-redeem actions through whichever channel is preferred. Adapter sub-package: `x402-client-fetch` (further adapters planned). |
+| `x402-facilitator` | Reference verify + settle service for the `escrow` scheme. Submits via `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`. Adapter sub-package: `x402-facilitator-express`. |
 | `x402-fulfillment` | Pluggable `FulfillmentChannel` interface + atomic / email / XMTP / webhook / IPFS-pointer implementations. |
 | `x402-actions` | Channel registry, `ChannelAdapter` contract, and the `nextActions` envelope builder. Drives off the state-machine tables in `x402-core` to advertise legal next transitions on every server response and powers the post-redeem endpoint set. |
-| `x402-agent` | Thin glue layer for AI-agent clients. Bridges to `bosonprotocol/agentic-commerce` MCP and lets agents pick channel (server / facilitator / on-chain / MCP) per action. |
 
 ---
 
@@ -30,8 +29,6 @@ All packages publish under `@bosonprotocol/`.
 - `@bosonprotocol/core-sdk` — contract calls, subgraph reads, meta-tx helpers, dispute helpers.
 - `@bosonprotocol/metadata` — offer metadata schemas.
 - `@bosonprotocol/common` — EIP-712 hashing helpers.
-- `bosonprotocol/agentic-commerce` — MCP exposing on-chain Boson actions, used by `x402-agent`.
-- The Boson Redemption Widget backend hook — for human buyers of physical goods, surfaced as one of the fulfillment channels.
 
 ---
 
@@ -58,7 +55,7 @@ This repo implements the [`x402-escrow-schema`](https://github.com/bosonprotocol
 | 04 | [boson-impl-04-state-machine-and-next-actions.md](./docs/boson-impl-04-state-machine-and-next-actions.md) | detailed — self-describing responses |
 | 05 | [boson-impl-05-server-sdk.md](./docs/boson-impl-05-server-sdk.md) | stub |
 | 06 | [boson-impl-06-client-sdk.md](./docs/boson-impl-06-client-sdk.md) | stub |
-| 07 | [boson-impl-07-facilitator.md](./docs/boson-impl-07-facilitator.md) | stub |
+| 07 | [boson-impl-07-facilitator.md](./docs/boson-impl-07-facilitator.md) | detailed — facilitator service contract |
 | 08 | [boson-impl-08-agent-mode.md](./docs/boson-impl-08-agent-mode.md) | stub |
 | 09 | [boson-impl-09-seller-metadata.md](./docs/boson-impl-09-seller-metadata.md) | stub |
 

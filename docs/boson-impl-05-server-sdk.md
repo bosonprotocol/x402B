@@ -46,12 +46,12 @@ app.get("/datafeed", expressMiddleware(requireEscrow));
 - `POST /x402B/redeem` — server-side wrapper for `redeemVoucher`.
 - `POST /x402B/complete` — wrapper for `completeExchange`.
 - `POST /x402B/dispute/raise|resolve|escalate|retract` — wrappers for the dispute primitives.
-- `POST /x402b/withdraw-funds` — wrapper for the entity-keyed `withdrawFunds` meta-tx (see below).
-- `GET /x402b/available-funds` — read-only lookup of an entity's currently available funds (see below).
+- `POST /x402B/withdraw-funds` — wrapper for the entity-keyed `withdrawFunds` meta-tx (see below).
+- `GET /x402B/available-funds` — read-only lookup of an entity's currently available funds (see below).
 
 Each endpoint is opt-in and configurable. The server MUST advertise the endpoint URL in the `nextActions[].endpoints.server` only if it actually implements the wrapper; otherwise it lists `["facilitator", "onchain", "mcp"]` only.
 
-### `POST /x402b/withdraw-funds`
+### `POST /x402B/withdraw-funds`
 
 Entity-keyed action `boson-withdrawFunds`. Body:
 
@@ -74,7 +74,7 @@ The server forwards `signedPayload` to the facilitator's `/perform-action?action
 
 The response intentionally carries **no** `nextActions` envelope — withdraw doesn't transition the exchange state machine.
 
-### `GET /x402b/available-funds`
+### `GET /x402B/available-funds`
 
 Read-only. Returns the current funds entity for a buyer or seller via the protocol subgraph (`coreSdk.getFunds`). Query parameters:
 

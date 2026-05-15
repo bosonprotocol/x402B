@@ -38,12 +38,6 @@ describe("@bosonprotocol/x402-facilitator public types", () => {
     expectTypeOf<Success["newDisputeState"]>().toEqualTypeOf<DisputeState | undefined>();
   });
 
-  it("FacilitatorErrorCode includes NOT_IMPLEMENTED for v0.1 stubs", () => {
-    // Assignability — string literal type member check.
-    const code: FacilitatorErrorCode = "NOT_IMPLEMENTED";
-    expectTypeOf(code).toEqualTypeOf<FacilitatorErrorCode>();
-  });
-
   it("exhaustive switch on FacilitatorErrorCode compiles", () => {
     // The point of this test is that this function is type-checked: if a
     // new code is added to the union without updating the switch, the
@@ -51,7 +45,6 @@ describe("@bosonprotocol/x402-facilitator public types", () => {
     // irrelevant — vitest type tests are compiled, not executed.
     function _assertExhaustive(code: FacilitatorErrorCode): string {
       switch (code) {
-        case "NOT_IMPLEMENTED":
         case "INVALID_PAYLOAD":
         case "SCHEME_MISMATCH":
         case "NETWORK_MISMATCH":
