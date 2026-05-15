@@ -10,6 +10,8 @@ export { createX402bServer, type BuildRequirementsInput, type X402bServer } from
 export {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
+  type RedeemFulfillmentChannel,
+  type RedeemFulfillmentUpdate,
   type SellerSigner,
   type X402bServerConfig,
 } from "./config.js";
@@ -64,9 +66,12 @@ export {
   type HandlerErrorBody,
   type HandlerResult,
   type HandlerStatus,
+  type HandlerWarning,
   type PerformActionContext,
   type PerformActionInput,
   type PerformActionOk,
+  type RedeemHandlerContext,
+  type RedeemHandlerInput,
 } from "./handlers/index.js";
 export {
   verifyExchange,

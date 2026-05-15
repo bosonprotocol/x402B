@@ -9,11 +9,18 @@ import {
   X_PAYMENT_RESPONSE_HEADER,
   type CommitHandlerInput,
   type PerformActionInput,
+  type RedeemHandlerInput,
   type X402bServer,
 } from "@bosonprotocol/x402-server";
 import { Router, type Request, type RequestHandler, type Response } from "express";
 
 import { respondWithChallenge } from "./internal/x402-challenge.js";
+
+/** Shared error code for malformed `POST /x402b/*` bodies. */
+export const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
+
+/** Hex-string check matching the `0x[0-9a-fA-F]*` shape `signedPayload` is typed as. */
+const HEX_BYTES_RE = /^0x[0-9a-fA-F]*$/;
 
 export interface MountX402bOptions {
   /**
@@ -89,23 +96,38 @@ function performActionRoute(
 ): RequestHandler {
   return async (req, res, next) => {
     try {
-      const body = req.body as Partial<PerformActionInput> | null | undefined;
+      // The common post-commit body is just `{ exchangeId, signedPayload }`.
+      // `fulfillment` is redeem-specific and is left as `unknown` here —
+      // `handleRedeemRoute` narrows it via `isRedeemFulfillment` before
+      // assembling the typed `RedeemHandlerInput`.
+      const body = req.body as PostCommitBody | null | undefined;
       if (
         body == null ||
         typeof body.exchangeId !== "string" ||
         typeof body.signedPayload !== "string"
       ) {
         res.status(400).json({
-          code: "INVALID_REQUEST_BODY",
+          code: INVALID_REQUEST_BODY,
           reason: "expected JSON body with { exchangeId, signedPayload }",
         });
         return;
       }
-      const input: PerformActionInput = {
+      if (!HEX_BYTES_RE.test(body.signedPayload)) {
+        res.status(400).json({
+          code: INVALID_REQUEST_BODY,
+          reason: "signedPayload must be a 0x-prefixed hex string",
+        });
+        return;
+      }
+      const baseInput: PerformActionInput = {
         exchangeId: body.exchangeId,
         signedPayload: body.signedPayload as `0x${string}`,
       };
-      const result = await server.handlers[action](input);
+      const result =
+        action === "redeem"
+          ? await handleRedeemRoute(server, baseInput, body.fulfillment, res)
+          : await server.handlers[action](baseInput);
+      if (result === undefined) return;
       // No `X-PAYMENT-RESPONSE` here — post-commit actions (redeem,
       // complete, dispute raise/resolve/retract/escalate) don't carry
       // a payment. The header is reserved for commit-time settlements;
@@ -116,6 +138,54 @@ function performActionRoute(
       next(e);
     }
   };
+}
+
+interface PostCommitBody {
+  exchangeId?: unknown;
+  signedPayload?: unknown;
+  /** Redeem-only; untyped here and narrowed by `isRedeemFulfillment`. */
+  fulfillment?: unknown;
+}
+
+async function handleRedeemRoute(
+  server: X402bServer,
+  baseInput: PerformActionInput,
+  fulfillment: unknown,
+  res: Response,
+) {
+  const input = buildRedeemInput(baseInput, fulfillment, res);
+  if (input === undefined) return undefined;
+  return await server.handlers.redeem(input);
+}
+
+function buildRedeemInput(
+  baseInput: PerformActionInput,
+  fulfillment: unknown,
+  res: Response,
+): RedeemHandlerInput | undefined {
+  if (fulfillment === undefined) {
+    return baseInput;
+  }
+  if (!isRedeemFulfillment(fulfillment)) {
+    res.status(400).json({
+      code: INVALID_REQUEST_BODY,
+      reason: "expected fulfillment to be { option: string, data: object | null } when present",
+    });
+    return undefined;
+  }
+  return { ...baseInput, fulfillment };
+}
+
+function isRedeemFulfillment(value: unknown): value is RedeemHandlerInput["fulfillment"] {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as { option?: unknown; data?: unknown };
+  if (typeof candidate.option !== "string") return false;
+  return (
+    candidate.data === null ||
+    (typeof candidate.data === "object" &&
+      candidate.data !== null &&
+      !Array.isArray(candidate.data))
+  );
 }
 
 // Stamp base64(JSON.stringify(body)) onto the `X-PAYMENT-RESPONSE` header.

@@ -13,4 +13,4 @@ export {
   type ExpressMiddlewareOptions,
   type X402bResLocals,
 } from "./middleware.js";
-export { mountX402b, type MountX402bOptions } from "./mount.js";
+export { INVALID_REQUEST_BODY, mountX402b, type MountX402bOptions } from "./mount.js";
