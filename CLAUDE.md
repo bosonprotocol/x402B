@@ -143,7 +143,7 @@ After `tsup`, a `postbuild.mjs` step writes
 JSON schemas under `src/**/schemas/` into `dist/schemas/`.
 
 Tests use **vitest**. The package-level `test` script passes
-`--passWithNoTests` so empty packages don't fail CI.
+`--passWithNoTests` for empty packages, so they don't fail CI.
 
 ### CI
 
