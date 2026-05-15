@@ -3,6 +3,20 @@
 // `@bosonprotocol/x402-facilitator-express`'s own suite — here we
 // only verify that the example assembles cleanly and exposes
 // `/health` + the facilitator routes under the host app.
+//
+// The `walletClient` / `publicClient` stubs below carry rejecting
+// implementations of every method `@bosonprotocol/x402-facilitator`
+// might reach for. With today's upstream, `{}` request bodies are
+// rejected by the structural / config guards in `verify()` long before
+// either client is touched, so the stubs are inert. They exist as
+// defence-in-depth: if a future upstream change reorders validation —
+// or relaxes the schemas so `{}` slips past Zod — these tests would
+// otherwise start throwing `TypeError: x is not a function` and read
+// as a regression in this package rather than upstream. With the
+// stubs in place, any reach into a client method surfaces as a
+// rejected promise that `verify()`'s `try/catch` normalises to
+// `{ ok: false, code: "INTERNAL_ERROR" }` (still HTTP 400), keeping
+// the assertions below honest.
 
 import type { FacilitatorConfig } from "@bosonprotocol/x402-facilitator";
 import supertest from "supertest";
@@ -13,14 +27,33 @@ import { createFacilitatorApp } from "../src/app.js";
 
 const ESCROW = "0xdddddddddddddddddddddddddddddddddddddddd" as const;
 const RELAYER = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" as const;
+const CHAIN_ID = 31337;
 const NETWORK = "eip155:31337" as const;
+
+function rejectingStub(method: string): (...args: unknown[]) => Promise<never> {
+  return () =>
+    Promise.reject(new Error(`smoke-test stub: ${method} should not be reached for {} bodies`));
+}
 
 function stubConfig(): FacilitatorConfig {
   const walletClient = {
     account: { address: RELAYER, type: "json-rpc" },
-    chain: { id: 31337 },
+    chain: { id: CHAIN_ID },
+    getChainId: () => Promise.resolve(CHAIN_ID),
+    sendTransaction: rejectingStub("walletClient.sendTransaction"),
+    signTypedData: rejectingStub("walletClient.signTypedData"),
+    signMessage: rejectingStub("walletClient.signMessage"),
+    request: rejectingStub("walletClient.request"),
   } as unknown as WalletClient;
-  const publicClient = {} as unknown as PublicClient;
+  const publicClient = {
+    chain: { id: CHAIN_ID },
+    getChainId: () => Promise.resolve(CHAIN_ID),
+    readContract: rejectingStub("publicClient.readContract"),
+    call: rejectingStub("publicClient.call"),
+    waitForTransactionReceipt: rejectingStub("publicClient.waitForTransactionReceipt"),
+    estimateGas: rejectingStub("publicClient.estimateGas"),
+    request: rejectingStub("publicClient.request"),
+  } as unknown as PublicClient;
   return {
     url: "http://facilitator.example",
     supportedNetworks: [NETWORK],
