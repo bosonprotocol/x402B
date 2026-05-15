@@ -42,6 +42,9 @@ export type RelayerSubmitErrorCode =
   | "ONCHAIN_REVERT"
   | "INTERNAL_ERROR";
 
+/** Default deadline for `wait()` when the caller does not override. */
+const DEFAULT_RECEIPT_TIMEOUT_MS = 60_000;
+
 /**
  * Build the `Web3LibAdapter` that `@bosonprotocol/core-sdk`'s `CoreSDK`
  * accepts for relayer-driven flows.
@@ -54,13 +57,40 @@ export type RelayerSubmitErrorCode =
  *   flow through `publicClient`.
  * - `send` rejects: the relayer never signs typed data through the
  *   adapter (the buyer already signed off-chain).
+ *
+ * If either client carries a `chain` (viem populates it when the client
+ * was built with an explicit chain) the factory cross-checks its id
+ * against the supplied `chainId` and rejects mismatches up-front, so a
+ * misconfigured pair fails loudly rather than silently targeting the
+ * wrong network.
  */
 export function walletClientToWeb3LibAdapter(params: {
   walletClient: WalletClient;
   publicClient: PublicClient;
   chainId: number;
+  /**
+   * Per-call timeout (ms) passed to `publicClient.waitForTransactionReceipt`
+   * inside the adapter's `wait()` method, so callers that route through
+   * core-sdk's `TransactionResponse.wait()` don't hang indefinitely on a
+   * stalled RPC. Defaults to 60s. Direct callers that drive their own
+   * receipt polling can ignore it.
+   */
+  receiptTimeoutMs?: number;
 }): Web3LibAdapter {
   const { walletClient, publicClient, chainId } = params;
+  const receiptTimeoutMs = params.receiptTimeoutMs ?? DEFAULT_RECEIPT_TIMEOUT_MS;
+  if (walletClient.chain && walletClient.chain.id !== chainId) {
+    throw new RelayerSubmitError(
+      "INTERNAL_ERROR",
+      `walletClient.chain.id (${walletClient.chain.id}) does not match adapter chainId (${chainId})`,
+    );
+  }
+  if (publicClient.chain && publicClient.chain.id !== chainId) {
+    throw new RelayerSubmitError(
+      "INTERNAL_ERROR",
+      `publicClient.chain.id (${publicClient.chain.id}) does not match adapter chainId (${chainId})`,
+    );
+  }
   return {
     uuid: "x402-evm:viem-relayer-adapter",
     getSignerAddress: async () => {
@@ -112,7 +142,10 @@ export function walletClientToWeb3LibAdapter(params: {
       return {
         hash,
         wait: async (_confirmations?: number) => {
-          const receipt = await publicClient.waitForTransactionReceipt({ hash });
+          const receipt = await publicClient.waitForTransactionReceipt({
+            hash,
+            timeout: receiptTimeoutMs,
+          });
           return {
             from: receipt.from,
             to: receipt.to ?? "",

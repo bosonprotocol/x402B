@@ -23,13 +23,15 @@ export interface FacilitatorCoreSdkArgs {
 /**
  * Build a `CoreSDK` instance configured against the configured relayer
  * wallet + escrow address. Instances are cached per
- * `(chainId, escrowAddress, walletClient identity)` — repeated
+ * `(walletClient, publicClient, chainId, escrowAddress)` — repeated
  * `settle()` / `performAction()` calls in the same process reuse a
- * single SDK.
+ * single SDK. `publicClient` is part of the cache identity so an
+ * operator who swaps RPCs without rebuilding `walletClient` does not
+ * get an SDK bound to the stale `PublicClient`.
  */
 export function createFacilitatorCoreSdk(args: FacilitatorCoreSdkArgs): CoreSDK {
   const key = `${args.chainId}:${args.escrowAddress.toLowerCase()}`;
-  const cached = lookup(args.walletClient, key);
+  const cached = lookup(args.walletClient, key, args.publicClient);
   if (cached) return cached;
 
   const web3Lib = walletClientToWeb3LibAdapter({
@@ -43,23 +45,43 @@ export function createFacilitatorCoreSdk(args: FacilitatorCoreSdkArgs): CoreSDK 
     protocolDiamond: args.escrowAddress,
     chainId: args.chainId,
   });
-  store(args.walletClient, key, sdk);
+  store(args.walletClient, key, sdk, args.publicClient);
   return sdk;
 }
 
-// Per-walletClient cache — different operator configurations (e.g.
-// multiple wallets on the same chain in tests) get distinct SDKs.
-const walletClientCaches = new WeakMap<WalletClient, Map<string, CoreSDK>>();
-
-function lookup(walletClient: WalletClient, key: string): CoreSDK | undefined {
-  return walletClientCaches.get(walletClient)?.get(key);
+interface CachedEntry {
+  sdk: CoreSDK;
+  publicClient: PublicClient;
 }
 
-function store(walletClient: WalletClient, key: string, sdk: CoreSDK): void {
+// Per-walletClient cache — different operator configurations (e.g.
+// multiple wallets on the same chain in tests) get distinct SDKs. The
+// inner map carries the `PublicClient` the entry was built against so
+// callers that hot-swap their `PublicClient` don't get an SDK bound to
+// the previous RPC.
+const walletClientCaches = new WeakMap<WalletClient, Map<string, CachedEntry>>();
+
+function lookup(
+  walletClient: WalletClient,
+  key: string,
+  publicClient: PublicClient,
+): CoreSDK | undefined {
+  const entry = walletClientCaches.get(walletClient)?.get(key);
+  if (!entry) return undefined;
+  if (entry.publicClient !== publicClient) return undefined;
+  return entry.sdk;
+}
+
+function store(
+  walletClient: WalletClient,
+  key: string,
+  sdk: CoreSDK,
+  publicClient: PublicClient,
+): void {
   let inner = walletClientCaches.get(walletClient);
   if (!inner) {
     inner = new Map();
     walletClientCaches.set(walletClient, inner);
   }
-  inner.set(key, sdk);
+  inner.set(key, { sdk, publicClient });
 }
