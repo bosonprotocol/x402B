@@ -64,6 +64,33 @@ export interface BuildRequirementsInput {
   fulfillment?: import("@bosonprotocol/x402-core/schemes/escrow").FulfillmentRequirements;
 }
 
+/**
+ * Result of a single `recovery.replay(exchangeId)` call. `{ ok: true }`
+ * means the channel adapter's `onCommit(...)` succeeded and the recovery
+ * entry has been deleted; `{ ok: false, reason }` leaves the entry in
+ * place and reports the failure cause.
+ */
+export type RecoveryReplayResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Operator surface for inspecting and replaying the deferred-fulfillment
+ * recovery store. The handlers record an entry when a post-settle
+ * `channel.onCommit(...)` fails or is missing an adapter; the entries
+ * sit until the host replays them out-of-band. This API exposes the
+ * inspection + replay primitives so a host doesn't need to hold the
+ * raw Map reference itself.
+ */
+export interface RecoveryApi {
+  /** Snapshot of all pending recovery entries. */
+  list(): Promise<readonly FulfillmentRecoveryEntry[]>;
+  /**
+   * Re-run `channel.onCommit(exchangeId, entry.data)` for the recorded
+   * entry. Deletes the entry on success; leaves it (with an updated
+   * `error` field) on failure.
+   */
+  replay(exchangeId: string): Promise<RecoveryReplayResult>;
+}
+
 export interface X402bServer {
   readonly config: X402bServerConfig;
   readonly facilitator: FacilitatorClient;
@@ -86,6 +113,13 @@ export interface X402bServer {
     withdrawFunds(input: WithdrawFundsInput): Promise<PlainHandlerResult<WithdrawFundsOk>>;
     getAvailableFunds(query: AvailableFundsQuery): Promise<PlainHandlerResult<AvailableFundsBody>>;
   };
+
+  /**
+   * Operator API for the deferred-fulfillment recovery queue. See
+   * `RecoveryApi` and `docs/boson-impl-05-server-sdk.md` for the
+   * operator runbook.
+   */
+  readonly recovery: RecoveryApi;
 }
 
 function withFacilitatorEndpoints(
@@ -193,10 +227,46 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
     return cachedCoreSdkRead;
   };
 
+  const recovery: RecoveryApi = {
+    async list() {
+      // Snapshot at call time via the Store's async iterator so callers
+      // iterate a stable view even if a handler concurrently mutates
+      // the store.
+      const entries: FulfillmentRecoveryEntry[] = [];
+      for await (const [, value] of fulfillmentRecoveryStore.entries()) {
+        entries.push(value);
+      }
+      return entries;
+    },
+    async replay(exchangeId) {
+      const entry = await fulfillmentRecoveryStore.get(exchangeId);
+      if (entry === undefined) {
+        return { ok: false, reason: `no pending recovery entry for exchangeId '${exchangeId}'` };
+      }
+      const channels = validated.fulfillmentChannels ?? [];
+      const channel = channels.find((c) => c.id === entry.option);
+      if (channel === undefined) {
+        const reason = `no channel adapter is registered for option '${entry.option}'`;
+        await fulfillmentRecoveryStore.set(exchangeId, { ...entry, error: reason });
+        return { ok: false, reason };
+      }
+      try {
+        await channel.onCommit(exchangeId, entry.data);
+        await fulfillmentRecoveryStore.delete(exchangeId);
+        return { ok: true };
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        await fulfillmentRecoveryStore.set(exchangeId, { ...entry, error: reason });
+        return { ok: false, reason };
+      }
+    },
+  };
+
   return {
     config: validated,
     facilitator,
     signOffer,
+    recovery,
     async buildPaymentRequirements(input) {
       const offer = "unsigned" in input.offer ? await signOffer(input.offer.unsigned) : input.offer;
       const requirements = buildPaymentRequirements({
