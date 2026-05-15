@@ -2,7 +2,7 @@
   "name": "@bosonprotocol/x402-evm",
   "version": "0.1.0",
   "license": "Apache-2.0",
-  "description": "Boson Protocol EVM calldata builders for the x402 escrow scheme — inner-action ABI encoding for the commit step and the executeMetaTransaction outer envelope. Wraps @bosonprotocol/core-sdk for everything else.",
+  "description": "Boson Protocol EVM calldata + adapter glue for the x402 escrow scheme — inner-action ABI encoding for the commit step and viem ↔ Web3LibAdapter bridges. Wraps @bosonprotocol/core-sdk for everything else.",
   "repository": {
     "type": "git",
     "url": "https://github.com/bosonprotocol/x402B.git",
@@ -39,10 +39,10 @@
       "import": "./dist/esm/codec/index.js",
       "require": "./dist/cjs/codec/index.js"
     },
-    "./envelope": {
-      "types": "./dist/cjs/envelope/index.d.ts",
-      "import": "./dist/esm/envelope/index.js",
-      "require": "./dist/cjs/envelope/index.js"
+    "./adapters": {
+      "types": "./dist/cjs/adapters/index.d.ts",
+      "import": "./dist/esm/adapters/index.js",
+      "require": "./dist/cjs/adapters/index.js"
     }
   },
   "files": [
@@ -60,8 +60,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@bosonprotocol/common": "1.33.0-alpha.2",
-    "@bosonprotocol/core-sdk": "1.48.0-alpha.1",
+    "@bosonprotocol/common": "1.33.0-alpha.4",
+    "@bosonprotocol/core-sdk": "1.48.0-alpha.3",
     "@bosonprotocol/x402-core": "workspace:^",
     "viem": "^2.39.3"
   },

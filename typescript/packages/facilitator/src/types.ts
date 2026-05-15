@@ -18,12 +18,16 @@ import type {
   Hex,
   TokenAuthStrategy,
 } from "@bosonprotocol/x402-core/schemes/escrow";
-import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
+import type {
+  ActionId,
+  EntityActionId,
+  ExchangeActionId,
+} from "@bosonprotocol/x402-core/state-machine";
 import { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
 import type { PublicClient, WalletClient } from "viem";
 
 export { DisputeState, ExchangeState };
-export type { ActionId };
+export type { ActionId, EntityActionId, ExchangeActionId };
 
 /**
  * Stable wire-level error codes. Consumers should branch on these rather
@@ -33,7 +37,6 @@ export type { ActionId };
  * v0.1 — subject to growth as the facilitator's responsibilities widen.
  */
 export type FacilitatorErrorCode =
-  | "NOT_IMPLEMENTED"
   | "INVALID_PAYLOAD"
   | "SCHEME_MISMATCH"
   | "NETWORK_MISMATCH"
@@ -73,12 +76,10 @@ export type FacilitatorSettleResult =
   | { ok: true; exchangeId: string; txHash: Hex }
   | { ok: false; code: FacilitatorErrorCode; reason: string };
 
-/** Body of `POST /perform-action` (per spec §"Endpoints").
- *
- * Carries enough context for the facilitator to dispatch a post-commit
- * meta-tx without re-fetching protocol state: `network` selects which
- * relayer wallet / RPC to use, and `escrowAddress` is the Boson Diamond
- * the signed meta-tx was bound to (its EIP-712 verifyingContract).
+/**
+ * Fields shared across every `/perform-action` variant. See the per-variant
+ * interfaces below for the action-specific keying (`exchangeId` vs
+ * `entityId`).
  *
  * `signedPayload` is the ABI-encoded `BosonMetaTx` tuple
  * `(address from, string functionName, bytes functionSignature,
@@ -88,48 +89,73 @@ export type FacilitatorSettleResult =
  *
  * Most post-commit actions are non-payable: the relayer just submits
  * the meta-tx and `tokenAuthStrategy` defaults to `"none"`. The one
- * exception today is `boson-escalateDispute`, which is `payable` on
- * the Diamond. The BPIP-12 post-commit token-auth envelope is not wired
- * yet, so `performAction()` returns `UNSUPPORTED_TOKEN_AUTH_STRATEGY`
- * for `tokenAuthStrategy !== "none"` until that encoder ships.
+ * action that may need value transfer today is `boson-escalateDispute`,
+ * which is `payable` on the Diamond. `performAction()` routes through
+ * `coreSdk.executeMetaTransaction(...)`, which accepts any
+ * `tokenAuthStrategy` — the SDK dispatches between the bare envelope
+ * and the BPIP-12 token-transfer-authorization variant internally.
+ * When `tokenAuthStrategy !== "none"`, `tokenAuth`, `asset`, `amount`,
+ * and `maxTimeoutSeconds` are all required so the facilitator can
+ * verify the token-auth signature and cross-check the declared
+ * metadata; when it is `"none"`, all four must be omitted.
  */
-export interface FacilitatorPerformActionInput {
+interface FacilitatorPerformActionInputBase {
   network: EvmNetwork;
   escrowAddress: Address;
-  exchangeId: string;
-  action: ActionId;
   signedPayload: Hex;
-  /**
-   * Defaults to `"none"`. Only `boson-escalateDispute` accepts non-`"none"`
-   * once the BPIP-12 post-commit envelope is wired.
-   */
+  /** Defaults to `"none"`. */
   tokenAuthStrategy?: TokenAuthStrategy;
-  /** Reserved for the future BPIP-12 post-commit envelope. Omit while strategy is `"none"`. */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   tokenAuth?: BosonTokenAuth;
-  /**
-   * Reserved for the future BPIP-12 post-commit envelope. Omit while
-   * strategy is `"none"`.
-   */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   asset?: Address;
-  /**
-   * Reserved for the future BPIP-12 post-commit envelope. Omit while
-   * strategy is `"none"`.
-   */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   amount?: string;
-  /**
-   * Reserved for the future BPIP-12 post-commit envelope. Omit while
-   * strategy is `"none"`.
-   */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   maxTimeoutSeconds?: number;
 }
 
+/** Exchange-keyed variant — the default for redeem / complete / dispute family. */
+export interface FacilitatorPerformExchangeActionInput extends FacilitatorPerformActionInputBase {
+  action: ExchangeActionId;
+  exchangeId: string;
+}
+
+/**
+ * Entity-keyed variant — for actions that target a Boson account
+ * `entityId` (buyer or seller) rather than a single exchange. The only
+ * action today is `boson-withdrawFunds`.
+ */
+export interface FacilitatorPerformEntityActionInput extends FacilitatorPerformActionInputBase {
+  action: EntityActionId;
+  entityId: string;
+}
+
+/** Body of `POST /perform-action` (per spec §"Endpoints"). Discriminated on `action`. */
+export type FacilitatorPerformActionInput =
+  | FacilitatorPerformExchangeActionInput
+  | FacilitatorPerformEntityActionInput;
+
+/** Successful exchange-keyed result — pins the new exchange / dispute state. */
+export interface FacilitatorPerformExchangeActionOk {
+  ok: true;
+  txHash: Hex;
+  newExchangeState: ExchangeState;
+  newDisputeState?: DisputeState;
+}
+
+/**
+ * Successful entity-keyed result — the action doesn't transition the
+ * exchange state machine, so neither state field is reported.
+ */
+export interface FacilitatorPerformEntityActionOk {
+  ok: true;
+  txHash: Hex;
+}
+
 export type FacilitatorPerformActionResult =
-  | {
-      ok: true;
-      txHash: Hex;
-      newExchangeState: ExchangeState;
-      newDisputeState?: DisputeState;
-    }
+  | FacilitatorPerformExchangeActionOk
+  | FacilitatorPerformEntityActionOk
   | { ok: false; code: FacilitatorErrorCode; reason: string };
 
 /**

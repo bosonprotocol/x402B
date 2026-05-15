@@ -21,11 +21,7 @@ import { recoverTypedDataAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { createX402bClient } from "../src/client.js";
-import {
-  MaxAmountExceededError,
-  NotImplementedError,
-  UnsupportedTokenAuthError,
-} from "../src/errors.js";
+import { MaxAmountExceededError, UnsupportedTokenAuthError } from "../src/errors.js";
 import type { Signer } from "../src/types.js";
 
 const TEST_KEY = `0x${"42".repeat(32)}` as const;
@@ -223,11 +219,27 @@ describe("handle402 — round-trip", () => {
     expect(recovered.toLowerCase()).toBe(BUYER_ACCOUNT.address.toLowerCase());
   });
 
-  it("rejects requirements offering only boson-createOfferCommitAndRedeem with NotImplementedError", async () => {
+  it("signs Flow B when redeemMode='commit-and-redeem' and the server advertises boson-createOfferCommitAndRedeem", async () => {
     const requirements = baseRequirements();
     requirements.actions.next = [{ id: "boson-createOfferCommitAndRedeem", channels: ["server"] }];
-    const client = makeClient();
-    await expect(client.handle402(requirements)).rejects.toThrow(NotImplementedError);
+    const client = createX402bClient({
+      signer: BUYER_SIGNER,
+      tokenDomainResolver: async (asset, chainId) => ({
+        name: "USD Coin",
+        version: "2",
+        chainId,
+        verifyingContract: asset,
+      }),
+      policy: { redeemMode: "commit-and-redeem" },
+    });
+    const header = await client.handle402(requirements);
+    const decoded = parseEscrowPaymentPayload(
+      JSON.parse(Buffer.from(header, "base64").toString("utf8")),
+    );
+    expect(decoded.payload.action).toBe("boson-createOfferCommitAndRedeem");
+    expect(decoded.payload.metaTx.functionName.startsWith("createOfferCommitAndRedeem(")).toBe(
+      true,
+    );
   });
 
   it("rejects requirements that only advertise the 'none' strategy (no client-side signing)", async () => {
@@ -248,6 +260,57 @@ describe("handle402 — round-trip", () => {
     const requirements = baseRequirements();
     const client = createX402bClient({ signer: BUYER_SIGNER });
     await expect(client.handle402(requirements)).rejects.toThrow(UnsupportedTokenAuthError);
+  });
+
+  it("error message mentions tokenDomainResolver when only 'erc3009' advertised and no resolver", async () => {
+    const requirements = baseRequirements();
+    const client = createX402bClient({ signer: BUYER_SIGNER });
+    await expect(client.handle402(requirements)).rejects.toThrow(/tokenDomainResolver/);
+  });
+
+  it("falls back to Permit2 when server advertises ['erc3009','permit2'] and no tokenDomainResolver", async () => {
+    const requirements = baseRequirements();
+    requirements.tokenAuthStrategies = ["erc3009", "permit2"];
+    const client = createX402bClient({ signer: BUYER_SIGNER });
+    const header = await client.handle402(requirements);
+    const decoded = parseEscrowPaymentPayload(
+      JSON.parse(Buffer.from(header, "base64").toString("utf8")),
+    );
+
+    expect(decoded.payload.tokenAuthStrategy).toBe("permit2");
+    expect(decoded.payload.tokenAuth?.kind).toBe("permit2");
+    const tokenAuth = decoded.payload.tokenAuth?.data as Permit2AuthData;
+    expect(tokenAuth.permitted.token.toLowerCase()).toBe(requirements.asset.toLowerCase());
+    expect(tokenAuth.permitted.amount).toBe(requirements.amount);
+    expect(tokenAuth.spender.toLowerCase()).toBe(requirements.escrowAddress.toLowerCase());
+  });
+
+  it("falls back to Permit2 when server advertises ['permit','permit2'] and no PublicClient", async () => {
+    const requirements = baseRequirements();
+    requirements.tokenAuthStrategies = ["permit", "permit2"];
+    // tokenDomainResolver is provided, but no `publicClients` map — so Permit
+    // isn't usable and the picker should fall back to Permit2.
+    const client = makeClient();
+    const header = await client.handle402(requirements);
+    const decoded = parseEscrowPaymentPayload(
+      JSON.parse(Buffer.from(header, "base64").toString("utf8")),
+    );
+
+    expect(decoded.payload.tokenAuthStrategy).toBe("permit2");
+    expect(decoded.payload.tokenAuth?.kind).toBe("permit2");
+  });
+
+  it("still picks ERC-3009 first when advertised and tokenDomainResolver is configured", async () => {
+    const requirements = baseRequirements();
+    requirements.tokenAuthStrategies = ["erc3009", "permit2"];
+    const client = makeClient();
+    const header = await client.handle402(requirements);
+    const decoded = parseEscrowPaymentPayload(
+      JSON.parse(Buffer.from(header, "base64").toString("utf8")),
+    );
+
+    expect(decoded.payload.tokenAuthStrategy).toBe("erc3009");
+    expect(decoded.payload.tokenAuth?.kind).toBe("erc3009");
   });
 
   it("signs Permit2 when the server advertises only 'permit2', without tokenDomainResolver", async () => {

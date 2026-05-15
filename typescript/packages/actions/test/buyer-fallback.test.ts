@@ -1,4 +1,4 @@
-import { ACTION_IDS } from "@bosonprotocol/x402-core/state-machine";
+import { EXCHANGE_ACTION_IDS } from "@bosonprotocol/x402-core/state-machine";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,10 +9,17 @@ import {
 } from "../src/index.js";
 
 describe("BUYER_ONCHAIN_FALLBACK", () => {
-  it("has an entry for every action id", () => {
-    for (const id of ACTION_IDS) {
+  it("has an entry for every exchange-keyed action id", () => {
+    for (const id of EXCHANGE_ACTION_IDS) {
       expect(BUYER_ONCHAIN_FALLBACK[id]).toBeTypeOf("boolean");
     }
+  });
+
+  it("does not advertise an onchain fallback for entity-keyed actions", () => {
+    // Withdraw and any future entity-keyed actions are intentionally
+    // absent from the buyer fallback table; `isBuyerOnchainResilient`
+    // returns false for them.
+    expect(isBuyerOnchainResilient("boson-withdrawFunds")).toBe(false);
   });
 
   it("matches the spec table — buyer-resilient actions", () => {

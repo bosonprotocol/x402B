@@ -1,31 +1,27 @@
 // On-chain simulation pre-flight.
 //
-// We don't reach for `publicClient.simulateContract` (which would require
-// us to mirror or import the meta-tx handler's full viem-shaped ABI) —
-// instead we lean on `@bosonprotocol/x402-evm`'s envelope builders to
-// encode the outer envelope (the same calldata `settle()` will
-// broadcast), then submit it via `publicClient.call` from the relayer's
-// address. viem throws a structured error chain on revert; we walk that
-// chain looking for a `RawContractError` /
-// `ContractFunctionRevertedError` to distinguish a real on-chain revert
-// from a transport-layer failure (HTTP timeout, JSON-RPC error, …) —
-// only the former maps to `SIMULATION_REVERT`.
+// Builds the outer-envelope calldata via core-sdk's
+// `metaTx.handler.executeMetaTransaction(..., returnTxInfo: true)` (and
+// the BPIP-12 token-auth variant when an authorization queue is
+// supplied), then drives it through `publicClient.call` from the
+// relayer's address. The `"none"` path targets
+// `executeMetaTransaction`; ERC-3009 / Permit / Permit2 target
+// `executeMetaTransactionWithTokenTransferAuthorization`.
 //
-// This catches protocol-level reverts (duplicate nonce, insufficient
-// buyer balance, paused contract, …) before `settle()` spends a single
-// wei of gas.
+// viem throws a structured error chain on revert; we walk that chain
+// looking for a `RawContractError` / `ContractFunctionRevertedError` to
+// distinguish a real on-chain revert from a transport-layer failure
+// (HTTP timeout, JSON-RPC error, …) — only the former maps to
+// `SIMULATION_REVERT`.
 //
-// The BPIP-12 token-auth envelope is still deferred in
-// `@bosonprotocol/x402-evm`, so non-`"none"` strategies short-circuit to
-// `UNSUPPORTED_TOKEN_AUTH_STRATEGY` here rather than attempting to
-// simulate with an empty `tokenTransferAuthorizations` queue (which
-// would produce calldata that doesn't match what `settle()` would
-// actually broadcast once the encoder ships).
+// This catches protocol-level reverts (duplicate nonce, expired auth,
+// insufficient buyer balance, paused contract, …) before `settle()`
+// spends a single wei of gas.
 
-import { buildExecuteMetaTransactionTx, type TxRequest } from "@bosonprotocol/x402-evm/envelope";
 import type {
   Address,
   BosonMetaTx,
+  BosonTokenAuth,
   Hex,
   TokenAuthStrategy,
 } from "@bosonprotocol/x402-core/schemes/escrow";
@@ -36,6 +32,12 @@ import {
   type PublicClient,
 } from "viem";
 
+import { buildSettleCalldata } from "../internal/build-settle-calldata.js";
+import {
+  bosonTokenAuthToTransferAuthorization,
+  type TransferAuthorization,
+} from "../internal/token-auth-lift.js";
+
 import type { StepResult } from "./structural.js";
 
 export interface SimulateExecuteMetaTransactionArgs {
@@ -43,6 +45,8 @@ export interface SimulateExecuteMetaTransactionArgs {
   buyer: Address;
   metaTx: BosonMetaTx;
   tokenAuthStrategy: TokenAuthStrategy;
+  /** Required when `tokenAuthStrategy !== "none"`. */
+  tokenAuth?: BosonTokenAuth;
   publicClient: PublicClient;
   /** Relayer's EOA — used as `msg.sender` for the `eth_call` simulation. */
   relayerAddress: Address;
@@ -51,33 +55,25 @@ export interface SimulateExecuteMetaTransactionArgs {
 export async function simulateExecuteMetaTransaction(
   args: SimulateExecuteMetaTransactionArgs,
 ): Promise<StepResult> {
-  // The BPIP-12 envelope encoder is not yet shipped in
-  // `@bosonprotocol/x402-evm` and even once it does, simulating with an
-  // empty `tokenTransferAuthorizations` queue would produce calldata
-  // that doesn't match what `settle()` would broadcast — the queue must
-  // encode the buyer's signed authorization. Fail loudly until the
-  // encoder is fully wired up.
+  let transferAuthorizations: TransferAuthorization[] | undefined;
   if (args.tokenAuthStrategy !== "none") {
-    return {
-      ok: false,
-      code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY",
-      reason: `simulation for tokenAuthStrategy "${args.tokenAuthStrategy}" requires the BPIP-12 envelope builder, which is not yet shipped in @bosonprotocol/x402-evm`,
-    };
+    if (!args.tokenAuth) {
+      return {
+        ok: false,
+        code: "INVALID_PAYLOAD",
+        reason: `tokenAuthStrategy "${args.tokenAuthStrategy}" requires payload.tokenAuth but none was provided`,
+      };
+    }
+    transferAuthorizations = [bosonTokenAuthToTransferAuthorization(args.tokenAuth)];
   }
 
-  let tx: TxRequest;
+  let calldata: { to: string; data: string };
   try {
-    tx = buildExecuteMetaTransactionTx({
-      escrowAddress: args.escrowAddress as `0x${string}`,
-      userAddress: args.buyer as `0x${string}`,
-      functionName: args.metaTx.functionName,
-      functionSignature: args.metaTx.functionSignature as `0x${string}`,
-      nonce: BigInt(args.metaTx.nonce),
-      sig: {
-        r: args.metaTx.sig.r as `0x${string}`,
-        s: args.metaTx.sig.s as `0x${string}`,
-        v: args.metaTx.sig.v,
-      },
+    calldata = await buildSettleCalldata({
+      escrowAddress: args.escrowAddress,
+      userAddress: args.buyer,
+      metaTx: args.metaTx,
+      transferAuthorizations,
     });
   } catch (e) {
     return {
@@ -90,8 +86,8 @@ export async function simulateExecuteMetaTransaction(
   try {
     await args.publicClient.call({
       account: args.relayerAddress as `0x${string}`,
-      to: tx.to as `0x${string}`,
-      data: tx.data as `0x${string}`,
+      to: calldata.to as `0x${string}`,
+      data: calldata.data as `0x${string}`,
     });
     return { ok: true };
   } catch (e) {

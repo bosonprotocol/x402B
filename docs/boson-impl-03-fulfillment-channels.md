@@ -44,6 +44,8 @@ The `X-PAYMENT` payload includes:
 
 For channels where data is collected post-commit (e.g. `widget`), `fulfillment.data` is `null` in the X-PAYMENT and the actual collection happens between commit and redeem via the channel itself.
 
+For the two-step flow (`boson-createOfferAndCommit` followed later by `boson-redeem`), the buyer MAY also re-submit `fulfillment` at redeem time — see [Re-submission at redeem](#re-submission-at-redeem) below.
+
 ## `FulfillmentChannel` interface (TypeScript)
 
 ```ts
@@ -124,6 +126,22 @@ Seller adapters MUST refuse plain `http://` URLs — TLS is mandatory for the tr
 2. The chosen option's `buyerDataSchema` MUST validate `payload.fulfillment.data` (or `null` if schema is `null`).
 3. The server-side instance of the channel MUST be configured (at boot, not per-request).
 4. After commit acceptance, server calls `channel.onCommit(exchangeId, data)` BEFORE returning 200.
+
+## Re-submission at redeem
+
+In the two-step flow A (`boson-createOfferAndCommit` followed later by `boson-redeem`) the redeeming wallet is not guaranteed to be the same wallet that committed — the voucher NFT is transferable. The server tracks the committer wallet at commit time and applies the following rule at redeem:
+
+| Stored committer | Redeemer wallet | Buyer `fulfillment` field |
+|---|---|---|
+| `A` | `A` | OPTIONAL — when supplied, replaces previously stored data |
+| `A` | `B` (different) | **REQUIRED** — server rejects with `FULFILLMENT_REQUIRED_ON_WALLET_CHANGE` if absent |
+| absent (legacy / atomic) | any | no-op |
+
+When a redeem request carries `fulfillment`, `option` MUST be one of the options advertised in the original 402 for that exchange. The server runs `channel.validate(data)` and then `channel.onCommit(exchangeId, data)` — channels treat `onCommit` as an upsert. The wire shape is identical to the commit-time `fulfillment` envelope: `{ option: string, data: <schema-of-option> | null }`.
+
+Because the on-chain redeem is irreversible, servers should record a pending fulfillment update before the post-redeem channel upsert and clear it only after `onCommit` succeeds. If that upsert fails, the redeem response should still report the successful transaction and include a warning such as `FULFILLMENT_UPDATE_DEFERRED`, leaving the pending update for host-side replay/reconciliation.
+
+Flow B (`boson-createOfferCommitAndRedeem`, atomic) is unaffected — the exchange reaches `REDEEMED` in a single transaction; there is no later redeem step.
 
 ## Client-side helper
 

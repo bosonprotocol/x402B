@@ -23,13 +23,6 @@ export class NoCompatibleActionError extends Error {
   }
 }
 
-export class NotImplementedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NotImplementedError";
-  }
-}
-
 export class FulfillmentValidationError extends Error {
   constructor(message: string) {
     super(message);

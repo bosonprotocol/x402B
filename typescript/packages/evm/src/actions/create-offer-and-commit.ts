@@ -2,28 +2,30 @@
 // the "deferred-redemption" Boson action (Flow A in
 // docs/boson-impl-02-flows.md).
 //
-// This is the *inner* action a buyer authorises through a Boson meta-tx
-// envelope. The output is the `{ functionName, functionSignature }` pair
-// that goes into the meta-tx typed-data the buyer signs, as built by
-// `@bosonprotocol/x402-core/eip712`'s `metaTransactionTypedData`.
+// Returns the `{ functionName, functionSignature }` pair the buyer's
+// meta-tx typed-data is built over — same pair the on-chain
+// `MetaTransactionsHandlerFacet` recovers signatures against.
 //
-// `functionSignature` reuses `@bosonprotocol/core-sdk`'s
-// `exchanges.iface.encodeCreateOfferAndCommit` so the bytes are
-// byte-identical to what the protocol's `MetaTransactionsHandlerFacet`
-// recovers and replays on-chain.
-//
-// `functionName` is hand-pinned to the exact selector string core-sdk's
-// own `metaTx.handler.signMetaTxCreateOfferAndCommit` uses internally —
-// the EIP-712 meta-tx hash includes it as a `string`, so any byte-level
-// drift would cause the buyer's signature to recover to the wrong address
-// on-chain. Inlined rather than exported as a constant: callers that need
-// it read it back off the return value, and a stale exported constant
-// would be the easiest way to introduce drift.
+// Implementation note: rather than hand-pin the `functionName` selector
+// string and call `exchanges.iface.encodeCreateOfferAndCommit` here
+// directly, we delegate the whole pair to
+// `@bosonprotocol/core-sdk`'s `metaTx.handler.signMetaTxCreateOfferAndCommit`
+// in `returnTypedDataToSign: true` mode. That's the same helper the
+// client uses to sign, so signing and verification source the
+// `functionName` literal + `functionSignature` bytes from one place.
+// If a future SDK release changes either, both paths track the change
+// automatically.
 
-import { exchanges } from "@bosonprotocol/core-sdk";
 import type { FullOfferArgs } from "@bosonprotocol/common";
+import { metaTx } from "@bosonprotocol/core-sdk";
 import type { Hex } from "viem";
 
+import {
+  DUMMY_CHAIN_ID,
+  DUMMY_METATX_HANDLER_ADDRESS,
+  DUMMY_NONCE,
+} from "../internal/metatx-calldata-constants.js";
+import { createCalldataOnlyWeb3LibAdapter } from "../internal/web3lib-stub.js";
 import type { InnerActionCalldata } from "../types.js";
 
 export interface BuildCreateOfferAndCommitCalldataArgs {
@@ -36,18 +38,28 @@ export interface BuildCreateOfferAndCommitCalldataArgs {
   fullOffer: FullOfferArgs;
 }
 
+const STUB_CALLER_TAG = "@bosonprotocol/x402-evm:create-offer-and-commit";
+
 /**
  * Build the `{ functionName, functionSignature }` calldata pair for the
- * `createOfferAndCommit` inner action. Pass the result into
- * `@bosonprotocol/x402-core/eip712`'s `metaTransactionTypedData` to get
- * the EIP-712 typed-data the buyer signs.
+ * `createOfferAndCommit` inner action. The result feeds
+ * `@bosonprotocol/x402-core/eip712`'s `metaTransactionTypedData`
+ * builder to produce the EIP-712 typed-data the buyer signs.
  */
-export function buildCreateOfferAndCommitCalldata(
+export async function buildCreateOfferAndCommitCalldata(
   args: BuildCreateOfferAndCommitCalldataArgs,
-): InnerActionCalldata {
+): Promise<InnerActionCalldata> {
+  const result = await metaTx.handler.signMetaTxCreateOfferAndCommit({
+    web3Lib: createCalldataOnlyWeb3LibAdapter(STUB_CALLER_TAG),
+    metaTxHandlerAddress: DUMMY_METATX_HANDLER_ADDRESS,
+    chainId: DUMMY_CHAIN_ID,
+    nonce: DUMMY_NONCE,
+    createOfferAndCommitArgs: args.fullOffer,
+    returnTypedDataToSign: true,
+  });
+
   return {
-    functionName:
-      "createOfferAndCommit(((uint256,uint256,uint256,uint256,uint256,uint256,address,uint8,uint8,string,string,bool,uint256,(address[],uint256[])[],uint256),(uint256,uint256,uint256,uint256),(uint256,uint256,uint256),(uint256,address),(uint8,uint8,address,uint8,uint256,uint256,uint256,uint256),uint256,uint256,bool),address,address,bytes,uint256,(uint256,(address[],uint256[]),address))",
-    functionSignature: exchanges.iface.encodeCreateOfferAndCommit(args.fullOffer) as Hex,
+    functionName: result.functionName,
+    functionSignature: result.functionSignature as Hex,
   };
 }

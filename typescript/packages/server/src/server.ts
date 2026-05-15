@@ -1,19 +1,25 @@
 // `createX402bServer` — the per-server factory. Wires the 402
 // challenge builder + FullOffer signer (PR 1), and the convenience
-// handlers (commit, commit-and-redeem, redeem, complete, dispute/*)
-// over the facilitator HTTP client + configured `ExchangeReader`.
+// handlers (commit, commit-and-redeem, redeem, complete, dispute/*,
+// withdraw-funds, available-funds) over the facilitator HTTP client +
+// configured `ExchangeReader` and read-only core-sdk client.
 
+import { CoreSDK } from "@bosonprotocol/core-sdk";
 import type { UnsignedFullOffer } from "@bosonprotocol/x402-core/eip712";
 import type {
+  Address,
   BosonOfferRef,
   EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+
+import { createReadOnlyWeb3LibStub } from "./onchain/web3lib-read-stub.js";
 
 import { buildPaymentRequirements } from "./challenge/build-requirements.js";
 import { signFullOffer } from "./challenge/sign-full-offer.js";
 import {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
+  type RedeemFulfillmentUpdate,
   type X402bServerConfig,
 } from "./config.js";
 import { createFacilitatorClient, type FacilitatorClient } from "./facilitator/client.js";
@@ -25,14 +31,23 @@ import {
   handleDisputeRaise,
   handleDisputeResolve,
   handleDisputeRetract,
+  handleGetAvailableFunds,
   handleRedeem,
+  handleWithdrawFunds,
+  type AvailableFundsBody,
+  type AvailableFundsQuery,
   type CommitHandlerInput,
   type CommitOk,
   type HandlerResult,
   type PerformActionInput,
   type PerformActionOk,
+  type PlainHandlerResult,
+  type RedeemHandlerInput,
+  type WithdrawFundsInput,
+  type WithdrawFundsOk,
 } from "./handlers/index.js";
 import { stampFacilitatorEndpoints } from "./internal/facilitator-endpoints.js";
+import { asCoreSdkReadAdapter, type CoreSdkReadAdapter } from "./onchain/core-sdk-read.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
 
 /** Per-offer inputs for `server.buildPaymentRequirements` — everything the offer-level args carry, minus the per-server context the factory already holds. */
@@ -60,12 +75,14 @@ export interface X402bServer {
   readonly handlers: {
     commit(input: CommitHandlerInput): Promise<HandlerResult<CommitOk>>;
     commitAndRedeem(input: CommitHandlerInput): Promise<HandlerResult<CommitOk>>;
-    redeem(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
+    redeem(input: RedeemHandlerInput): Promise<HandlerResult<PerformActionOk>>;
     complete(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
     disputeRaise(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
     disputeResolve(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
     disputeRetract(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
     disputeEscalate(input: PerformActionInput): Promise<HandlerResult<PerformActionOk>>;
+    withdrawFunds(input: WithdrawFundsInput): Promise<PlainHandlerResult<WithdrawFundsOk>>;
+    getAvailableFunds(query: AvailableFundsQuery): Promise<PlainHandlerResult<AvailableFundsBody>>;
   };
 }
 
@@ -93,6 +110,17 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   assertChannelRegistryEscrowMatch(validated);
 
   const facilitator = createFacilitatorClient({ url: validated.facilitator.url });
+  // Default to a fresh in-memory store when the host doesn't supply
+  // one. Single shared reference for the lifetime of this server — so
+  // commit-time writes and redeem-time reads observe the same Map.
+  const exchangeBuyerStore: Map<string, Address> = validated.exchangeBuyerStore ?? new Map();
+  const exchangeFulfillmentOptionStore: Map<string, readonly string[]> =
+    validated.exchangeFulfillmentOptionStore ?? new Map();
+  const redeemFulfillmentUpdateStore: Map<string, RedeemFulfillmentUpdate> =
+    validated.redeemFulfillmentUpdateStore ?? new Map();
+  validated.exchangeBuyerStore = exchangeBuyerStore;
+  validated.exchangeFulfillmentOptionStore = exchangeFulfillmentOptionStore;
+  validated.redeemFulfillmentUpdateStore = redeemFulfillmentUpdateStore;
 
   const signOffer = (unsigned: UnsignedFullOffer): Promise<BosonOfferRef> =>
     signFullOffer({
@@ -109,6 +137,32 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
       );
     }
     return validated.exchangeReader;
+  };
+
+  // Lazy-memoised read-only core-sdk. The construction itself is cheap
+  // but happens on every `handlers.withdrawFunds()` /
+  // `handlers.getAvailableFunds()` call — caching the adapter keeps the
+  // hot path allocation-free and shares one subgraph client across
+  // requests. `validated.coreSdkRead`, when supplied by the host, is
+  // already shared.
+  let cachedCoreSdkRead: CoreSdkReadAdapter | undefined;
+  const requireCoreSdkRead = (action: string): CoreSdkReadAdapter => {
+    if (validated.coreSdkRead !== undefined) return validated.coreSdkRead;
+    if (cachedCoreSdkRead !== undefined) return cachedCoreSdkRead;
+    if (validated.subgraphUrl === undefined) {
+      throw new Error(
+        `x402-server: handlers.${action}() requires either \`coreSdkRead\` or \`subgraphUrl\` in config (subgraph read step).`,
+      );
+    }
+    cachedCoreSdkRead = asCoreSdkReadAdapter(
+      new CoreSDK({
+        web3Lib: createReadOnlyWeb3LibStub(),
+        subgraphUrl: validated.subgraphUrl,
+        protocolDiamond: validated.escrow,
+        chainId: validated.chainId,
+      }),
+    );
+    return cachedCoreSdkRead;
   };
 
   return {
@@ -137,18 +191,25 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("commit"),
+          exchangeBuyerStore,
+          exchangeFulfillmentOptionStore,
         }),
       commitAndRedeem: async (input) =>
         handleCommitAndRedeem(input, {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("commitAndRedeem"),
+          exchangeBuyerStore,
+          exchangeFulfillmentOptionStore,
         }),
       redeem: async (input) =>
         handleRedeem(input, {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("redeem"),
+          exchangeBuyerStore,
+          exchangeFulfillmentOptionStore,
+          redeemFulfillmentUpdateStore,
         }),
       complete: async (input) =>
         handleComplete(input, {
@@ -179,6 +240,16 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("disputeEscalate"),
+        }),
+      withdrawFunds: async (input) =>
+        handleWithdrawFunds(input, {
+          config: validated,
+          facilitator,
+          coreSdkRead: requireCoreSdkRead("withdrawFunds"),
+        }),
+      getAvailableFunds: async (query) =>
+        handleGetAvailableFunds(query, {
+          coreSdkRead: requireCoreSdkRead("getAvailableFunds"),
         }),
     },
   };

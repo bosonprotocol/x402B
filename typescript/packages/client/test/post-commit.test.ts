@@ -104,6 +104,51 @@ describe("signAction — simple post-commit actions", () => {
   });
 });
 
+describe("signWithdrawFunds — entity-keyed withdraw", () => {
+  const ENTITY_ID = "77";
+  const TOKEN_A = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" as const;
+  const TOKEN_B = "0xffffffffffffffffffffffffffffffffffffffff" as const;
+
+  it("signs a withdrawFunds meta-tx with caller-supplied token list + amounts", async () => {
+    const client = makeClient();
+    const { metaTx, signedPayload, entityId, tokenList, tokenAmounts } =
+      await client.signWithdrawFunds({
+        entityId: ENTITY_ID,
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        tokenList: [TOKEN_A, TOKEN_B],
+        tokenAmounts: ["100", "200"],
+      });
+
+    expect(metaTx.from.toLowerCase()).toBe(BUYER_ACCOUNT.address.toLowerCase());
+    expect(metaTx.functionName).toBe("withdrawFunds(uint256,address[],uint256[])");
+    expect(metaTx.functionSignature.startsWith("0x")).toBe(true);
+    expect(entityId).toBe(ENTITY_ID);
+    expect(tokenList).toEqual([TOKEN_A, TOKEN_B]);
+    expect(tokenAmounts).toEqual(["100", "200"]);
+
+    // Round-trip through the shared codec — same wire-format contract
+    // as the exchange-keyed post-commit actions.
+    const decoded = decodeSignedPayload(signedPayload);
+    expect(decoded.from.toLowerCase()).toBe(metaTx.from.toLowerCase());
+    expect(decoded.functionName).toBe(metaTx.functionName);
+    expect(decoded.functionSignature).toBe(metaTx.functionSignature);
+  });
+
+  it("rejects mismatched tokenList / tokenAmounts lengths", async () => {
+    const client = makeClient();
+    await expect(
+      client.signWithdrawFunds({
+        entityId: ENTITY_ID,
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        tokenList: [TOKEN_A, TOKEN_B],
+        tokenAmounts: ["100"],
+      }),
+    ).rejects.toThrow(/same length/);
+  });
+});
+
 describe("signAction — boson-resolveDispute", () => {
   it("threads buyerPercent and counterpartySig through to the meta-tx", async () => {
     const client = makeClient();

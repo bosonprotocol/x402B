@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ACTION_IDS,
   clientLegalActions,
   DisputeState,
+  EXCHANGE_ACTION_IDS,
   ExchangeState,
   isLegalTransition,
   legalActions,
@@ -55,13 +55,11 @@ describe("clientLegalActions — buyer-side, spec-pinned shape", () => {
     ).toEqual([]);
   });
 
-  it("DISPUTED + post-settlement dispute states have no further buyer actions", () => {
-    for (const dispute of [
-      DisputeState.RESOLVED,
-      DisputeState.RETRACTED,
-      DisputeState.DECIDED,
-      DisputeState.REFUSED,
-    ]) {
+  it("DISPUTED + RESOLVED only offers withdraw (other post-settlement states have no buyer actions)", () => {
+    expect(
+      clientLegalActions({ exchange: ExchangeState.DISPUTED, dispute: DisputeState.RESOLVED }),
+    ).toEqual(["boson-withdrawFunds"]);
+    for (const dispute of [DisputeState.RETRACTED, DisputeState.DECIDED, DisputeState.REFUSED]) {
       expect(clientLegalActions({ exchange: ExchangeState.DISPUTED, dispute })).toEqual([]);
     }
   });
@@ -105,10 +103,12 @@ describe("serverLegalActions — seller-side", () => {
     }
   });
 
-  it("dispute states beyond RESOLVING admit no server actions", () => {
+  it("dispute states beyond RESOLVING admit only the withdraw carve-out (RESOLVED) or nothing", () => {
+    expect(
+      serverLegalActions({ exchange: ExchangeState.DISPUTED, dispute: DisputeState.RESOLVED }),
+    ).toEqual(["boson-withdrawFunds"]);
     for (const dispute of [
       DisputeState.ESCALATED,
-      DisputeState.RESOLVED,
       DisputeState.RETRACTED,
       DisputeState.DECIDED,
       DisputeState.REFUSED,
@@ -159,7 +159,7 @@ describe("legalActions(side) parametrized form", () => {
 });
 
 describe("legalActions — coverage", () => {
-  it("every ActionId is reachable from at least one state on at least one side", () => {
+  it("every exchange-keyed ActionId is reachable from at least one state on at least one side", () => {
     const reachable = new Set<string>();
     const states = [
       PRE_COMMIT,
@@ -171,9 +171,34 @@ describe("legalActions — coverage", () => {
       for (const id of clientLegalActions(state)) reachable.add(id);
       for (const id of serverLegalActions(state)) reachable.add(id);
     }
-    for (const id of ACTION_IDS) {
+    for (const id of EXCHANGE_ACTION_IDS) {
       expect(reachable.has(id)).toBe(true);
     }
+  });
+
+  it("entity-keyed actions are intentionally absent from non-terminal in-flight states", () => {
+    // Withdraw funds is carved into the `(DISPUTED, RESOLVED)` row
+    // (see the next test) — checked separately. Everywhere else
+    // entity-keyed actions stay out of the exchange transition tables.
+    const states = [
+      PRE_COMMIT,
+      { exchange: ExchangeState.COMMITTED },
+      { exchange: ExchangeState.REDEEMED },
+      { exchange: ExchangeState.DISPUTED, dispute: DisputeState.RESOLVING },
+    ] as const;
+    for (const state of states) {
+      expect(clientLegalActions(state)).not.toContain("boson-withdrawFunds");
+      expect(serverLegalActions(state)).not.toContain("boson-withdrawFunds");
+    }
+  });
+
+  it("offers boson-withdrawFunds to both sides once the dispute is RESOLVED", () => {
+    const state = {
+      exchange: ExchangeState.DISPUTED,
+      dispute: DisputeState.RESOLVED,
+    } as const;
+    expect(clientLegalActions(state)).toContain("boson-withdrawFunds");
+    expect(serverLegalActions(state)).toContain("boson-withdrawFunds");
   });
 });
 
@@ -254,7 +279,7 @@ describe("isLegalTransition", () => {
       ExchangeState.COMPLETED,
       ExchangeState.REVOKED,
     ]) {
-      for (const id of ACTION_IDS) {
+      for (const id of EXCHANGE_ACTION_IDS) {
         expect(isLegalTransition({ exchange }, id, "client")).toBe(false);
         expect(isLegalTransition({ exchange }, id, "server")).toBe(false);
       }

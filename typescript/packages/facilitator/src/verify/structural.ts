@@ -11,10 +11,11 @@ import {
 import {
   buildCreateOfferAndCommitCalldata,
   buildCreateOfferCommitAndRedeemCalldata,
-  NotYetSupportedError,
 } from "@bosonprotocol/x402-evm/actions";
 
 import type { FacilitatorErrorCode } from "../types.js";
+
+type CalldataFullOffer = Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"];
 
 /**
  * Structured result form used by every verify-step helper. Lets callers
@@ -136,22 +137,22 @@ export function validateOfferRefMatchesRequirements(input: {
 }
 
 /** Confirm the signed inner calldata matches the action + offer requirements. */
-export function validateMetaTxCalldataMatchesRequirements(input: {
+export async function validateMetaTxCalldataMatchesRequirements(input: {
   payload: EscrowPaymentPayload;
   requirements: EscrowPaymentRequirements;
-}): StepResult {
+}): Promise<StepResult> {
   const inner = input.payload.payload;
   const fullOffer = withSellerSignature(
     input.requirements.offer.fullOffer,
     input.requirements.offer.sellerSig,
-  );
+  ) as CalldataFullOffer;
 
   try {
     const expected =
       inner.action === "boson-createOfferAndCommit"
-        ? buildCreateOfferAndCommitCalldata({ fullOffer })
+        ? await buildCreateOfferAndCommitCalldata({ fullOffer })
         : inner.action === "boson-createOfferCommitAndRedeem"
-          ? buildCreateOfferCommitAndRedeemCalldata({ fullOffer })
+          ? await buildCreateOfferCommitAndRedeemCalldata({ fullOffer })
           : undefined;
 
     if (!expected) {
@@ -178,13 +179,6 @@ export function validateMetaTxCalldataMatchesRequirements(input: {
     }
     return { ok: true };
   } catch (e) {
-    if (e instanceof NotYetSupportedError) {
-      return {
-        ok: false,
-        code: "UNSUPPORTED_ACTION",
-        reason: e.message,
-      };
-    }
     return {
       ok: false,
       code: "INVALID_PAYLOAD",

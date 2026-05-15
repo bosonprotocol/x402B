@@ -1,4 +1,5 @@
 import { metaTransactionTypedData } from "@bosonprotocol/x402-core/eip712";
+import { permit2TypedData } from "@bosonprotocol/x402-core/eip712/token-auth";
 import { ACTION_POST_STATE, type ActionId } from "@bosonprotocol/x402-core/state-machine";
 import { describe, expect, it } from "vitest";
 import {
@@ -27,10 +28,42 @@ const RELAYER_PK = "0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876
 const relayer = privateKeyToAccount(RELAYER_PK);
 
 const ESCROW: Address = "0xdddddddddddddddddddddddddddddddddddddddd";
+const ASSET: Address = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const AMOUNT = "100";
 const CHAIN_ID = 1;
 const NETWORK = `eip155:${CHAIN_ID}`;
 const TX_HASH: Hex = `0x${"ab".repeat(32)}`;
 const EXCHANGE_ID = "42";
+
+/**
+ * Build a Permit2 token-auth payload signed by the buyer for the
+ * configured ASSET / AMOUNT / ESCROW. Permit2 uses Uniswap's canonical
+ * EIP-712 domain, so no token-domain lookup against `publicClient` is
+ * needed — the verifier can resolve the signer purely off-chain.
+ */
+async function buildValidPermit2TokenAuth(
+  deadline: number = Math.floor(Date.now() / 1000) + 300,
+  signer = buyer,
+) {
+  const message = {
+    permitted: { token: ASSET, amount: BigInt(AMOUNT) },
+    spender: ESCROW,
+    nonce: 0n,
+    deadline: BigInt(deadline),
+  };
+  const typedData = permit2TypedData({ chainId: CHAIN_ID, message });
+  const signature = await signer.signTypedData(typedData);
+  return {
+    kind: "permit2" as const,
+    data: {
+      permitted: { token: ASSET, amount: AMOUNT },
+      spender: ESCROW,
+      nonce: "0",
+      deadline,
+      signature,
+    },
+  };
+}
 
 const POST_COMMIT_ABI = parseAbi([
   "function redeemVoucher(uint256 exchangeId)",
@@ -41,7 +74,23 @@ const POST_COMMIT_ABI = parseAbi([
   "function resolveDispute(uint256 exchangeId, uint256 buyerPercent, bytes counterpartySig)",
   "function escalateDispute(uint256 exchangeId)",
   "function retractDispute(uint256 exchangeId)",
+  "function withdrawFunds(uint256 entityId, address[] tokenList, uint256[] tokenAmounts)",
 ]);
+
+const ENTITY_ID = "99";
+const TOKEN_LIST: Address[] = [
+  "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "0xffffffffffffffffffffffffffffffffffffffff",
+];
+const TOKEN_AMOUNTS = [123n, 456n] as const;
+
+function buildWithdrawCalldata(entityId = ENTITY_ID): Hex {
+  return encodeFunctionData({
+    abi: POST_COMMIT_ABI,
+    functionName: "withdrawFunds",
+    args: [BigInt(entityId), TOKEN_LIST, [...TOKEN_AMOUNTS]],
+  });
+}
 
 function buildPostCommitCalldata(functionName: string, exchangeId = EXCHANGE_ID): Hex {
   switch (functionName) {
@@ -479,9 +528,10 @@ describe("performAction()", () => {
     });
   });
 
-  it("rejects non-'none' tokenAuthStrategy before token-auth validation", async () => {
-    // BPIP-12 perform-action envelopes are not wired yet. Fail with the
-    // stable unsupported-strategy code before token-auth signature/RPC work.
+  it("rejects when tokenAuth signature is structurally invalid for the declared strategy", async () => {
+    // Any non-"none" strategy now routes through verifyTokenAuthSignature.
+    // A bogus all-zero permit2 signature recovers a non-matching signer
+    // and surfaces as BAD_TOKEN_AUTH_SIGNATURE before any RPC work.
     const signedPayload = await buildSignedPayload({ functionName: "redeemVoucher(uint256)" });
     const result = await performAction(
       {
@@ -494,20 +544,71 @@ describe("performAction()", () => {
         tokenAuth: {
           kind: "permit2",
           data: {
-            permitted: { token: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", amount: "100" },
+            permitted: { token: ASSET, amount: AMOUNT },
             spender: ESCROW,
             nonce: "0",
             deadline: Math.floor(Date.now() / 1000) + 300,
             signature: `0x${"00".repeat(65)}`,
           },
         },
-        asset: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-        amount: "100",
+        asset: ASSET,
+        amount: AMOUNT,
         maxTimeoutSeconds: 3600,
       },
       buildConfig(),
     );
-    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY" });
+    expect(result).toMatchObject({ ok: false, code: "BAD_TOKEN_AUTH_SIGNATURE" });
+  });
+
+  it("rejects when a non-'none' strategy is requested but token-auth fields are missing", async () => {
+    const signedPayload = await buildSignedPayload({ functionName: "redeemVoucher(uint256)" });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-redeem",
+        signedPayload,
+        tokenAuthStrategy: "permit2",
+        // tokenAuth / asset / amount / maxTimeoutSeconds all omitted —
+        // the strategy mandates them, so the request must be rejected.
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(
+      /requires tokenAuth, asset, amount, maxTimeoutSeconds/i,
+    );
+  });
+
+  it("rejects when tokenAuth.kind does not match the declared tokenAuthStrategy", async () => {
+    const signedPayload = await buildSignedPayload({ functionName: "redeemVoucher(uint256)" });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        exchangeId: EXCHANGE_ID,
+        action: "boson-redeem",
+        signedPayload,
+        tokenAuthStrategy: "permit",
+        tokenAuth: {
+          kind: "permit2",
+          data: {
+            permitted: { token: ASSET, amount: AMOUNT },
+            spender: ESCROW,
+            nonce: "0",
+            deadline: Math.floor(Date.now() / 1000) + 300,
+            signature: `0x${"00".repeat(65)}`,
+          },
+        },
+        asset: ASSET,
+        amount: AMOUNT,
+        maxTimeoutSeconds: 3600,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(/must match/i);
   });
 
   it("rejects when tokenAuth is present but strategy is 'none'", async () => {
@@ -560,13 +661,111 @@ describe("performAction()", () => {
     expect((result as { ok: false; reason: string }).reason).toMatch(/must be omitted/i);
   });
 
-  it("escalateDispute with tokenAuthStrategy 'permit2' returns UNSUPPORTED_TOKEN_AUTH_STRATEGY", async () => {
+  it("happy path: withdrawFunds returns just txHash (no exchange-state transition)", async () => {
     const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "withdrawFunds(uint256,address[],uint256[])",
+      functionSignature: buildWithdrawCalldata(),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: ENTITY_ID,
+        action: "boson-withdrawFunds",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toEqual({ ok: true, txHash: TX_HASH });
+  });
+
+  it("withdrawFunds rejects token-auth strategies other than none", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "withdrawFunds(uint256,address[],uint256[])",
+      functionSignature: buildWithdrawCalldata(),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: ENTITY_ID,
+        action: "boson-withdrawFunds",
+        signedPayload,
+        tokenAuthStrategy: "permit2",
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(
+      /requires tokenAuthStrategy "none"/i,
+    );
+  });
+
+  it("withdrawFunds rejects when entityId does not match the signed calldata", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "withdrawFunds(uint256,address[],uint256[])",
+      functionSignature: buildWithdrawCalldata("100"),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: ENTITY_ID,
+        action: "boson-withdrawFunds",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("withdrawFunds rejects when entityId is not a uint256 decimal", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "withdrawFunds(uint256,address[],uint256[])",
+      functionSignature: buildWithdrawCalldata(),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: "0xabc",
+        action: "boson-withdrawFunds",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("withdrawFunds rejects when functionName does not match", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "redeemVoucher(uint256)",
+      functionSignature: buildPostCommitCalldata("redeemVoucher(uint256)"),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: ENTITY_ID,
+        action: "boson-withdrawFunds",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("happy path: escalateDispute with a valid permit2 tokenAuth submits the BPIP-12 envelope", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: buyer,
       functionName: "escalateDispute(uint256)",
     });
-    const ASSET = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" as `0x${string}`;
-    const AMOUNT = "100";
-    const deadline = Math.floor(Date.now() / 1000) + 300;
+    const tokenAuth = await buildValidPermit2TokenAuth();
     const result = await performAction(
       {
         network: NETWORK,
@@ -575,23 +774,19 @@ describe("performAction()", () => {
         action: "boson-escalateDispute",
         signedPayload,
         tokenAuthStrategy: "permit2",
-        tokenAuth: {
-          kind: "permit2",
-          data: {
-            permitted: { token: ASSET, amount: AMOUNT },
-            spender: ESCROW,
-            nonce: "0",
-            deadline,
-            signature: `0x${"00".repeat(65)}`,
-          },
-        },
+        tokenAuth,
         asset: ASSET,
         amount: AMOUNT,
         maxTimeoutSeconds: 3600,
       },
       buildConfig(),
     );
-    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY" });
+    expect(result).toEqual({
+      ok: true,
+      txHash: TX_HASH,
+      newExchangeState: ACTION_POST_STATE["boson-escalateDispute"].exchange,
+      newDisputeState: ACTION_POST_STATE["boson-escalateDispute"].dispute,
+    });
   });
 });
 

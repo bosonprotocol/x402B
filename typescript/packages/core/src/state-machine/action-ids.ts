@@ -1,10 +1,24 @@
-// Stable action-id constants for Boson exchange + dispute transitions.
+// Stable action-id constants for Boson exchange + dispute + funds transitions.
 //
 // Source of truth: docs/boson-impl-04-state-machine-and-next-actions.md §"Action IDs".
 // All Boson-specific ids carry the `boson-` prefix so the `escrow` scheme
 // can later host other escrow implementations without collision; clients
 // that don't recognize an action's prefix MUST skip it rather than
 // dispatch.
+//
+// Two flavours of action id live here:
+//
+// 1. **Exchange-keyed actions** (`EXCHANGE_ACTION_IDS`) — the bulk of
+//    the list. Each invocation operates on a single `exchangeId`, has a
+//    well-defined pre/post state pair (see `ACTION_POST_STATE`), and is
+//    eligible for the `nextActions.next[]` envelope built by
+//    `@bosonprotocol/x402-actions`.
+// 2. **Entity-keyed actions** (`ENTITY_ACTION_IDS`) — invocations that
+//    target a Boson account `entityId` (buyer or seller) rather than a
+//    specific exchange. They do not transition the exchange state
+//    machine and are deliberately absent from `next[]`; they expose
+//    their own server endpoints (e.g. `POST /x402B/withdraw-funds`).
+//    See spec doc §"Entity-keyed actions".
 //
 // Scope: actions either the client (buyer) OR the server (seller) can
 // invoke. The buyer/seller split lives in `./transitions.ts` —
@@ -30,7 +44,12 @@ import { DisputeState, ExchangeState } from "./states.js";
 /** Prefix used by every Boson-side action id. */
 export const ACTION_ID_PREFIX = "boson-" as const;
 
-export const ACTION_IDS = [
+/**
+ * Actions tied to the exchange / dispute state machine. Each entry has a
+ * deterministic `ACTION_POST_STATE` entry and is consumed by
+ * `@bosonprotocol/x402-actions` when deriving `next[]`.
+ */
+export const EXCHANGE_ACTION_IDS = [
   "boson-createOfferAndCommit",
   "boson-createOfferCommitAndRedeem",
   "boson-redeem",
@@ -43,7 +62,32 @@ export const ACTION_IDS = [
   "boson-retractDispute",
 ] as const;
 
-export type ActionId = (typeof ACTION_IDS)[number];
+export type ExchangeActionId = (typeof EXCHANGE_ACTION_IDS)[number];
+
+/**
+ * Actions targeting a Boson account `entityId` (buyer or seller) rather
+ * than a specific exchange. They live alongside the exchange-keyed set
+ * for naming / prefix reasons but follow a separate dispatch path: a
+ * dedicated convenience endpoint per action, no `ACTION_POST_STATE`
+ * entry, and no representation in `nextActions.next[]`.
+ */
+export const ENTITY_ACTION_IDS = ["boson-withdrawFunds"] as const;
+
+export type EntityActionId = (typeof ENTITY_ACTION_IDS)[number];
+
+export const ACTION_IDS = [
+  ...EXCHANGE_ACTION_IDS,
+  ...ENTITY_ACTION_IDS,
+] as const satisfies readonly (ExchangeActionId | EntityActionId)[];
+
+export type ActionId = ExchangeActionId | EntityActionId;
+
+const ENTITY_ACTION_SET = new Set<string>(ENTITY_ACTION_IDS);
+
+/** Type guard — `true` iff `action` targets an `entityId` rather than an `exchangeId`. */
+export function isEntityKeyedAction(action: string): action is EntityActionId {
+  return ENTITY_ACTION_SET.has(action);
+}
 
 /**
  * The post-state of an exchange (and its dispute, if applicable) after the
@@ -54,13 +98,16 @@ export type ActionId = (typeof ACTION_IDS)[number];
  * Some transitions terminate via dispute settlement and the exchange may
  * remain `DISPUTED` while the `Dispute` entity moves on — that's modeled
  * here by setting both `exchange` and `dispute`.
+ *
+ * Keyed by `ExchangeActionId`: entity-keyed actions have no exchange
+ * post-state and intentionally do not appear here.
  */
 export interface ActionPostState {
   exchange: ExchangeState;
   dispute?: DisputeState;
 }
 
-export const ACTION_POST_STATE: Record<ActionId, ActionPostState> = {
+export const ACTION_POST_STATE: Record<ExchangeActionId, ActionPostState> = {
   "boson-createOfferAndCommit": { exchange: ExchangeState.COMMITTED },
   "boson-createOfferCommitAndRedeem": { exchange: ExchangeState.REDEEMED },
   "boson-redeem": { exchange: ExchangeState.REDEEMED },
@@ -96,13 +143,13 @@ export const ACTION_POST_STATE: Record<ActionId, ActionPostState> = {
  * - `boson-createOfferAndCommit` lives on `ExchangeCommitFacet` (the
  *   deferred-redeem entry point per spec doc 04).
  * - `boson-createOfferCommitAndRedeem` lives on
- *   `OrchestrationHandlerFacet2` (the atomic-redeem entry point added
- *   in boson-protocol-contracts PR #1105).
+ *   `OrchestrationHandlerFacet2` (the atomic-redeem entry point).
  * - `boson-redeem`, `boson-cancelVoucher`, `boson-revokeVoucher`, and
  *   `boson-completeExchange` are exchange-lifecycle methods on
  *   `ExchangeHandlerFacet`.
  * - All four dispute transitions (`raise` / `resolve` / `escalate` /
  *   `retract`) live on `DisputeHandlerFacet`.
+ * - `boson-withdrawFunds` lives on `FundsHandlerFacet`.
  *
  * The keys are intentionally exhaustive over `ActionId` so adding a
  * new action id at compile time forces a paired facet entry.
@@ -118,4 +165,5 @@ export const ACTION_FACETS: Record<ActionId, string> = {
   "boson-resolveDispute": "DisputeHandlerFacet",
   "boson-escalateDispute": "DisputeHandlerFacet",
   "boson-retractDispute": "DisputeHandlerFacet",
+  "boson-withdrawFunds": "FundsHandlerFacet",
 };

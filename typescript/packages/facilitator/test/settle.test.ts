@@ -20,7 +20,6 @@ import type { FacilitatorConfig } from "../src/types.js";
 import {
   buildValidPayload,
   buildValidRequirements,
-  buyer,
   CHAIN_ID,
   ESCROW,
   NETWORK,
@@ -230,10 +229,10 @@ describe("settle()", () => {
   // The non-"none" token-auth path through settle requires a real
   // signed Permit / ERC-3009 / Permit2 payload AND a working
   // publicClient.readContract for the token-domain lookup. We exercise
-  // verify's signature-recovery on its own in verify.test.ts and the
-  // UNSUPPORTED_TOKEN_AUTH_STRATEGY mapping in the `buildSettleEnvelope`
-  // describe block below — together they cover the path without a real
-  // anvil fork.
+  // verify's signature-recovery on its own in verify.test.ts (including
+  // the happy-path BPIP-12 simulation for Permit2) and the
+  // `buildSettleEnvelope` describe block below covers the calldata-build
+  // side without a real anvil fork.
 
   it("returns ONCHAIN_REVERT when receipt status is reverted", async () => {
     const payload = await buildValidPayload();
@@ -301,45 +300,5 @@ describe("settle()", () => {
       config,
     );
     expect(result).toMatchObject({ ok: false, code: "INSUFFICIENT_FUNDS_FOR_GAS" });
-  });
-});
-
-describe("buildSettleEnvelope", () => {
-  it("returns UNSUPPORTED_TOKEN_AUTH_STRATEGY for non-none strategies", async () => {
-    const { buildSettleEnvelope } = await import("../src/settle/build-envelope.js");
-    const result = buildSettleEnvelope({
-      escrowAddress: ESCROW,
-      buyer: buyer.address,
-      metaTx: {
-        from: buyer.address,
-        nonce: "1",
-        functionName: "foo()",
-        functionSignature: "0xdeadbeef",
-        sig: { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
-      },
-      strategy: "erc3009",
-    });
-    expect(result).toMatchObject({ ok: false, code: "UNSUPPORTED_TOKEN_AUTH_STRATEGY" });
-  });
-
-  it("returns a TxRequest for tokenAuthStrategy 'none'", async () => {
-    const { buildSettleEnvelope } = await import("../src/settle/build-envelope.js");
-    const result = buildSettleEnvelope({
-      escrowAddress: ESCROW,
-      buyer: buyer.address,
-      metaTx: {
-        from: buyer.address,
-        nonce: "1",
-        functionName: "foo()",
-        functionSignature: "0xdeadbeef",
-        sig: { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
-      },
-      strategy: "none",
-    });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.tx.to).toBe(ESCROW);
-      expect(result.tx.data.startsWith("0x")).toBe(true);
-    }
   });
 });

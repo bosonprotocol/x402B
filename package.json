@@ -6,11 +6,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bosonprotocol/x402b.git"
+    "url": "https://github.com/bosonprotocol/x402B.git"
   },
-  "homepage": "https://github.com/bosonprotocol/x402b",
+  "homepage": "https://github.com/bosonprotocol/x402B",
   "bugs": {
-    "url": "https://github.com/bosonprotocol/x402b/issues"
+    "url": "https://github.com/bosonprotocol/x402B/issues"
   },
   "engines": {
     "node": ">=22"
@@ -37,14 +37,5 @@
     "turbo": "^2.3.3",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
-  },
-  "pnpm": {
-    "packageExtensions": {
-      "@bosonprotocol/core-sdk": {
-        "dependencies": {
-          "@ethersproject/random": "^5.8.0"
-        }
-      }
-    }
   }
 }

@@ -11,27 +11,28 @@ for the wire format.
 
 ## Status
 
-**Functional for `tokenAuthStrategy: "none"`.** All three library
-functions (`verify`, `settle`, `performAction`) are wired up:
+**`verify`, `settle`, and `performAction` support every
+`tokenAuthStrategy` (`none`, `erc3009`, `permit`, `permit2`).** All three
+library functions are wired up:
 
 - `verify()` — structural validation, EIP-712 signature recovery for
   the buyer's meta-tx and (for non-`"none"`) the token-auth payload,
   plus an on-chain `eth_call` simulation pre-flight.
-- `settle()` — calls `verify`, builds the
-  `executeMetaTransaction(...)` envelope via `@bosonprotocol/x402-evm`,
-  submits via the configured `WalletClient`, awaits the receipt, and
+- `settle()` — calls `verify`, lifts any buyer-signed token-auth payload
+  into core-sdk's `transferAuthorizations` queue, submits via
+  `coreSdk.executeMetaTransaction(...)`, awaits the receipt, and
   extracts `exchangeId` from the `BuyerCommitted` event.
 - `performAction()` — same envelope + submit path for the eight
   post-commit transitions (redeem / complete / cancel / revoke / raise
-  / retract / escalate / resolve dispute); returns the predicted
-  `newExchangeState` / `newDisputeState` from the static
+  / retract / escalate / resolve dispute), including BPIP-12
+  token-auth variants when `tokenAuthStrategy !== "none"`; returns the
+  predicted `newExchangeState` / `newDisputeState` from the static
   `ACTION_POST_STATE` table so callers can update local state without a
   subgraph round-trip.
 
-The BPIP-12 token-auth queue path (`erc3009` / `permit` / `permit2`)
-surfaces as `UNSUPPORTED_TOKEN_AUTH_STRATEGY` until
-`@bosonprotocol/x402-evm` ships the encoder. The atomic
-`boson-createOfferCommitAndRedeem` action is similarly blocked.
+Both commit-time actions (`boson-createOfferAndCommit` and
+`boson-createOfferCommitAndRedeem`) are supported in `verify` and
+`settle`.
 
 ## What it does
 
@@ -58,9 +59,12 @@ The facilitator's responsibilities are:
 1. **Validate** — structural shape, scheme/network/action match, signature
    recovery, offer/calldata consistency, token-auth constraints, and
    on-chain simulation pre-flight.
-2. **Submit** — wrap the buyer's signed meta-tx in
-   `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`, send via
-   the configured viem `WalletClient`, await the receipt.
+2. **Submit** — pass the signed meta-tx through
+   `coreSdk.executeMetaTransaction(...)`, which chooses the bare
+   `executeMetaTransaction(...)` entrypoint or the BPIP-12
+   `executeMetaTransactionWithTokenTransferAuthorization(...)` entrypoint
+   based on whether `transferAuthorizations` is non-empty. The configured
+   viem `WalletClient` pays gas through the relayer adapter.
 3. **Relay post-commit transitions** — same envelope, same submit path,
    for `redeem` / `complete` / `cancel` / `revoke` / `raise` / `retract` /
    `escalate` / `resolve` dispute.

@@ -356,8 +356,8 @@ function withRequiredEmailFulfillment<T extends { fulfillment?: unknown }>(requi
   };
 }
 
-describe("validatePaymentPayload — unsupported calldata builders", () => {
-  it("rule 7 — fails closed for `boson-createOfferCommitAndRedeem` until its builder lands", async () => {
+describe("validatePaymentPayload — calldata/action consistency", () => {
+  it("rule 7 — rejects a Flow B action carrying Flow A calldata", async () => {
     const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
     // Patch requirements to advertise the atomic action so rule 5 passes.
     const requirements = {

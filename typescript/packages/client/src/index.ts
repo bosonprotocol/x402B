@@ -22,7 +22,6 @@ export {
   FulfillmentValidationError,
   MaxAmountExceededError,
   NoCompatibleActionError,
-  NotImplementedError,
   UnsupportedSchemeError,
   UnsupportedTokenAuthError,
 } from "./errors.js";
@@ -38,3 +37,10 @@ export type {
   SignedPostCommitAction,
   SimplePostCommitArgs,
 } from "./post-commit.js";
+export type {
+  SignWithdrawAllAvailableFundsArgs,
+  SignWithdrawFundsArgs,
+  SignedWithdrawFunds,
+  WithdrawEntitySelector,
+} from "./withdraw.js";
+export { signerFromEthersAdapter, type Web3LibAdapterLike } from "./signer-from-adapter.js";

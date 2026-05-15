@@ -133,6 +133,8 @@ Stable string identifiers, one per legal transition that either party (buyer or 
 
 The action-id list and the two transition tables live in `@bosonprotocol/x402-core/state-machine` as a single source of truth. `@bosonprotocol/x402-actions` derives `next[]` from those tables at runtime; servers never hand-code transitions. Clients that don't recognise an action's prefix MUST skip it rather than try to dispatch.
 
+**`boson-redeem` and the voucher-transfer case.** Because the Boson voucher is a transferable NFT, the wallet that signs `boson-redeem` is not necessarily the wallet that committed. Servers that accept the two-step flow MUST treat the redeem step as a fulfillment-data rebinding point: see [§Re-submission at redeem in `03-fulfillment-channels.md`](./boson-impl-03-fulfillment-channels.md#re-submission-at-redeem) for the wallet-vs-fulfillment matrix.
+
 **Out of scope for `nextActions`:**
 
 - Dispute-resolver-only transitions (`decideDispute`, `refuseEscalatedDispute`) are protocol-level state changes but not buyer/seller-invokable, so they have no `boson-*` action id.
@@ -145,6 +147,26 @@ The action-id list and the two transition tables live in `@bosonprotocol/x402-co
 - `boson-commitToConditionalOfferAndRedeemVoucher` — the atomic commit-and-redeem variant for conditional offers, parallel to `createOfferCommitAndRedeem`.
 
 These will land once the corresponding Boson Diamond facets stabilize.
+
+## Entity-keyed actions
+
+A second flavour of action lives alongside the exchange-keyed table above. **Entity-keyed actions** target a Boson account `entityId` (buyer or seller) rather than a single exchange, and do not transition the exchange / dispute state machine. They surface as standalone server endpoints rather than per-exchange transitions. The first entry:
+
+| Action ID | Boson primitive | Side | Key | Server endpoint |
+|---|---|---|---|---|
+| `boson-withdrawFunds` | `FundsHandlerFacet.withdrawFunds(uint256,address[],uint256[])` | client OR server (the protocol enforces "must be an authorised signer for the entity") | `entityId` | `POST /x402B/withdraw-funds` |
+
+The action id is exported from `@bosonprotocol/x402-core/state-machine` under `ENTITY_ACTION_IDS`; exchange-keyed ids stay accessible under `EXCHANGE_ACTION_IDS`. `ACTION_IDS` is the union of both. `ACTION_POST_STATE` is narrowed to exchange-keyed ids; `ACTION_FACETS` covers both (withdraw maps to `FundsHandlerFacet`). The helper `isEntityKeyedAction(action)` discriminates at runtime.
+
+Read-only sibling: a `GET /x402B/available-funds` endpoint returns the current funds entity for a buyer/seller (sourced from the protocol subgraph via `coreSdk.getFunds`). Both endpoints accept either `entityId` directly or an EVM `address` (with optional `role: "buyer" | "seller"` to disambiguate addresses registered as both). See `docs/boson-impl-05-server-sdk.md` and `docs/boson-impl-07-facilitator.md` for wire-format details.
+
+Scope cap for v1: the convenience layer signs *all* available funds at once. The on-chain primitive accepts arbitrary `(tokenList, tokenAmounts)` arrays; partial / user-chosen amounts can be added later without a wire-format change.
+
+### `nextActions` integration
+
+Entity-keyed actions stay out of `nextActions.next[]` for in-flight states — they apply regardless of any one exchange's state, so wedging them into every envelope would dilute the per-exchange signal. The one carve-out is **`(DISPUTED, RESOLVED)`**: a successful `boson-resolveDispute` releases both parties' escrowed funds to their available balances, and both `clientLegalActions` and `serverLegalActions` therefore surface `boson-withdrawFunds` as the sole transition for that state. The buyer's 200 after `resolveDispute` (and the seller-side SDK looking at the same state) ships a `next[]` containing one entry — withdraw — letting either party drain those funds in a single follow-up call without needing to know about the standalone endpoint up-front.
+
+Other fund-releasing transitions (`completeExchange`, `cancelVoucher`, `revokeVoucher`, `retractDispute`, `decideDispute`, `refuseDispute`) could receive the same treatment in follow-up work; the state-machine update is mechanical.
 
 ## Channels
 

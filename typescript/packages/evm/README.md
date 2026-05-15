@@ -12,19 +12,17 @@ This package ships **only** what the x402B escrow scheme needs beyond
 what [`@bosonprotocol/core-sdk`](https://github.com/bosonprotocol/core-components)
 already provides:
 
-This release intentionally depends on `@bosonprotocol/core-sdk@1.47.1-alpha.0`.
-That alpha is the first published SDK line used here that exposes
-`signMetaTxCreateOfferAndCommit` on both `metaTx.handler` and `CoreSDK`.
-
 | Subpath | Purpose |
 |---|---|
-| `./actions` | Inner-action ABI encoding for the commit step. `buildCreateOfferAndCommitCalldata` returns the `{ functionName, functionSignature }` pair that feeds the meta-tx typed-data the buyer signs. |
-| `./envelope` | Outer meta-tx envelope. `buildExecuteMetaTransactionTx` encodes calldata for the existing `MetaTransactionsHandlerFacet.executeMetaTransaction(...)` entrypoint. |
+| `./actions` | Inner-action ABI encoding for the commit step. `buildCreateOfferAndCommitCalldata` (Flow A, deferred-redeem) and `buildCreateOfferCommitAndRedeemCalldata` (Flow B, atomic commit+redeem) each return the `{ functionName, functionSignature }` pair that feeds the meta-tx typed-data the buyer signs. Both delegate to `metaTx.handler.signMetaTx*({ returnTypedDataToSign: true })` in core-sdk so the selector literal and ABI encoding come from the same source the buyer signs against — no drift between signing and verification. |
+| `./adapters` | viem ↔ `Web3LibAdapter` bridges. `walletClientToWeb3LibAdapter` wraps a viem `WalletClient` + `PublicClient` so `coreSdk.executeMetaTransaction(...)` (the unified entrypoint for the outer envelope) can submit through viem-configured transports. Submission failures surface as a tagged `RelayerSubmitError` so callers can preserve precise error codes (`INSUFFICIENT_FUNDS_FOR_GAS`, `ONCHAIN_REVERT`, `INTERNAL_ERROR`). |
 
-That's the whole supported v0.1 surface. Two builders for primitives
-that don't yet exist in core-sdk ship as **throwing stubs** —
-`buildCreateOfferCommitAndRedeemCalldata` (Flow B, blocked on contracts
-PR #1105) and `buildExecuteMetaTransactionWithTokenAuthTx` (BPIP-12).
+The outer meta-tx envelope (`executeMetaTransaction` /
+`executeMetaTransactionWithTokenTransferAuthorization`) is **not**
+re-implemented here. Submit through core-sdk's
+`coreSdk.executeMetaTransaction(metaTxParams)`, which accepts an
+optional `transferAuthorizations` array and routes to the right
+on-chain entrypoint internally.
 
 ## What this package deliberately does NOT ship
 
@@ -42,7 +40,7 @@ expects for that action family (`MetaTxExchange` for
 `MetaTransaction` for `createOfferAndCommit` and friends). It returns
 `SignedMetaTx = { functionName, functionSignature, r, s, v }` — exactly
 the buyer-side payload the `X-PAYMENT` header carries, ready for the
-facilitator to wrap with `buildExecuteMetaTransactionTx`.
+facilitator to submit via `coreSdk.executeMetaTransaction(metaTxParams)`.
 
 ```ts
 const signed = await coreSdk.signMetaTxRedeemVoucher({ nonce, exchangeId });
@@ -83,18 +81,3 @@ import {
   createPermit2ApprovalTx,
 } from "@bosonprotocol/x402-core/eip712/token-auth";
 ```
-
-## Deferred — throws `NotYetSupportedError`
-
-- `buildCreateOfferCommitAndRedeemCalldata` — atomic
-  `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (Flow B in
-  the spec, gated on Boson contracts PR #1105 and core-sdk shipping
-  `signMetaTxCreateOfferCommitAndRedeem`).
-- `buildExecuteMetaTransactionWithTokenAuthTx` — BPIP-12
-  `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`
-  envelope. Until BPIP-12 lands in `IBosonMetaTransactionsHandlerABI`,
-  `tokenAuthStrategy: "none"` is the only supported strategy
-  (buyer pre-approves the escrow via `createErc20ApprovalTx`).
-
-`catch (e) { if (e instanceof NotYetSupportedError) … }` is the
-recommended fallback shape.

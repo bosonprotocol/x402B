@@ -11,14 +11,15 @@ import {
   signFullOffer,
   type ExchangeReader,
   type FetchLike,
+  type X402bServer,
 } from "@bosonprotocol/x402-server";
 import express from "express";
 import supertest from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseSignature } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { expressMiddleware, mountX402b } from "../src/index.js";
+import { expressMiddleware, INVALID_REQUEST_BODY, mountX402b } from "../src/index.js";
 
 const ESCROW = "0xdddddddddddddddddddddddddddddddddddddddd" as const;
 const TOKEN = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" as const;
@@ -121,7 +122,7 @@ async function buildBuyerPayload() {
     escrow: ESCROW,
     chainId: CHAIN_ID,
   });
-  const calldata = buildCreateOfferAndCommitCalldata({
+  const calldata = await buildCreateOfferAndCommitCalldata({
     fullOffer: {
       ...offerRef.fullOffer,
       signature: offerRef.sellerSig,
@@ -199,10 +200,9 @@ async function buildBuyerPayload() {
 
 describe("mountX402b — convenience routes", () => {
   // The fixture signs the Flow A meta-tx (`boson-createOfferAndCommit`)
-  // because `@bosonprotocol/x402-evm`'s atomic Flow B builder still
-  // throws `NotYetSupportedError`. We test the matching `/commit`
-  // route here; a Flow B happy-path test lands once the builder ships.
-  it("POST /x402b/commit returns 200 + nextActions", async () => {
+  // and exercises the matching `/commit` route here. Flow B
+  // (`/commit-and-redeem`) has its own happy-path test below.
+  it("POST /x402B/commit returns 200 + nextActions", async () => {
     const { requirements, headerValue } = await buildBuyerPayload();
     const server = await buildServer(
       makeStubFetch(() => ({ ok: true, exchangeId: "42", txHash: "0xabc" })),
@@ -221,7 +221,7 @@ describe("mountX402b — convenience routes", () => {
       }),
     );
 
-    const res = await supertest(app).post("/x402b/commit").set("X-PAYMENT", headerValue).send();
+    const res = await supertest(app).post("/x402B/commit").set("X-PAYMENT", headerValue).send();
     expect(res.status).toBe(200);
     expect(res.body.exchangeId).toBe("42");
     expect(res.body.txHash).toBe("0xabc");
@@ -236,7 +236,7 @@ describe("mountX402b — convenience routes", () => {
     expect(decoded.txHash).toBe("0xabc");
   });
 
-  it("POST /x402b/complete forwards to performAction and returns 200", async () => {
+  it("POST /x402B/complete forwards to performAction and returns 200", async () => {
     const { requirements } = await buildBuyerPayload();
     const completedReader: ExchangeReader = {
       read: async () => ({
@@ -282,7 +282,7 @@ describe("mountX402b — convenience routes", () => {
       }),
     );
 
-    const res = await supertest(app).post("/x402b/complete").send({
+    const res = await supertest(app).post("/x402B/complete").send({
       exchangeId: "42",
       signedPayload: "0xc0ffee",
     });
@@ -296,47 +296,288 @@ describe("mountX402b — convenience routes", () => {
     expect(res.headers["x-payment-response"]).toBeUndefined();
   });
 
-  it("POST /x402b/complete rejects malformed body with 400", async () => {
+  it("POST /x402B/redeem forwards optional fulfillment data", async () => {
+    const redeem = vi.fn(async () => ({
+      ok: true as const,
+      status: 200 as const,
+      body: { txHash: "0xfed", nextActions: { next: [] } },
+    }));
+    const server = { handlers: { redeem } } as unknown as X402bServer;
+
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const fulfillment = { option: "email", data: { email: "new@example.com" } };
+    const res = await supertest(app).post("/x402B/redeem").send({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+      fulfillment,
+    });
+
+    expect(res.status).toBe(200);
+    expect(redeem).toHaveBeenCalledWith({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+      fulfillment,
+    });
+  });
+
+  it("POST /x402B/redeem rejects a non-hex signedPayload with 400", async () => {
+    const redeem = vi.fn();
+    const server = { handlers: { redeem } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402B/redeem").send({
+      exchangeId: "42",
+      signedPayload: "not-hex",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(redeem).not.toHaveBeenCalled();
+  });
+
+  it("POST /x402B/redeem rejects malformed fulfillment payload with 400", async () => {
+    const redeem = vi.fn();
+    const server = { handlers: { redeem } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402B/redeem").send({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+      fulfillment: "not-an-object",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(redeem).not.toHaveBeenCalled();
+  });
+
+  it("POST /x402B/complete rejects malformed body with 400", async () => {
     const server = await buildServer(makeStubFetch(() => ({ ok: true, txHash: "0x" })));
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/complete").send({ foo: "bar" });
+    const res = await supertest(app).post("/x402B/complete").send({ foo: "bar" });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+  });
+
+  it("POST /x402B/withdraw-funds forwards to performAction and returns 200", async () => {
+    const stubCoreSdk = {
+      getFunds: async () => [],
+      getSellersByAddress: async () => [],
+      getBuyers: async () => [],
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = makeStubFetch((path) => {
+      if (path.startsWith("/perform-action")) {
+        return { ok: true, txHash: "0xfed" };
+      }
+      return { ok: false, code: "INTERNAL_ERROR", reason: "unexpected path" };
+    }) as unknown as typeof globalThis.fetch;
+    let server;
+    try {
+      server = createX402bServer({
+        network: NETWORK,
+        chainId: CHAIN_ID,
+        escrow: ESCROW,
+        signer: privateKeyToAccount(SELLER_PK),
+        facilitator: { url: "https://facilitator.example" },
+        channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
+        coreSdkRead: stubCoreSdk,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
+      entityId: "42",
+      signedPayload: "0xc0ffee",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ txHash: "0xfed", entityId: "42" });
+  });
+
+  it("POST /x402B/withdraw-funds 400s when entityId and address are both set", async () => {
+    const server = await buildServer(makeStubFetch(() => ({ ok: true })));
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
+      entityId: "42",
+      address: "0x1111111111111111111111111111111111111111",
+      signedPayload: "0xc0ffee",
+    });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_REQUEST_BODY");
   });
 
-  it.each([["/x402b/commit"], ["/x402b/commit-and-redeem"]])(
-    "POST %s without X-PAYMENT returns the canonical x402 challenge",
-    async (path) => {
-      // Commit routes hit without `X-PAYMENT` should emit the same
-      // `{ x402Version, accepts: [...] }` body as `expressMiddleware()`,
-      // not the handler's structured-error 402. This is what x402
-      // clients pattern-match on to retry with the signed payment.
-      const { requirements } = await buildBuyerPayload();
-      const server = await buildServer(makeStubFetch(() => ({ ok: true })));
+  it("POST /x402B/withdraw-funds rejects a non-hex signedPayload with 400", async () => {
+    const withdrawFunds = vi.fn();
+    const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-      const app = express();
-      app.use(express.json());
-      app.use(
-        mountX402b(server, {
-          resolveRequirements: () =>
-            requirements as unknown as Awaited<ReturnType<typeof server.buildPaymentRequirements>>,
-        }),
-      );
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
+      entityId: "42",
+      signedPayload: "not-hex",
+    });
 
-      const res = await supertest(app).post(path).send();
-      expect(res.status).toBe(402);
-      expect(res.body.x402Version).toBe(2);
-      expect(Array.isArray(res.body.accepts)).toBe(true);
-      expect(res.body.accepts[0].scheme).toBe("escrow");
-      // Structured-error fields must NOT leak when emitting the
-      // canonical challenge.
-      expect(res.body.code).toBeUndefined();
-      expect(res.body.reason).toBeUndefined();
-    },
-  );
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(withdrawFunds).not.toHaveBeenCalled();
+  });
+
+  it("POST /x402B/withdraw-funds rejects a non-decimal entityId with 400", async () => {
+    const withdrawFunds = vi.fn();
+    const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
+      entityId: "4two",
+      signedPayload: "0xc0ffee",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(withdrawFunds).not.toHaveBeenCalled();
+  });
+
+  it("POST /x402B/withdraw-funds rejects a malformed address with 400", async () => {
+    const withdrawFunds = vi.fn();
+    const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
+      address: "0xnotanaddress",
+      signedPayload: "0xc0ffee",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(withdrawFunds).not.toHaveBeenCalled();
+  });
+
+  it("POST /x402B/withdraw-funds rejects an invalid role with 400", async () => {
+    const withdrawFunds = vi.fn();
+    const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
+      address: "0x1111111111111111111111111111111111111111",
+      role: "admin",
+      signedPayload: "0xc0ffee",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(withdrawFunds).not.toHaveBeenCalled();
+  });
+
+  it("GET /x402B/available-funds returns the reshaped funds list", async () => {
+    const stubCoreSdk = {
+      getFunds: async (queryVars: { fundsFilter: { accountId: string } }) => {
+        expect(queryVars.fundsFilter.accountId).toBe("42");
+        return [
+          {
+            accountId: "42",
+            availableAmount: "1500000",
+            token: {
+              address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              decimals: "6",
+              symbol: "USDC",
+              name: "USD Coin",
+            },
+          },
+        ];
+      },
+      getSellersByAddress: async () => [],
+      getBuyers: async () => [],
+    };
+    const server = createX402bServer({
+      network: NETWORK,
+      chainId: CHAIN_ID,
+      escrow: ESCROW,
+      signer: privateKeyToAccount(SELLER_PK),
+      facilitator: { url: "https://facilitator.example" },
+      channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
+      coreSdkRead: stubCoreSdk,
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).get("/x402B/available-funds?entityId=42");
+    expect(res.status).toBe(200);
+    expect(res.body.entityId).toBe("42");
+    expect(res.body.funds).toHaveLength(1);
+    expect(res.body.funds[0].tokenSymbol).toBe("USDC");
+    expect(res.body.funds[0].availableAmount).toBe("1500000");
+  });
+
+  it("GET /x402B/available-funds 400s when neither entityId nor address is set", async () => {
+    const server = await buildServer(makeStubFetch(() => ({ ok: true })));
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).get("/x402B/available-funds");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_REQUEST_QUERY");
+  });
+
+  it.each([
+    ["/x402B/commit"],
+    ["/x402B/commit-and-redeem"],
+    ["/x402b/commit"],
+    ["/x402b/commit-and-redeem"],
+  ])("POST %s without X-PAYMENT returns the canonical x402 challenge", async (path) => {
+    // Commit routes hit without `X-PAYMENT` should emit the same
+    // `{ x402Version, accepts: [...] }` body as `expressMiddleware()`,
+    // not the handler's structured-error 402. This is what x402
+    // clients pattern-match on to retry with the signed payment.
+    const { requirements } = await buildBuyerPayload();
+    const server = await buildServer(makeStubFetch(() => ({ ok: true })));
+
+    const app = express();
+    app.use(express.json());
+    app.use(
+      mountX402b(server, {
+        resolveRequirements: () =>
+          requirements as unknown as Awaited<ReturnType<typeof server.buildPaymentRequirements>>,
+      }),
+    );
+
+    const res = await supertest(app).post(path).send();
+    expect(res.status).toBe(402);
+    expect(res.body.x402Version).toBe(2);
+    expect(Array.isArray(res.body.accepts)).toBe(true);
+    expect(res.body.accepts[0].scheme).toBe("escrow");
+    // Structured-error fields must NOT leak when emitting the
+    // canonical challenge.
+    expect(res.body.code).toBeUndefined();
+    expect(res.body.reason).toBeUndefined();
+  });
 });
 
 describe("expressMiddleware — 402 challenge + settle gating", () => {

@@ -26,7 +26,12 @@ pnpm --filter @bosonprotocol/x402-example-webhook-sink start
 
 ## Run in Docker
 
+Build from the **repo root** so the monorepo `pnpm-lock.yaml` is in the
+build context — the image installs deps with `pnpm --frozen-lockfile`
+against that lockfile, so versions stay pinned to whatever the workspace
+resolved.
+
 ```sh
-docker build -t x402b-webhook-sink examples/webhook-sink
+docker build -t x402b-webhook-sink -f examples/webhook-sink/Dockerfile .
 docker run --rm -p 4000:4000 x402b-webhook-sink
 ```

@@ -104,6 +104,14 @@ const performActionInput: FacilitatorPerformActionInput = {
   signedPayload: "0xc0ffee",
 };
 
+const performActionEntityKeyedInput: FacilitatorPerformActionInput = {
+  network: NETWORK,
+  escrowAddress: ESCROW,
+  entityId: "42",
+  action: "boson-withdrawFunds",
+  signedPayload: "0xc0ffee",
+};
+
 describe("createFacilitatorClient", () => {
   it("POSTs `/verify` with JSON body and returns the parsed result", async () => {
     const stub = makeStubFetch(() => ({ body: { ok: true } }));
@@ -173,21 +181,106 @@ describe("createFacilitatorClient", () => {
     });
   });
 
-  it("throws FacilitatorHttpError(BAD_HTTP_STATUS) on 5xx, carrying facilitatorCode if present", async () => {
-    const stub = makeStubFetch(() => ({
-      status: 500,
-      body: { ok: false, code: "INTERNAL_ERROR", reason: "boom" },
-    }));
+  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) on 5xx with a non-JSON body", async () => {
+    // Non-2xx + body that doesn't parse as a well-formed facilitator
+    // result is a transport-layer fault — surface it as
+    // FacilitatorHttpError so the caller maps it to FACILITATOR_UNREACHABLE.
+    const stub = makeStubFetch(() => ({ status: 500, textOverride: "oops" }));
     const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
 
     await expect(client.settle(settleInput)).rejects.toBeInstanceOf(FacilitatorHttpError);
     try {
       await client.settle(settleInput);
     } catch (e) {
-      expect((e as FacilitatorHttpError).code).toBe("BAD_HTTP_STATUS");
+      // Non-JSON body trips the JSON.parse guard, not the BAD_HTTP_STATUS path.
+      expect((e as FacilitatorHttpError).code).toBe("BAD_RESPONSE_BODY");
       expect((e as FacilitatorHttpError).status).toBe(500);
-      expect((e as FacilitatorHttpError).facilitatorCode).toBe("INTERNAL_ERROR");
     }
+  });
+
+  it("throws FacilitatorHttpError(BAD_HTTP_STATUS) on 5xx with a well-formed domain body", async () => {
+    const stub = makeStubFetch(() => ({
+      status: 500,
+      body: { ok: false, code: "INTERNAL_ERROR", reason: "boom" },
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    await expect(client.settle(settleInput)).rejects.toMatchObject({
+      name: "FacilitatorHttpError",
+      code: "BAD_HTTP_STATUS",
+      status: 500,
+      facilitatorCode: "INTERNAL_ERROR",
+    });
+  });
+
+  it("throws FacilitatorHttpError(BAD_HTTP_STATUS) on non-2xx with parseable but off-shape body", async () => {
+    // The body is valid JSON but doesn't satisfy the
+    // `{ok:false, code, reason}` shape; classify as transport failure.
+    const stub = makeStubFetch(() => ({ status: 400, body: { random: "shape" } }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    await expect(client.settle(settleInput)).rejects.toMatchObject({
+      name: "FacilitatorHttpError",
+      code: "BAD_HTTP_STATUS",
+      status: 400,
+    });
+  });
+
+  it("returns the domain `{ok:false}` body on HTTP 400 (facilitator-express)", async () => {
+    // `facilitator-express` emits domain failures (e.g. bad meta-tx
+    // signature) over HTTP 400 with the well-formed result body. The
+    // client must surface that as a domain result, not throw —
+    // otherwise the convenience handlers can't distinguish a domain
+    // rejection from a real transport fault.
+    const stub = makeStubFetch(() => ({
+      status: 400,
+      body: {
+        ok: false,
+        code: "BAD_META_TX_SIGNATURE",
+        reason: "recovered signer 0xaaa != metaTx.from 0xbbb",
+      },
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    const result = await client.verify(verifyInput);
+
+    expect(result).toEqual({
+      ok: false,
+      code: "BAD_META_TX_SIGNATURE",
+      reason: "recovered signer 0xaaa != metaTx.from 0xbbb",
+    });
+  });
+
+  it("returns the domain `{ok:false}` body for /settle on HTTP 400", async () => {
+    const stub = makeStubFetch(() => ({
+      status: 400,
+      body: { ok: false, code: "SIMULATION_REVERT", reason: "estimateGas threw" },
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    const result = await client.settle(settleInput);
+
+    expect(result).toEqual({
+      ok: false,
+      code: "SIMULATION_REVERT",
+      reason: "estimateGas threw",
+    });
+  });
+
+  it("returns the domain `{ok:false}` body for /perform-action on HTTP 400", async () => {
+    const stub = makeStubFetch(() => ({
+      status: 400,
+      body: { ok: false, code: "ONCHAIN_REVERT", reason: "fund balance too low" },
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    const result = await client.performAction(performActionInput);
+
+    expect(result).toEqual({
+      ok: false,
+      code: "ONCHAIN_REVERT",
+      reason: "fund balance too low",
+    });
   });
 
   it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) on non-JSON 200", async () => {
@@ -218,13 +311,33 @@ describe("createFacilitatorClient", () => {
     });
   });
 
-  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) on partial perform-action success body", async () => {
-    // `ok: true` for /perform-action requires `txHash` + `newExchangeState`.
-    // A response that drops `newExchangeState` would otherwise typecheck
-    // away to undefined at the call site.
+  it("accepts a perform-action success body with just txHash (entity-keyed variant)", async () => {
+    // Entity-keyed actions (`boson-withdrawFunds`) return just
+    // `{ ok: true, txHash }` — no `newExchangeState`. Exercise that
+    // shape end-to-end: send an entity-keyed request and assert the
+    // response validator accepts the bare `{ txHash }` body.
     const stub = makeStubFetch(() => ({
       status: 200,
-      body: { ok: true, txHash: "0xabc" }, // newExchangeState missing
+      body: { ok: true, txHash: "0xabc" },
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    await expect(client.performAction(performActionEntityKeyedInput)).resolves.toEqual({
+      ok: true,
+      txHash: "0xabc",
+    });
+    // Body must be the entity-keyed shape (entityId, no exchangeId)
+    // and the action query string must reflect `boson-withdrawFunds`.
+    expect(stub.calls[0]!.url).toBe(
+      `${BASE_URL}/perform-action?action=${encodeURIComponent("boson-withdrawFunds")}`,
+    );
+    expect(JSON.parse(stub.calls[0]!.init!.body!)).toEqual(performActionEntityKeyedInput);
+  });
+
+  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) when txHash is missing from a 2xx success body", async () => {
+    const stub = makeStubFetch(() => ({
+      status: 200,
+      body: { ok: true, newExchangeState: "COMPLETED" }, // txHash missing
     }));
     const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
 
