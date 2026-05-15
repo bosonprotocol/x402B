@@ -3,7 +3,7 @@
 Reference Express host for
 [`@bosonprotocol/x402-server-express`](../../typescript/packages/server-express).
 Boots a working x402B resource server from environment variables —
-mounts the eight `POST /x402B/*` convenience routes (plus the
+mounts the nine `POST /x402B/*` convenience routes (plus the
 lowercase legacy aliases), gates `GET /resource` with an
 `expressMiddleware`-driven 402 challenge, and exposes `GET /health`
 and `GET /config` probes.
