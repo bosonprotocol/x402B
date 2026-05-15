@@ -51,6 +51,7 @@ import type { ExchangeReader } from "./onchain/verify-exchange.js";
 import { mapAsStore, type Store } from "./store.js";
 import { createKeyedMutex } from "./concurrency.js";
 import { noopLogger, type Logger } from "./logger.js";
+import { createHealthCheck, type HealthCheckResult } from "./health.js";
 
 /** Per-offer inputs for `server.buildPaymentRequirements` — everything the offer-level args carry, minus the per-server context the factory already holds. */
 export interface BuildRequirementsInput {
@@ -120,6 +121,14 @@ export interface X402bServer {
    * operator runbook.
    */
   readonly recovery: RecoveryApi;
+
+  /**
+   * Liveness probe — pings the facilitator's `/healthz` and (if a
+   * subgraph / read client is configured) a cheap subgraph read. Hosts
+   * mount this behind whatever `/healthz` / `/readyz` route their
+   * framework uses.
+   */
+  healthCheck(): Promise<HealthCheckResult>;
 }
 
 function withFacilitatorEndpoints(
@@ -262,11 +271,22 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
     },
   };
 
+  const healthCheck = createHealthCheck({
+    facilitator,
+    // Probe an existing coreSdkRead if the host supplied one. The
+    // lazy default created from `subgraphUrl` only materialises on
+    // the first withdraw / available-funds call — health-check
+    // shouldn't pay the construction cost just to ping it; report
+    // `"n/a"` until a real read client is available.
+    coreSdkRead: () => validated.coreSdkRead ?? cachedCoreSdkRead,
+  });
+
   return {
     config: validated,
     facilitator,
     signOffer,
     recovery,
+    healthCheck,
     async buildPaymentRequirements(input) {
       const offer = "unsigned" in input.offer ? await signOffer(input.offer.unsigned) : input.offer;
       const requirements = buildPaymentRequirements({

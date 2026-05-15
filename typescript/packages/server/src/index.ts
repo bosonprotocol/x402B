@@ -13,6 +13,7 @@ export {
   type RecoveryReplayResult,
   type X402bServer,
 } from "./server.js";
+export { createHealthCheck, type HealthCheckResult, type HealthState } from "./health.js";
 export {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,

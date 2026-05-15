@@ -132,6 +132,31 @@ Typical operator workflow:
 
 In production deployments the recovery store MUST be backed by a persistent store (Redis / Postgres), not the in-memory `Map` default — otherwise a restart between the on-chain `REDEEMED` and the operator's replay loses the recovery handle entirely.
 
+## Health check
+
+`server.healthCheck()` returns a per-dependency liveness snapshot:
+
+```ts
+type HealthState = "ok" | "down" | "n/a";
+
+healthCheck(): Promise<{
+  facilitator: HealthState;
+  subgraph: HealthState;
+}>;
+```
+
+`facilitator` probes the facilitator's `GET /healthz` endpoint via the configured HTTP client; any 2xx is `"ok"`, network errors and non-2xx responses are `"down"`. `subgraph` probes a cheap `coreSdk.getSellersByAddress(0x0)` read; the same `ok` / `down` mapping applies, and the dependency reports `"n/a"` when neither `coreSdkRead` nor `subgraphUrl` is configured (commit / redeem-only servers don't need a subgraph).
+
+The SDK stays framework-free — `healthCheck()` is just an async function the host can mount behind whatever route their framework uses. A typical Express adapter:
+
+```ts
+app.get("/healthz", async (_req, res) => {
+  const health = await server.healthCheck();
+  const allOk = health.facilitator === "ok" && (health.subgraph === "ok" || health.subgraph === "n/a");
+  res.status(allOk ? 200 : 503).json(health);
+});
+```
+
 ## Sections to write
 
 - Hooks and lifecycle: `onCommitAccepted`, `onFulfill`, `onDispute`, `onComplete`.
