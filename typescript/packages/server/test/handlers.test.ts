@@ -465,18 +465,23 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     );
     const originalFetch = globalThis.fetch;
     globalThis.fetch = stub.fetch as unknown as typeof globalThis.fetch;
-    const server = createX402bServer({
-      network: NETWORK,
-      chainId: CHAIN_ID,
-      escrow: ESCROW,
-      signer: seller,
-      facilitator: { url: facilitatorUrl },
-      channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
-      exchangeReader: opts.reader,
-      exchangeBuyerStore: opts.buyerStore,
-      ...(opts.channels !== undefined ? { fulfillmentChannels: opts.channels } : {}),
-    });
-    return { server, stub, restore: () => (globalThis.fetch = originalFetch) };
+    try {
+      const server = createX402bServer({
+        network: NETWORK,
+        chainId: CHAIN_ID,
+        escrow: ESCROW,
+        signer: seller,
+        facilitator: { url: facilitatorUrl },
+        channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
+        exchangeReader: opts.reader,
+        exchangeBuyerStore: opts.buyerStore,
+        ...(opts.channels !== undefined ? { fulfillmentChannels: opts.channels } : {}),
+      });
+      return { server, stub, restore: () => (globalThis.fetch = originalFetch) };
+    } catch (e) {
+      globalThis.fetch = originalFetch;
+      throw e;
+    }
   }
 
   it("Flow A commit writes committer wallet into exchangeBuyerStore", async () => {
@@ -701,6 +706,86 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     } finally {
       restore();
     }
+  });
+
+  it("successful redeem clears the committer entry from exchangeBuyerStore", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+      });
+      expect(result.ok).toBe(true);
+      expect(buyerStore.has("42")).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("failed redeem (state-verify mismatch) leaves the committer entry AND channel store untouched", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const channel = makeSpyChannel();
+    // Sequence: pre-action read finds COMMITTED, post-action read
+    // returns COMMITTED again (facilitator lied about REDEEMED).
+    const stuckReader = makeSequenceReader([
+      {
+        state: ExchangeState.COMMITTED,
+        seller: fx.requirements.offer.creator,
+        exchangeToken: TOKEN,
+        price: fx.requirements.amount,
+      },
+      {
+        state: ExchangeState.COMMITTED,
+        seller: fx.requirements.offer.creator,
+        exchangeToken: TOKEN,
+        price: fx.requirements.amount,
+      },
+    ]);
+    const { server, restore } = await buildRedeemServer({
+      reader: stuckReader,
+      buyerStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "email", data: { email: "new@example.com" } },
+      });
+      expect(result.ok).toBe(false);
+      expect(channel.commits).toHaveLength(0);
+      expect(buyerStore.get("42")).toBe(fx.buyer.address);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("config validation — fulfillmentChannels", () => {
+  it("rejects duplicate channel ids at createX402bServer time", async () => {
+    const seller = privateKeyToAccount(TEST_SELLER_PK);
+    const duplicate = {
+      id: "email",
+      validate: () => ({ ok: true as const }),
+      onCommit: async () => undefined,
+    };
+    expect(() =>
+      createX402bServer({
+        network: NETWORK,
+        chainId: CHAIN_ID,
+        escrow: ESCROW,
+        signer: seller,
+        facilitator: { url: facilitatorUrl },
+        channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
+        fulfillmentChannels: [duplicate, duplicate],
+      }),
+    ).toThrow(/duplicate id/);
   });
 });
 

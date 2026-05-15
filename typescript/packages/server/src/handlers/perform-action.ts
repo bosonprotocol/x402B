@@ -15,7 +15,7 @@ import { emitNextActions } from "./next-actions.js";
 import { handlerErr, handlerOk, type HandlerResult } from "./types.js";
 import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
-import type { X402bServerConfig } from "../config.js";
+import type { RedeemFulfillmentChannel, X402bServerConfig } from "../config.js";
 import {
   verifyExchange,
   type ExchangeReader,
@@ -160,9 +160,13 @@ export async function handlePerformAction(
  *   that never wrote one), the wallet check is skipped.
  *
  * When `fulfillment` is supplied (either branch), the matching
- * channel's `validate` runs and `onCommit(exchangeId, data)` is
- * called to upsert the stored delivery target. Channels already
- * treat `onCommit` as an upsert.
+ * channel's `validate` runs up-front; the corresponding
+ * `onCommit(exchangeId, data)` upsert is deferred until *after* the
+ * facilitator + state verification confirm the exchange reached
+ * `REDEEMED`, so a failed redeem leaves the stored delivery target
+ * unchanged. On success the committer-wallet entry is also dropped
+ * from `exchangeBuyerStore` — the rebinding check is moot once the
+ * voucher is burned.
  */
 export async function handleRedeem(
   input: RedeemHandlerInput,
@@ -191,6 +195,7 @@ export async function handleRedeem(
     );
   }
 
+  let resolvedChannel: RedeemFulfillmentChannel | undefined;
   if (input.fulfillment !== undefined) {
     const channels = ctx.config.fulfillmentChannels;
     if (channels === undefined) {
@@ -215,10 +220,21 @@ export async function handleRedeem(
         option: input.fulfillment.option,
       });
     }
-    await channel.onCommit(input.exchangeId, input.fulfillment.data);
+    resolvedChannel = channel;
   }
 
-  return handlePerformAction("boson-redeem", input, ctx);
+  const result = await handlePerformAction("boson-redeem", input, ctx);
+  if (!result.ok) return result;
+
+  // Redeem confirmed REDEEMED on-chain — only now is it safe to
+  // upsert the channel's delivery-target store and free the
+  // committer-wallet entry (the rebinding rule no longer applies).
+  if (resolvedChannel !== undefined && input.fulfillment !== undefined) {
+    await resolvedChannel.onCommit(input.exchangeId, input.fulfillment.data);
+  }
+  ctx.exchangeBuyerStore.delete(input.exchangeId);
+
+  return result;
 }
 
 function addressesEqual(a: string, b: string): boolean {

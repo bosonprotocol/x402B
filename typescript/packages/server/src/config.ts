@@ -158,7 +158,25 @@ export const x402bServerConfigSchema = z
     channelRegistry: channelRegistryZodSchema,
     exchangeReader: exchangeReaderShallowSchema.optional(),
     exchangeBuyerStore: z.instanceof(Map).optional(),
-    fulfillmentChannels: z.array(fulfillmentChannelShallowSchema).optional(),
+    fulfillmentChannels: z
+      .array(fulfillmentChannelShallowSchema)
+      .superRefine((channels, ctx) => {
+        // Duplicate ids would let one channel silently shadow another
+        // (the redeem handler picks via `find(c => c.id === option)`).
+        const seen = new Set<string>();
+        const duplicates = new Set<string>();
+        for (const c of channels) {
+          if (seen.has(c.id)) duplicates.add(c.id);
+          seen.add(c.id);
+        }
+        if (duplicates.size > 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `fulfillmentChannels has duplicate id(s): ${[...duplicates].join(", ")}`,
+          });
+        }
+      })
+      .optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {
