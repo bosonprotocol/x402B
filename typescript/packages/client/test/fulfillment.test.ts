@@ -50,19 +50,21 @@ describe("resolveFulfillment", () => {
     );
   });
 
-  it("accepts atomic option (schema: null) and returns option-only commit-time slot", () => {
+  it("returns both option and data (assembler picks which to emit based on action)", () => {
     const req = baseRequirements();
     req.fulfillment = { required: true, options: [{ id: "atomic", schema: null }] };
     expect(resolveFulfillment(req, { fulfillment: { option: "atomic", data: {} } })).toEqual({
       option: "atomic",
+      data: {},
     });
   });
 
-  it("validates data against the option's JSON Schema but returns option-only", () => {
-    // The commit-time payload carries only the chosen option (capability
-    // negotiation); delivery data flows on the redeem-time path. The
-    // client still validates data here so callers fail fast before
-    // signing if their data won't pass the option's schema.
+  it("validates data against the option's JSON Schema and returns it for the assembler", () => {
+    // The client validates locally so the buyer fails fast before
+    // signing if their data won't pass the option's schema. The
+    // assembler emits `data` in the commit-time payload only for
+    // atomic Flow B (`boson-createOfferCommitAndRedeem`); two-step
+    // Flow A holds it for the redeem POST body.
     const req = baseRequirements();
     req.fulfillment = {
       required: true,
@@ -72,7 +74,7 @@ describe("resolveFulfillment", () => {
       resolveFulfillment(req, {
         fulfillment: { option: "email", data: { email: "buyer@example.com" } },
       }),
-    ).toEqual({ option: "email" });
+    ).toEqual({ option: "email", data: { email: "buyer@example.com" } });
   });
 
   it("throws when data fails the option's JSON Schema", () => {

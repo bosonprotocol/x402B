@@ -1,10 +1,19 @@
 // Resolve the `fulfillment` slot the client will attach to the commit-time
-// payment payload. The commit-time slot carries only the buyer's chosen
-// option (for capability negotiation against the server's advertised set);
-// the buyer's delivery data flows on the redeem-time path. We still
-// validate the buyer-supplied data here against the option's JSON Schema
-// — that way clients fail fast before signing if their delivery data is
-// malformed for the channel they've picked.
+// payment payload. The buyer's chosen `option` always flows (capability
+// negotiation against the server's advertised set); the `data` field is
+// validated locally against the option's JSON Schema either way so the
+// client fails fast before signing — but whether it travels with the
+// commit-time payload depends on the action the client is signing:
+//
+//  - Atomic Flow B (`boson-createOfferCommitAndRedeem`): the commit and
+//    on-chain redeem happen in one transaction, so the X-PAYMENT header
+//    is the only round trip the buyer makes. `data` MUST be present.
+//  - Two-step Flow A (`boson-createOfferAndCommit`): the buyer redeems
+//    later via `boson-redeem`'s POST body — `data` is omitted at commit
+//    and attached at redeem.
+//
+// The conditional emission lives in the payload assembler (`payload.ts`);
+// this module returns both `option` and `data` and lets the caller decide.
 
 import Ajv from "ajv";
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
@@ -14,18 +23,21 @@ import type { FulfillmentConfig, X402bClientConfig } from "./types.js";
 
 export interface ResolvedFulfillment {
   option: string;
+  /**
+   * Buyer-supplied delivery data, validated locally against the option's
+   * JSON Schema. The payload assembler decides whether to include this
+   * field in the commit-time payload (Flow B yes, Flow A no).
+   */
+  data: Record<string, unknown> | null;
 }
 
 /**
- * Returns the payload's commit-time `fulfillment` slot (just the chosen
- * `option`), or `undefined` when the requirements don't request one.
- * Throws when the requirements demand a fulfillment but the client config
- * doesn't supply one, when the option id isn't advertised by the server,
- * or when the buyer data doesn't validate against the option's schema.
- *
- * The returned object intentionally omits `data` — buyer-supplied
- * delivery data flows with the redeem-time POST body, not the commit-time
- * X-PAYMENT header. See `docs/boson-impl-03-fulfillment-channels.md`.
+ * Returns the resolved `{ option, data }` pair the assembler will attach
+ * to the commit-time fulfillment slot (Flow B) or carry forward for the
+ * redeem-time POST body (Flow A). Throws when the requirements demand a
+ * fulfillment but the client config doesn't supply one, when the option
+ * id isn't advertised by the server, or when the buyer data doesn't
+ * validate against the option's schema.
  */
 export function resolveFulfillment(
   requirements: EscrowPaymentRequirements,
@@ -62,5 +74,5 @@ export function resolveFulfillment(
     }
   }
 
-  return { option: fulfillmentConfig.option };
+  return { option: fulfillmentConfig.option, data: fulfillmentConfig.data };
 }

@@ -185,18 +185,27 @@ The header value is base64(JSON):
 
   "fulfillment": {
     "option": "email"
+    // "data" appears here only for atomic Flow B
+    // (boson-createOfferCommitAndRedeem) — see below.
   }
 }
 ```
 
-The commit-time `fulfillment` slot carries only the buyer's chosen `option`
-— used for capability negotiation against the server-advertised set. The
-buyer's actual delivery data (`fulfillment.data`) flows with the
-redeem-time POST body (`boson-redeem`); see
-[03 — Fulfillment Channels](./boson-impl-03-fulfillment-channels.md). Atomic
-Flow B (`boson-createOfferCommitAndRedeem`) is only appropriate for
-channels embedded in the offer (e.g. `inline`) or off-band — Flow B
-clients send no buyer-supplied delivery data.
+The commit-time `fulfillment` slot always carries the buyer's chosen
+`option` (capability negotiation against the server-advertised set). The
+`data` sub-field is action-conditional:
+
+- **Atomic Flow B** (`boson-createOfferCommitAndRedeem`) — the buyer's
+  delivery data rides along with the commit-time payload because the
+  on-chain redeem happens inside the commit transaction, leaving no later
+  round trip in which the buyer could hand the seller delivery details.
+  `data` MUST be present (or `null` when the option's `schema` is `null`).
+- **Two-step Flow A** (`boson-createOfferAndCommit`) — the buyer redeems
+  later via `boson-redeem`'s POST body and attaches `data` there. The
+  commit-time payload MUST NOT carry `data` (rule 13 rejects it).
+
+See [03 — Fulfillment Channels](./boson-impl-03-fulfillment-channels.md)
+for the redeem-time wire shape and the channel adapter contract.
 
 ### Field reference (PaymentPayload)
 
@@ -208,7 +217,8 @@ clients send no buyer-supplied delivery data.
 | `payload.buyer` | yes | Buyer wallet (recovered from sigs by the protocol; included for routing). |
 | `payload.metaTx` | yes | Boson meta-tx envelope authorising execution of `<action>` on behalf of `buyer`. EIP-712 signed under the **protocol Diamond** domain (see §4.2). The single buyer signature for the action itself — independent of `tokenAuthStrategy`. |
 | `payload.tokenAuth` | iff `tokenAuthStrategy ≠ "none"` | Token-transfer authorization for *this exact spend* (see §4.3). The facilitator passes it through `executeMetaTransactionWithTokenTransferAuthorization` as a queued entry the protocol consumes during `transferFundsIn`. |
-| `fulfillment.option` | iff requirements `fulfillment.required = true` | Must be one of `fulfillment.options[].id`. The commit-time slot carries only the option id; delivery data flows on the redeem-time path. |
+| `fulfillment.option` | iff requirements `fulfillment.required = true` | Must be one of `fulfillment.options[].id`. |
+| `fulfillment.data` | iff `payload.action = boson-createOfferCommitAndRedeem` | Atomic Flow B carries the buyer's delivery data inline (validated against `fulfillment.options[i].schema`). Forbidden on Flow A — that path attaches data to the `boson-redeem` POST body. |
 
 ## 4. Signatures
 
@@ -292,7 +302,9 @@ For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomica
 10. For `tokenAuthStrategy = "permit"`: `tokenAuth.data.value === requirements.amount`, `tokenAuth.data.spender === requirements.escrowAddress`, `tokenAuth.data.deadline − now ≤ requirements.maxTimeoutSeconds`.
 11. For `tokenAuthStrategy = "permit2"`: `tokenAuth.data.permitted.amount === requirements.amount`, `tokenAuth.data.permitted.token === requirements.asset`, `tokenAuth.data.spender === requirements.escrowAddress`, `tokenAuth.data.deadline − now ≤ requirements.maxTimeoutSeconds`.
 12. For `tokenAuthStrategy = "none"`: server SHOULD pre-flight `IERC20.allowance(buyer, diamond) ≥ amount` and reject early on insufficient allowance.
-13. If `requirements.fulfillment.required`, `payload.fulfillment.option ∈ requirements.fulfillment.options[].id`. The commit-time payload carries only the chosen option for capability negotiation; the buyer's delivery data (validated against the option's `schema`) flows with `boson-redeem` — see [03 — Fulfillment Channels](./boson-impl-03-fulfillment-channels.md).
+13. If `requirements.fulfillment.required`, `payload.fulfillment.option ∈ requirements.fulfillment.options[].id`. Plus action-conditional rules on `payload.fulfillment.data`:
+    - For `payload.action = boson-createOfferCommitAndRedeem` (atomic Flow B): `payload.fulfillment.data` MUST be present and MUST validate against the chosen option's `schema` (or be `null` when `schema` is `null`).
+    - For `payload.action = boson-createOfferAndCommit` (two-step Flow A): `payload.fulfillment.data` MUST be absent — the buyer attaches delivery data to the `boson-redeem` POST body instead. See [03 — Fulfillment Channels](./boson-impl-03-fulfillment-channels.md).
 
 A failure on any rule returns `400` with a structured `{ code, field, expected, got }` body. The server does **not** consult the facilitator until §1–§13 pass.
 

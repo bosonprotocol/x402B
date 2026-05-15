@@ -123,10 +123,11 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
         publicClient: config.publicClients?.[chainId],
       });
 
-      // Flow B (boson-createOfferCommitAndRedeem) carries no buyer-supplied
-      // delivery data — the commit-time payload's `fulfillment.option`
-      // covers capability negotiation and Flow B is only appropriate for
-      // channels embedded in the offer (e.g. `inline`) or off-band.
+      // Flow B (boson-createOfferCommitAndRedeem) carries the buyer's
+      // delivery data along with the commit-time payload — there's no
+      // later round trip in which to attach it. Flow A defers `data` to
+      // the redeem-time POST body; `assemblePayload` handles the
+      // conditional emission based on `action`.
       const signMetaTx =
         action === "boson-createOfferCommitAndRedeem"
           ? signCreateOfferCommitAndRedeem

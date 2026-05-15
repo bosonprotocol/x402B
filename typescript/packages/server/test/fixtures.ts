@@ -2,7 +2,10 @@
 // FullOffer shape mirrors `core`'s own `eip712/full-offer.test.ts` so
 // the round-trip behaviour is comparable.
 
-import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm";
+import {
+  buildCreateOfferAndCommitCalldata,
+  buildCreateOfferCommitAndRedeemCalldata,
+} from "@bosonprotocol/x402-evm";
 import { metaTransactionTypedData, type UnsignedFullOffer } from "@bosonprotocol/x402-core/eip712";
 import type {
   EscrowPaymentPayload,
@@ -113,7 +116,15 @@ export async function makePaymentFixture(
   });
 
   const fullOfferWithSig = { ...offerRef.fullOffer, signature: offerRef.sellerSig };
-  const calldata = await buildCreateOfferAndCommitCalldata({
+  // Build the calldata that matches the requested `action`. Tests that
+  // intentionally cross the wires (e.g. Flow A action with Flow B
+  // calldata) override `payload.metaTx` directly after the fixture
+  // returns.
+  const buildCalldata =
+    action === "boson-createOfferCommitAndRedeem"
+      ? buildCreateOfferCommitAndRedeemCalldata
+      : buildCreateOfferAndCommitCalldata;
+  const calldata = await buildCalldata({
     fullOffer: fullOfferWithSig as Parameters<
       typeof buildCreateOfferAndCommitCalldata
     >[0]["fullOffer"],

@@ -325,10 +325,9 @@ describe("validatePaymentPayload — rule failures", () => {
     });
   });
 
-  it("rule 13 — accepts an advertised option (option-membership only)", async () => {
-    // The commit-time validator no longer inspects buyer-supplied
-    // delivery data; rule 13 is option-membership only. Buyer data
-    // moves to the redeem-time path.
+  it("rule 13 — Flow A accepts an advertised option (option-only)", async () => {
+    // Two-step Flow A defers buyer-supplied delivery data to the
+    // redeem POST body, so the commit-time payload is option-only.
     const fx = await makePaymentFixture();
     const payloadWithFulfillment = {
       ...fx.payload,
@@ -340,6 +339,119 @@ describe("validatePaymentPayload — rule failures", () => {
       chainId: CHAIN_ID,
     });
     expect(result.ok).toBe(true);
+  });
+
+  it("rule 13 — Flow A rejects payloads carrying fulfillment.data", async () => {
+    // The structural schema accepts the {option, data} shape; the
+    // action-conditional check is rule 13's job. Two-step Flow A
+    // reserves `data` for the redeem POST body.
+    const fx = await makePaymentFixture();
+    const payloadWithData = {
+      ...fx.payload,
+      fulfillment: { option: "email", data: { email: "buyer@example.com" } },
+    };
+    const result = await validatePaymentPayload({
+      payload: payloadWithData,
+      requirements: withRequiredEmailFulfillment(fx.requirements),
+      chainId: CHAIN_ID,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      rule: 13,
+      code: "FULFILLMENT_DATA_UNEXPECTED",
+      field: "payload.fulfillment.data",
+    });
+  });
+
+  it("rule 13 — Flow B requires fulfillment.data", async () => {
+    // Atomic Flow B has no later round trip for the buyer to attach
+    // delivery data, so the commit-time payload must carry it.
+    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
+    const requirements = withRequiredEmailFulfillment({
+      ...fx.requirements,
+      actions: {
+        ...fx.requirements.actions,
+        next: [
+          ...fx.requirements.actions.next,
+          { id: "boson-createOfferCommitAndRedeem" as const, channels: ["server" as const] },
+        ],
+      },
+    });
+    const payloadWithoutData = {
+      ...fx.payload,
+      fulfillment: { option: "email" },
+    };
+    const result = await validatePaymentPayload({
+      payload: payloadWithoutData,
+      requirements,
+      chainId: CHAIN_ID,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      rule: 13,
+      code: "FULFILLMENT_DATA_REQUIRED",
+      field: "payload.fulfillment.data",
+    });
+  });
+
+  it("rule 13 — Flow B accepts fulfillment.data and runs the per-option validator", async () => {
+    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
+    const requirements = withRequiredEmailFulfillment({
+      ...fx.requirements,
+      actions: {
+        ...fx.requirements.actions,
+        next: [
+          ...fx.requirements.actions.next,
+          { id: "boson-createOfferCommitAndRedeem" as const, channels: ["server" as const] },
+        ],
+      },
+    });
+    const payloadWithData = {
+      ...fx.payload,
+      fulfillment: { option: "email", data: { email: "buyer@example.com" } },
+    };
+    let observed: { option: string; data: Record<string, unknown> | null } | undefined;
+    const result = await validatePaymentPayload({
+      payload: payloadWithData,
+      requirements,
+      chainId: CHAIN_ID,
+      validateFulfillmentData: (option, data) => {
+        observed = { option, data };
+        return { ok: true };
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(observed).toEqual({ option: "email", data: { email: "buyer@example.com" } });
+  });
+
+  it("rule 13 — Flow B surfaces the per-option validator's rejection", async () => {
+    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
+    const requirements = withRequiredEmailFulfillment({
+      ...fx.requirements,
+      actions: {
+        ...fx.requirements.actions,
+        next: [
+          ...fx.requirements.actions.next,
+          { id: "boson-createOfferCommitAndRedeem" as const, channels: ["server" as const] },
+        ],
+      },
+    });
+    const payloadWithBadData = {
+      ...fx.payload,
+      fulfillment: { option: "email", data: { email: "not-an-email" } },
+    };
+    const result = await validatePaymentPayload({
+      payload: payloadWithBadData,
+      requirements,
+      chainId: CHAIN_ID,
+      validateFulfillmentData: () => ({ ok: false, reason: "bad email" }),
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      rule: 13,
+      code: "FULFILLMENT_DATA_INVALID",
+      field: "payload.fulfillment.data",
+    });
   });
 });
 
@@ -360,8 +472,17 @@ function withRequiredEmailFulfillment<T extends { fulfillment?: unknown }>(requi
 
 describe("validatePaymentPayload — calldata/action consistency", () => {
   it("rule 7 — rejects a Flow B action carrying Flow A calldata", async () => {
-    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
-    // Patch requirements to advertise the atomic action so rule 5 passes.
+    // Build a Flow A fixture (matching calldata + Flow A action),
+    // then re-label the action as Flow B without re-signing — the
+    // calldata stays Flow A, so rule 7 should catch the mismatch.
+    const flowAFx = await makePaymentFixture();
+    const fx = {
+      ...flowAFx,
+      payload: {
+        ...flowAFx.payload,
+        payload: { ...flowAFx.payload.payload, action: "boson-createOfferCommitAndRedeem" },
+      },
+    };
     const requirements = {
       ...fx.requirements,
       actions: {

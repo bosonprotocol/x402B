@@ -19,6 +19,7 @@ import { recoverMetaTransactionSigner } from "@bosonprotocol/x402-core/eip712";
 import type {
   EscrowPaymentPayload,
   EscrowPaymentRequirements,
+  FulfillmentOption,
 } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
   buildCreateOfferAndCommitCalldata,
@@ -58,7 +59,10 @@ export type ValidationErrorCode =
   | "TOKEN_AUTH_UNEXPECTED"
   | "TOKEN_AUTH_UNKNOWN_STRATEGY"
   | "FULFILLMENT_REQUIRED"
-  | "FULFILLMENT_OPTION_NOT_ADVERTISED";
+  | "FULFILLMENT_OPTION_NOT_ADVERTISED"
+  | "FULFILLMENT_DATA_REQUIRED"
+  | "FULFILLMENT_DATA_UNEXPECTED"
+  | "FULFILLMENT_DATA_INVALID";
 
 export interface ValidationWarning {
   rule: number;
@@ -73,6 +77,20 @@ export interface ValidatePaymentPayloadArgs {
   chainId: number;
   /** Reference time in seconds since epoch for rules 9–11. Defaults to `Math.floor(Date.now() / 1000)`. */
   now?: number;
+  /**
+   * Per-fulfillment-option data validator (typically the
+   * `FulfillmentRegistry`'s per-channel `validate`). Only consulted for
+   * atomic Flow B (`boson-createOfferCommitAndRedeem`) where the buyer
+   * must carry `fulfillment.data` in the commit-time payload — Flow A
+   * defers data to the redeem POST body and rule 13 rejects any
+   * commit-time `data` there outright. Without this validator, Flow B
+   * still rejects missing data but does not deep-validate the data
+   * against the option's schema.
+   */
+  validateFulfillmentData?: (
+    option: string,
+    data: Record<string, unknown> | null,
+  ) => { ok: true } | { ok: false; reason: string };
 }
 
 /**
@@ -194,10 +212,14 @@ export async function validatePaymentPayload(
   // chain. Intentionally not enforced here; runs as part of
   // `verifyExchange` in PR 4 (RPC dependency).
 
-  // Rule 13 — fulfillment option must be one the server advertised.
-  // The buyer's actual delivery data (`fulfillment.data`) flows on the
-  // redeem-time path, not here; rule 13 is option-membership only.
-  const fulfillmentResult = checkFulfillment(payload, requirements);
+  // Rule 13 — fulfillment option + action-conditional data presence.
+  // Flow A (`boson-createOfferAndCommit`) defers buyer-supplied data
+  // to the redeem POST body; `fulfillment.data` must NOT appear in the
+  // commit-time payload. Flow B (`boson-createOfferCommitAndRedeem`)
+  // has only one round trip, so `fulfillment.data` MUST be present
+  // (validated against the option's JSON Schema when a per-channel
+  // validator is configured).
+  const fulfillmentResult = checkFulfillment(payload, requirements, args.validateFulfillmentData);
   if (fulfillmentResult !== null) return fulfillmentResult;
 
   return { ok: true };
@@ -436,6 +458,7 @@ function checkTokenAuthRules(
 function checkFulfillment(
   payload: EscrowPaymentPayload,
   requirements: EscrowPaymentRequirements,
+  validator?: ValidatePaymentPayloadArgs["validateFulfillmentData"],
 ): ValidatePaymentPayloadResult | null {
   const required = requirements.fulfillment?.required === true;
   const carried = payload.fulfillment;
@@ -445,7 +468,7 @@ function checkFulfillment(
     return failure(13, "FULFILLMENT_REQUIRED", "payload.fulfillment", "<option>", "undefined");
   }
 
-  const advertised = requirements.fulfillment?.options ?? [];
+  const advertised: FulfillmentOption[] = requirements.fulfillment?.options ?? [];
   const matched = advertised.find((option) => option.id === carried.option);
   if (!matched) {
     return failure(
@@ -457,6 +480,47 @@ function checkFulfillment(
     );
   }
 
+  // Atomic Flow B carries buyer-supplied delivery data in the
+  // commit-time payload; Flow A defers it to the redeem POST body.
+  const action = payload.payload.action;
+  if (action === "boson-createOfferCommitAndRedeem") {
+    if (carried.data === undefined) {
+      return failure(
+        13,
+        "FULFILLMENT_DATA_REQUIRED",
+        "payload.fulfillment.data",
+        matched.schema ?? "null",
+        "undefined",
+        "atomic createOfferCommitAndRedeem requires fulfillment.data at commit time",
+      );
+    }
+    if (validator !== undefined) {
+      const result = validator(matched.id, carried.data);
+      if (!result.ok) {
+        return failure(
+          13,
+          "FULFILLMENT_DATA_INVALID",
+          "payload.fulfillment.data",
+          matched.schema,
+          carried.data,
+          result.reason,
+        );
+      }
+    }
+    return null;
+  }
+
+  // Flow A and any other commit-time action: data is forbidden here.
+  if (carried.data !== undefined) {
+    return failure(
+      13,
+      "FULFILLMENT_DATA_UNEXPECTED",
+      "payload.fulfillment.data",
+      "undefined",
+      carried.data,
+      "two-step boson-createOfferAndCommit defers fulfillment.data to the redeem POST body",
+    );
+  }
   return null;
 }
 

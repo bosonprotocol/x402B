@@ -104,14 +104,25 @@ describe("EscrowPaymentPayload — rejection cases", () => {
     expect(ajvValidate(bad)).toBe(false);
   });
 
-  it("rejects a commit-time payload carrying fulfillment.data", () => {
-    // Wire-format change: the commit-time slot now carries only the
-    // chosen option; buyer-supplied delivery data flows on the
-    // redeem-time POST body. Both zod and the JSON Schema must enforce
-    // this strictly so clients that haven't migrated surface the error.
-    const bad = JSON.parse(JSON.stringify(validPayloadNone));
-    bad.fulfillment = { option: "inline", data: null };
-    expect(escrowPaymentPayloadSchema.safeParse(bad).success).toBe(false);
-    expect(ajvValidate(bad)).toBe(false);
+  it("accepts a commit-time payload with fulfillment.option only (Flow A shape)", () => {
+    // Two-step Flow A defers buyer-supplied delivery data to the
+    // redeem POST body, so the commit-time payload is option-only.
+    const ok = JSON.parse(JSON.stringify(validPayloadNone));
+    ok.fulfillment = { option: "inline" };
+    expect(escrowPaymentPayloadSchema.safeParse(ok).success).toBe(true);
+    expect(ajvValidate(ok)).toBe(true);
+  });
+
+  it("accepts a commit-time payload with fulfillment.{option, data} (Flow B shape)", () => {
+    // Atomic Flow B has no later round trip for the buyer to attach
+    // delivery data, so the commit-time payload carries both option
+    // and data. The action-conditional rule (Flow A rejects data,
+    // Flow B requires it) lives in the server validator, not in the
+    // structural Zod / JSON Schema.
+    const ok = JSON.parse(JSON.stringify(validPayloadNone));
+    ok.payload.action = "boson-createOfferCommitAndRedeem";
+    ok.fulfillment = { option: "email", data: { email: "buyer@example.com" } };
+    expect(escrowPaymentPayloadSchema.safeParse(ok).success).toBe(true);
+    expect(ajvValidate(ok)).toBe(true);
   });
 });

@@ -55,12 +55,13 @@ describe("negotiateFulfillment", () => {
     const choice = await negotiateFulfillment([INLINE], {
       supports: ["inline"],
     });
-    // Commit-time payload carries only `option` — fulfillment `data` flows
-    // on the redeem-time path, see boson-impl-01 rule 13.
+    // `paymentPayloadBase.payload.action` is the atomic Flow B action,
+    // so the commit-time slot may carry both `option` and `data`. The
+    // structural schema accepts the full negotiation result directly.
     expect(() =>
       parseEscrowPaymentPayload({
         ...paymentPayloadBase,
-        fulfillment: { option: choice.option },
+        fulfillment: choice,
       }),
     ).not.toThrow();
   });

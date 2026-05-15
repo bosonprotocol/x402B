@@ -4,8 +4,13 @@
 "@bosonprotocol/x402-client": minor
 ---
 
-Move `fulfillment.data` from the commit-time payment payload to the redeem-time payload.
+Action-conditional fulfillment data placement at commit time.
 
-**Wire-format change.** Commit-time `fulfillment` is now `{ option: string }` only — used for buyer-side capability negotiation against the server-advertised option set. Buyer-supplied delivery data (email address, webhook URL, XMTP address, IPFS pointer) flows with `boson-redeem` instead, where the channel adapter already routes it correctly. Atomic Flow B (`boson-createOfferCommitAndRedeem`) carries no buyer-supplied delivery data — Flow B is appropriate only for channels whose delivery is embedded in the offer (e.g. `inline`) or off-band.
+**Wire-format change.** `payload.fulfillment.option` always rides in the commit-time payload (capability negotiation against the server-advertised set). The `data` sub-field is action-conditional:
 
-Migration: clients sending `fulfillment.data` at commit time are now rejected by the strict schema. Move delivery payloads to the `POST /x402b/redeem` body's `fulfillment.data` field.
+- **Atomic Flow B** (`boson-createOfferCommitAndRedeem`): `data` MUST be present in `X-PAYMENT`. The atomic redeem leaves no later round trip for the buyer to attach delivery details, so `data` travels with the only round trip the buyer makes. The commit handler invokes `channel.onCommit(exchangeId, data)` after the on-chain redeem settles.
+- **Two-step Flow A** (`boson-createOfferAndCommit`): `data` MUST be absent in `X-PAYMENT`. The buyer attaches it to the `boson-redeem` POST body after a successful commit; the existing redeem handler then routes it to `channel.onCommit`.
+
+The action-conditional rule lives in the server validator (rule 13) — the structural Zod / JSON Schema accepts both shapes. New error codes: `FULFILLMENT_DATA_REQUIRED` (Flow B missing data), `FULFILLMENT_DATA_UNEXPECTED` (Flow A carrying data), and `FULFILLMENT_DATA_INVALID` (Flow B data fails the channel adapter's `validate`). Flow B `onCommit` failures surface as a `FULFILLMENT_COMMIT_DEFERRED` warning on the 200 response (the on-chain state is irreversibly `REDEEMED`).
+
+Migration: clients calling `boson-createOfferCommitAndRedeem` must include `fulfillment.data` in their commit-time payload. Clients calling `boson-createOfferAndCommit` must move any `fulfillment.data` they were attaching to the redeem POST body.

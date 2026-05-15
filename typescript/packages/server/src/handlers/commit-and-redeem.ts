@@ -10,7 +10,7 @@ import type { Address, EscrowPaymentRequirements } from "@bosonprotocol/x402-cor
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 
 import { emitNextActions } from "./next-actions.js";
-import { handlerErr, handlerOk, type HandlerResult } from "./types.js";
+import { handlerErr, handlerOk, type HandlerResult, type HandlerWarning } from "./types.js";
 import { decodeXPaymentHeader } from "../validate/decode.js";
 import { validatePaymentPayload } from "../validate/payment-payload.js";
 import {
@@ -51,6 +51,15 @@ export interface CommitHandlerContext {
 export interface CommitOk {
   exchangeId: string;
   txHash: string;
+  /**
+   * Non-fatal post-settle conditions. Today only Flow B uses this slot —
+   * the on-chain redeem may have succeeded while the configured channel
+   * adapter's `onCommit(...)` failed (the buyer's funds and voucher are
+   * already gone; the seller's host needs to recover the delivery target
+   * out-of-band). The exchange state is the wire-format source of truth;
+   * warnings are advisory.
+   */
+  warnings?: HandlerWarning[];
 }
 
 /**
@@ -104,10 +113,31 @@ async function handleCommitImpl(
     );
   }
 
+  // For atomic Flow B the validator needs a per-channel data validator
+  // so it can reject malformed buyer data before the on-chain redeem
+  // happens. Flow A doesn't carry `fulfillment.data` at commit time so
+  // the validator never invokes this callback; pass it anyway and let
+  // rule 13 dispatch on `payload.action`.
+  const channels = ctx.config.fulfillmentChannels ?? [];
+  const channelById = new Map(channels.map((c) => [c.id, c]));
   const validation = await validatePaymentPayload({
     payload: decoded.payload,
     requirements: input.requirements,
     chainId: ctx.config.chainId,
+    validateFulfillmentData: (option, data) => {
+      const channel = channelById.get(option);
+      if (channel === undefined) {
+        return {
+          ok: false,
+          reason: `fulfillment.option '${option}' has no registered channel adapter on this server`,
+        };
+      }
+      try {
+        return channel.validate(data);
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+      }
+    },
   });
   if (!validation.ok) {
     return handlerErr(400, validation.code, validation.reason ?? `rule ${validation.rule} failed`, {
@@ -177,6 +207,48 @@ async function handleCommitImpl(
     );
   }
 
+  // Flow B only: the buyer's delivery data rides along with the
+  // commit-time payload because atomic redeem leaves no later round
+  // trip for it. The on-chain redeem has already settled at this
+  // point; channel persistence is best-effort and surfaces as a
+  // warning on failure (the buyer's funds + voucher are irreversibly
+  // committed regardless).
+  const warnings: HandlerWarning[] = [];
+  if (
+    expected.expectedState === ExchangeState.REDEEMED &&
+    decoded.payload.fulfillment !== undefined &&
+    decoded.payload.fulfillment.data !== undefined
+  ) {
+    const channel = channelById.get(decoded.payload.fulfillment.option);
+    if (channel === undefined) {
+      // Validation should have caught this (rule 13 rejects an option
+      // with no registered adapter). Surface a warning rather than
+      // silently dropping the data if it slips past.
+      warnings.push({
+        code: "FULFILLMENT_COMMIT_DEFERRED",
+        reason: "atomic redeem succeeded on-chain, but no channel adapter is registered",
+        details: {
+          exchangeId: settleResult.exchangeId,
+          option: decoded.payload.fulfillment.option,
+        },
+      });
+    } else {
+      try {
+        await channel.onCommit(settleResult.exchangeId, decoded.payload.fulfillment.data);
+      } catch (e) {
+        warnings.push({
+          code: "FULFILLMENT_COMMIT_DEFERRED",
+          reason: "atomic redeem succeeded on-chain, but the channel adapter rejected the data",
+          details: {
+            exchangeId: settleResult.exchangeId,
+            option: decoded.payload.fulfillment.option,
+            error: e instanceof Error ? e.message : String(e),
+          },
+        });
+      }
+    }
+  }
+
   // Both commit-side actions transition to non-DISPUTED states
   // (COMMITTED for Flow A, REDEEMED for Flow B), so the cast to
   // `Exclude<ExchangeState, DISPUTED>` is sound — the function only
@@ -197,6 +269,7 @@ async function handleCommitImpl(
     exchangeId: settleResult.exchangeId,
     txHash: settleResult.txHash,
     nextActions,
+    ...(warnings.length > 0 ? { warnings } : {}),
   });
 }
 

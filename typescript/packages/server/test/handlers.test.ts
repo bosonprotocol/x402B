@@ -71,6 +71,7 @@ async function buildServerWithStubs(
   opts: {
     facilitator?: (path: string) => unknown;
     reader?: ExchangeReader;
+    channels?: readonly RedeemFulfillmentChannel[];
   } = {},
 ) {
   const seller = privateKeyToAccount(TEST_SELLER_PK);
@@ -91,6 +92,7 @@ async function buildServerWithStubs(
         escrow: ESCROW,
       },
       ...(opts.reader !== undefined ? { exchangeReader: opts.reader } : {}),
+      ...(opts.channels !== undefined ? { fulfillmentChannels: opts.channels } : {}),
     });
     return { server, fetchStub, seller };
   } finally {
@@ -674,6 +676,95 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
       expect(optionStore.get("42")).toEqual(["email", "xmtp"]);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("Flow B commit-and-redeem calls channel.onCommit with the buyer's data", async () => {
+    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
+    const channel = makeSpyChannel("email");
+    const reader = makeReader({
+      state: ExchangeState.REDEEMED,
+      seller: fx.requirements.offer.creator,
+      exchangeToken: TOKEN,
+      price: fx.requirements.amount,
+    });
+    const requirements = {
+      ...fx.requirements,
+      actions: {
+        ...fx.requirements.actions,
+        next: [
+          ...fx.requirements.actions.next,
+          { id: "boson-createOfferCommitAndRedeem" as const, channels: ["server" as const] },
+        ],
+      },
+      fulfillment: {
+        required: true,
+        options: [{ id: "email", schema: { type: "object" as const } }],
+      },
+    };
+    const payload = {
+      ...fx.payload,
+      fulfillment: { option: "email", data: { email: "buyer@example.com" } },
+    };
+    const { server } = await buildServerWithStubs({
+      facilitator: () => ({ ok: true, exchangeId: "42", txHash: "0xabc" }),
+      reader,
+      channels: [channel],
+    });
+    const result = await server.handlers.commitAndRedeem({
+      paymentHeader: makeBuyerHeader(payload),
+      requirements,
+    });
+    expect(result.ok).toBe(true);
+    expect(channel.validations).toEqual([{ email: "buyer@example.com" }]);
+    expect(channel.commits).toEqual([{ exchangeId: "42", data: { email: "buyer@example.com" } }]);
+    if (result.ok) {
+      expect(result.body.warnings).toBeUndefined();
+    }
+  });
+
+  it("Flow B onCommit failure → 200 + FULFILLMENT_COMMIT_DEFERRED warning", async () => {
+    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
+    const channel = makeSpyChannel("email");
+    channel.throwOnCommit = true;
+    const reader = makeReader({
+      state: ExchangeState.REDEEMED,
+      seller: fx.requirements.offer.creator,
+      exchangeToken: TOKEN,
+      price: fx.requirements.amount,
+    });
+    const requirements = {
+      ...fx.requirements,
+      actions: {
+        ...fx.requirements.actions,
+        next: [
+          ...fx.requirements.actions.next,
+          { id: "boson-createOfferCommitAndRedeem" as const, channels: ["server" as const] },
+        ],
+      },
+      fulfillment: {
+        required: true,
+        options: [{ id: "email", schema: { type: "object" as const } }],
+      },
+    };
+    const payload = {
+      ...fx.payload,
+      fulfillment: { option: "email", data: { email: "buyer@example.com" } },
+    };
+    const { server } = await buildServerWithStubs({
+      facilitator: () => ({ ok: true, exchangeId: "42", txHash: "0xabc" }),
+      reader,
+      channels: [channel],
+    });
+    const result = await server.handlers.commitAndRedeem({
+      paymentHeader: makeBuyerHeader(payload),
+      requirements,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.warnings).toEqual([
+        expect.objectContaining({ code: "FULFILLMENT_COMMIT_DEFERRED" }),
+      ]);
     }
   });
 
