@@ -113,3 +113,4 @@ export {
   encodeXPaymentResponse,
   X_PAYMENT_RESPONSE_HEADER,
 } from "./internal/x-payment-response.js";
+export { isStore, mapAsStore, type Store } from "./store.js";
