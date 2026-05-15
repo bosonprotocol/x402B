@@ -50,16 +50,29 @@ describe("resolveFulfillment", () => {
     );
   });
 
-  it("accepts atomic option (schema: null) without validating data", () => {
+  it("accepts null data for schemaless options", () => {
     const req = baseRequirements();
     req.fulfillment = { required: true, options: [{ id: "atomic", schema: null }] };
-    expect(resolveFulfillment(req, { fulfillment: { option: "atomic", data: {} } })).toEqual({
+    expect(resolveFulfillment(req, { fulfillment: { option: "atomic", data: null } })).toEqual({
       option: "atomic",
-      data: {},
+      data: null,
     });
   });
 
-  it("accepts data that validates against the option's JSON Schema", () => {
+  it("throws when a schemaless option receives non-null data", () => {
+    const req = baseRequirements();
+    req.fulfillment = { required: true, options: [{ id: "atomic", schema: null }] };
+    expect(() => resolveFulfillment(req, { fulfillment: { option: "atomic", data: {} } })).toThrow(
+      FulfillmentValidationError,
+    );
+  });
+
+  it("validates data against the option's JSON Schema and returns it for the assembler", () => {
+    // The client validates locally so the buyer fails fast before
+    // signing if their data won't pass the option's schema. The
+    // assembler emits `data` in the commit-time payload only for
+    // atomic Flow B (`boson-createOfferCommitAndRedeem`); two-step
+    // Flow A holds it for the redeem POST body.
     const req = baseRequirements();
     req.fulfillment = {
       required: true,

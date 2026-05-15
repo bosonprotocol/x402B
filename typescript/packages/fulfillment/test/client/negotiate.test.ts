@@ -55,6 +55,9 @@ describe("negotiateFulfillment", () => {
     const choice = await negotiateFulfillment([INLINE], {
       supports: ["inline"],
     });
+    // `paymentPayloadBase.payload.action` is the atomic Flow B action,
+    // so the commit-time slot may carry both `option` and `data`. The
+    // structural schema accepts the full negotiation result directly.
     expect(() =>
       parseEscrowPaymentPayload({
         ...paymentPayloadBase,

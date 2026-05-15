@@ -10,8 +10,8 @@ export { createX402bServer, type BuildRequirementsInput, type X402bServer } from
 export {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
+  type FulfillmentRecoveryEntry,
   type RedeemFulfillmentChannel,
-  type RedeemFulfillmentUpdate,
   type SellerSigner,
   type X402bServerConfig,
 } from "./config.js";

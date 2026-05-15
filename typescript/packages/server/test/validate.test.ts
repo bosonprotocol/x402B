@@ -8,6 +8,21 @@ import { describe, expect, it } from "vitest";
 import { validatePaymentPayload, decodeXPaymentHeader } from "../src/index.js";
 import { CHAIN_ID, ESCROW, makePaymentFixture, NETWORK, TOKEN } from "./fixtures.js";
 
+const FLOW_B_ACTION_ID = "boson-createOfferCommitAndRedeem" as const;
+const FLOW_B_SERVER_ACTION = { id: FLOW_B_ACTION_ID, channels: ["server"] as const };
+
+function withFlowBServerAction<T extends { actions: { next: readonly unknown[] } }>(
+  requirements: T,
+): T {
+  return {
+    ...requirements,
+    actions: {
+      ...requirements.actions,
+      next: [...requirements.actions.next, FLOW_B_SERVER_ACTION],
+    },
+  } as T;
+}
+
 describe("validatePaymentPayload — happy paths", () => {
   it("accepts a valid `none` payload", async () => {
     const fx = await makePaymentFixture({ tokenAuthStrategy: "none" });
@@ -311,7 +326,7 @@ describe("validatePaymentPayload — rule failures", () => {
     const fx = await makePaymentFixture();
     const payloadWithBadOption = {
       ...fx.payload,
-      fulfillment: { option: "smoke-signal", data: {} },
+      fulfillment: { option: "smoke-signal" },
     };
     const result = await validatePaymentPayload({
       payload: payloadWithBadOption,
@@ -325,19 +340,130 @@ describe("validatePaymentPayload — rule failures", () => {
     });
   });
 
-  it("rule 13 — rejects fulfillment data when caller-supplied validator fails", async () => {
+  it("rule 13 — validates provided fulfillment even when requirements do not require it", async () => {
+    const fx = await makePaymentFixture();
+    const payloadWithBadOption = {
+      ...fx.payload,
+      fulfillment: { option: "smoke-signal" },
+    };
+    const result = await validatePaymentPayload({
+      payload: payloadWithBadOption,
+      requirements: {
+        ...fx.requirements,
+        fulfillment: {
+          required: false,
+          options: [{ id: "email", schema: { type: "object" as const } }],
+        },
+      },
+      chainId: CHAIN_ID,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      rule: 13,
+      code: "FULFILLMENT_OPTION_NOT_ADVERTISED",
+    });
+  });
+
+  it("rule 13 — Flow A accepts an advertised option (option-only)", async () => {
+    // Two-step Flow A defers buyer-supplied delivery data to the
+    // redeem POST body, so the commit-time payload is option-only.
     const fx = await makePaymentFixture();
     const payloadWithFulfillment = {
       ...fx.payload,
-      fulfillment: { option: "email", data: { email: "not-an-email" } },
+      fulfillment: { option: "email" },
     };
     const result = await validatePaymentPayload({
       payload: payloadWithFulfillment,
       requirements: withRequiredEmailFulfillment(fx.requirements),
       chainId: CHAIN_ID,
-      validateFulfillmentData: (_option, _data) => ({ ok: false, reason: "bad email" }),
     });
-    expect(result).toMatchObject({ ok: false, rule: 13, code: "FULFILLMENT_DATA_INVALID" });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rule 13 — Flow A rejects payloads carrying fulfillment.data", async () => {
+    // The structural schema accepts the {option, data} shape; the
+    // action-conditional check is rule 13's job. Two-step Flow A
+    // reserves `data` for the redeem POST body.
+    const fx = await makePaymentFixture();
+    const payloadWithData = {
+      ...fx.payload,
+      fulfillment: { option: "email", data: { email: "buyer@example.com" } },
+    };
+    const result = await validatePaymentPayload({
+      payload: payloadWithData,
+      requirements: withRequiredEmailFulfillment(fx.requirements),
+      chainId: CHAIN_ID,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      rule: 13,
+      code: "FULFILLMENT_DATA_UNEXPECTED",
+      field: "payload.fulfillment.data",
+    });
+  });
+
+  it("rule 13 — Flow B requires fulfillment.data", async () => {
+    // Atomic Flow B has no later round trip for the buyer to attach
+    // delivery data, so the commit-time payload must carry it.
+    const fx = await makePaymentFixture({ action: FLOW_B_ACTION_ID });
+    const requirements = withRequiredEmailFulfillment(withFlowBServerAction(fx.requirements));
+    const payloadWithoutData = {
+      ...fx.payload,
+      fulfillment: { option: "email" },
+    };
+    const result = await validatePaymentPayload({
+      payload: payloadWithoutData,
+      requirements,
+      chainId: CHAIN_ID,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      rule: 13,
+      code: "FULFILLMENT_DATA_REQUIRED",
+      field: "payload.fulfillment.data",
+    });
+  });
+
+  it("rule 13 — Flow B accepts fulfillment.data and runs the per-option validator", async () => {
+    const fx = await makePaymentFixture({ action: FLOW_B_ACTION_ID });
+    const requirements = withRequiredEmailFulfillment(withFlowBServerAction(fx.requirements));
+    const payloadWithData = {
+      ...fx.payload,
+      fulfillment: { option: "email", data: { email: "buyer@example.com" } },
+    };
+    let observed: { option: string; data: Record<string, unknown> | null } | undefined;
+    const result = await validatePaymentPayload({
+      payload: payloadWithData,
+      requirements,
+      chainId: CHAIN_ID,
+      validateFulfillmentData: (option, data) => {
+        observed = { option, data };
+        return { ok: true };
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(observed).toEqual({ option: "email", data: { email: "buyer@example.com" } });
+  });
+
+  it("rule 13 — Flow B surfaces the per-option validator's rejection", async () => {
+    const fx = await makePaymentFixture({ action: FLOW_B_ACTION_ID });
+    const requirements = withRequiredEmailFulfillment(withFlowBServerAction(fx.requirements));
+    const payloadWithBadData = {
+      ...fx.payload,
+      fulfillment: { option: "email", data: { email: "not-an-email" } },
+    };
+    const result = await validatePaymentPayload({
+      payload: payloadWithBadData,
+      requirements,
+      chainId: CHAIN_ID,
+      validateFulfillmentData: () => ({ ok: false, reason: "bad email" }),
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      rule: 13,
+      code: "FULFILLMENT_DATA_INVALID",
+      field: "payload.fulfillment.data",
+    });
   });
 });
 
@@ -358,8 +484,17 @@ function withRequiredEmailFulfillment<T extends { fulfillment?: unknown }>(requi
 
 describe("validatePaymentPayload — calldata/action consistency", () => {
   it("rule 7 — rejects a Flow B action carrying Flow A calldata", async () => {
-    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
-    // Patch requirements to advertise the atomic action so rule 5 passes.
+    // Build a Flow A fixture (matching calldata + Flow A action),
+    // then re-label the action as Flow B without re-signing — the
+    // calldata stays Flow A, so rule 7 should catch the mismatch.
+    const flowAFx = await makePaymentFixture();
+    const fx = {
+      ...flowAFx,
+      payload: {
+        ...flowAFx.payload,
+        payload: { ...flowAFx.payload.payload, action: FLOW_B_ACTION_ID },
+      },
+    };
     const requirements = {
       ...fx.requirements,
       actions: {
@@ -367,7 +502,7 @@ describe("validatePaymentPayload — calldata/action consistency", () => {
         next: [
           ...fx.requirements.actions.next,
           {
-            id: "boson-createOfferCommitAndRedeem",
+            id: FLOW_B_ACTION_ID,
             channels: ["server", "facilitator", "onchain"] as const,
           },
         ],
@@ -452,22 +587,29 @@ describe("decodeXPaymentHeader", () => {
     });
   });
 
-  it("preserves non-ASCII UTF-8 in fulfillment.data through the atob path", () => {
-    // Buyer-provided fulfilment data can carry non-ASCII bytes — names,
-    // addresses, locale-specific strings. Round-trip a valid payload
-    // whose `fulfillment.data.name` carries multi-byte characters and
+  it("preserves non-ASCII UTF-8 in the inner payload through the atob path", () => {
+    // Offer metadata and other inner fields can carry non-ASCII bytes —
+    // names, locale-specific strings. Round-trip a valid payload whose
+    // echoed `offerRef.fullOffer` carries multi-byte characters and
     // assert the decoder recovers UTF-8 rather than Latin-1 mojibake.
+    const base = makeBaseWirePayload();
     const wirePayload = {
-      ...makeBaseWirePayload(),
-      fulfillment: { option: "email", data: { name: "Bär ✓ — 你好" } },
+      ...base,
+      payload: {
+        ...base.payload,
+        offerRef: {
+          ...base.payload.offerRef,
+          fullOffer: { metadataUri: "ipfs://Bär ✓ — 你好" },
+        },
+      },
     };
     const header = Buffer.from(JSON.stringify(wirePayload), "utf8").toString("base64");
     const result = decodeXPaymentHeader(header);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect((result.payload.fulfillment?.data as { name?: string } | null | undefined)?.name).toBe(
-        "Bär ✓ — 你好",
-      );
+      expect(
+        (result.payload.payload.offerRef.fullOffer as { metadataUri?: string }).metadataUri,
+      ).toBe("ipfs://Bär ✓ — 你好");
     }
   });
 });

@@ -41,6 +41,17 @@ export function assemblePayload({
   fulfillment,
   buyer,
 }: AssembleArgs): EscrowPaymentPayload {
+  // Fulfillment `data` rides along only for atomic Flow B — Flow A
+  // defers it to the redeem POST body. The conditional emission keeps
+  // the assembler aligned with the server-side rule-13 validator that
+  // rejects `data` on Flow A and requires it on Flow B.
+  const fulfillmentSlot =
+    fulfillment === undefined
+      ? undefined
+      : action === "boson-createOfferCommitAndRedeem"
+        ? { option: fulfillment.option, data: fulfillment.data }
+        : { option: fulfillment.option };
+
   const payload: EscrowPaymentPayload = {
     x402Version: X402_VERSION,
     scheme: "escrow",
@@ -56,7 +67,7 @@ export function assemblePayload({
       metaTx,
       ...(tokenAuth ? { tokenAuth } : {}),
     },
-    ...(fulfillment ? { fulfillment } : {}),
+    ...(fulfillmentSlot ? { fulfillment: fulfillmentSlot } : {}),
   };
 
   // Defensive re-parse — surfaces shape bugs (e.g. malformed hex) before
@@ -72,12 +83,13 @@ export function assembleAndEncodePayload(args: AssembleArgs): string {
   if (typeof Buffer !== "undefined") {
     return Buffer.from(json, "utf8").toString("base64");
   }
-  // Browser fallback. Wire payloads mostly carry hex/numeric strings, but
-  // `fulfillment.data` is a `Record<string, unknown>` that the buyer
-  // populates — emails, addresses, free-form notes. `btoa` accepts only
-  // a binary string (code units 0–255) and throws `InvalidCharacterError`
-  // on any character above U+00FF. UTF-8 encode the JSON first, then map
-  // the bytes into the binary-string form `btoa` expects.
+  // Browser fallback. Wire payloads mostly carry hex/numeric strings,
+  // but atomic Flow B's `fulfillment.data` is a `Record<string, unknown>`
+  // the buyer populates — emails, addresses, free-form notes. `btoa`
+  // accepts only a binary string (code units 0–255) and throws
+  // `InvalidCharacterError` on any character above U+00FF. UTF-8 encode
+  // the JSON first, then map the bytes into the binary-string form
+  // `btoa` expects.
   const bytes = new TextEncoder().encode(json);
   let binary = "";
   for (const b of bytes) {

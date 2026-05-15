@@ -30,8 +30,11 @@ export interface Policy {
 export interface FulfillmentConfig {
   /** `id` of the option the buyer wants from `requirements.fulfillment.options[]`. */
   option: string;
-  /** Buyer-supplied data; validated against the chosen option's JSON Schema. */
-  data: Record<string, unknown>;
+  /**
+   * Buyer-supplied data; validated against the chosen option's JSON Schema.
+   * Use `null` for schemaless options such as `inline`.
+   */
+  data: Record<string, unknown> | null;
 }
 
 /**

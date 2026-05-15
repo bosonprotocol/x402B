@@ -85,37 +85,26 @@ export interface X402bServerConfig {
    */
   coreSdkRead?: CoreSdkReadAdapter;
   /**
-   * Server-side store of the buyer wallet that originally committed
-   * each exchange (keyed by `exchangeId`). Populated on Flow A commit
-   * acceptance and read at redeem time to detect voucher transfers —
-   * a redeemer whose wallet differs from the recorded committer MUST
-   * supply fresh `fulfillment` data; same-wallet redeemers MAY.
-   *
-   * Optional in the config: when omitted, `createX402bServer` wires up
-   * an in-memory `Map`. Hosts that need cross-process / persistent
-   * tracking supply their own `Map`-shaped backing store.
-   */
-  exchangeBuyerStore?: Map<string, Address>;
-  /**
    * Server-side store of the fulfillment option ids advertised for
    * each Flow A exchange (keyed by `exchangeId`). Populated from the
    * original `PaymentRequirements` after commit verification and read
-   * at redeem time so re-submitted fulfillment data cannot switch to a
-   * channel the offer never advertised.
+   * at redeem time so the buyer's redeem-time fulfillment choice
+   * cannot switch to a channel the offer never advertised.
    *
    * Optional in the config: when omitted, `createX402bServer` wires up
-   * an in-memory `Map`. Hosts that provide `exchangeBuyerStore` for
-   * cross-process tracking should normally provide this store too.
+   * an in-memory `Map`. Hosts running multiple instances should plug
+   * in their own cross-process `Map`-shaped backing store.
    */
   exchangeFulfillmentOptionStore?: Map<string, readonly string[]>;
   /**
    * Pending fulfillment updates that reached REDEEMED on-chain but
-   * failed the server-side `channel.onCommit(...)` upsert. The redeem
-   * handler records the update here before attempting the channel write,
-   * deletes it on success, and leaves it behind with the error message
-   * on failure so the host can replay/reconcile out of band.
+   * failed the server-side `channel.onCommit(...)` upsert. The commit
+   * handler records Flow B updates here before attempting the channel
+   * write; the redeem handler does the same for Flow A. Both delete the
+   * record on success and leave it behind with the error message on
+   * failure so the host can replay/reconcile out of band.
    */
-  redeemFulfillmentUpdateStore?: Map<string, RedeemFulfillmentUpdate>;
+  fulfillmentRecoveryStore?: Map<string, FulfillmentRecoveryEntry>;
   /**
    * Fulfillment channels the server accepts at redeem time when the
    * client re-submits delivery data. Structurally a subset of
@@ -142,7 +131,7 @@ export interface RedeemFulfillmentChannel {
   onCommit(exchangeId: string, data: Record<string, unknown> | null): Promise<void>;
 }
 
-export interface RedeemFulfillmentUpdate {
+export interface FulfillmentRecoveryEntry {
   exchangeId: string;
   option: string;
   data: Record<string, unknown> | null;
@@ -213,9 +202,8 @@ export const x402bServerConfigSchema = z
     exchangeReader: exchangeReaderShallowSchema.optional(),
     subgraphUrl: httpUrlSchema.optional(),
     coreSdkRead: coreSdkReadShallowSchema.optional(),
-    exchangeBuyerStore: z.instanceof(Map).optional(),
     exchangeFulfillmentOptionStore: z.instanceof(Map).optional(),
-    redeemFulfillmentUpdateStore: z.instanceof(Map).optional(),
+    fulfillmentRecoveryStore: z.instanceof(Map).optional(),
     fulfillmentChannels: z
       .array(fulfillmentChannelShallowSchema)
       .superRefine((channels, ctx) => {
