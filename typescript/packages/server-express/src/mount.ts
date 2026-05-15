@@ -16,6 +16,12 @@ import { Router, type Request, type RequestHandler, type Response } from "expres
 
 import { respondWithChallenge } from "./internal/x402-challenge.js";
 
+/** Shared error code for malformed `POST /x402b/*` bodies. */
+const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
+
+/** Hex-string check matching the `0x[0-9a-fA-F]*` shape `signedPayload` is typed as. */
+const HEX_BYTES_RE = /^0x[0-9a-fA-F]*$/;
+
 export interface MountX402bOptions {
   /**
    * Resolver invoked for the commit-time routes (`/commit`,
@@ -101,8 +107,15 @@ function performActionRoute(
         typeof body.signedPayload !== "string"
       ) {
         res.status(400).json({
-          code: "INVALID_REQUEST_BODY",
+          code: INVALID_REQUEST_BODY,
           reason: "expected JSON body with { exchangeId, signedPayload }",
+        });
+        return;
+      }
+      if (!HEX_BYTES_RE.test(body.signedPayload)) {
+        res.status(400).json({
+          code: INVALID_REQUEST_BODY,
+          reason: "signedPayload must be a 0x-prefixed hex string",
         });
         return;
       }
@@ -155,7 +168,7 @@ function buildRedeemInput(
   }
   if (!isRedeemFulfillment(fulfillment)) {
     res.status(400).json({
-      code: "INVALID_REQUEST_BODY",
+      code: INVALID_REQUEST_BODY,
       reason: "expected fulfillment to be { option: string, data: object | null } when present",
     });
     return undefined;
