@@ -23,7 +23,7 @@ import type { Address, Hex } from "viem";
 
 import { randomUint256 } from "./utils/crypto.js";
 
-export interface SignCreateOfferAndCommitMetaTxArgs {
+export interface SignCreateOfferAndCommitArgs {
   requirements: EscrowPaymentRequirements;
   coreSdk: CoreSDK;
   buyer: Address;
@@ -43,11 +43,11 @@ export interface SignCreateOfferAndCommitMetaTxArgs {
  * `createOfferAndCommitArgsSchema.validateSync` — propagate it rather than
  * patch silently (CLAUDE.md "Production over spec when they diverge").
  */
-export async function signCreateOfferAndCommitMetaTx({
+export async function signCreateOfferAndCommit({
   requirements,
   coreSdk,
   buyer,
-}: SignCreateOfferAndCommitMetaTxArgs): Promise<BosonMetaTx> {
+}: SignCreateOfferAndCommitArgs): Promise<BosonMetaTx> {
   const nonce = randomUint256();
 
   const createOfferAndCommitArgs = buildCreateOfferAndCommitArgs(requirements, buyer);
@@ -61,17 +61,17 @@ export async function signCreateOfferAndCommitMetaTx({
 }
 
 /**
- * Flow B counterpart to {@link signCreateOfferAndCommitMetaTx} — signs
+ * Flow B counterpart to {@link signCreateOfferAndCommit} — signs
  * the meta-tx that drives `OrchestrationHandlerFacet2.createOfferCommitAndRedeem`.
  * The argument shape is identical (the protocol uses the same
  * `FullOfferArgs` struct); only the resulting function selector and
  * post-state differ.
  */
-export async function signCreateOfferCommitAndRedeemMetaTx({
+export async function signCreateOfferCommitAndRedeem({
   requirements,
   coreSdk,
   buyer,
-}: SignCreateOfferAndCommitMetaTxArgs): Promise<BosonMetaTx> {
+}: SignCreateOfferAndCommitArgs): Promise<BosonMetaTx> {
   const nonce = randomUint256();
 
   const createOfferAndCommitArgs = buildCreateOfferAndCommitArgs(requirements, buyer);
