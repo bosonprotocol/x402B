@@ -4,6 +4,9 @@
 // can drive both the happy path and the state-verification mismatch.
 
 import { DisputeState, ExchangeState } from "@bosonprotocol/x402-actions";
+import type { BosonMetaTx } from "@bosonprotocol/x402-core/schemes/escrow";
+import { encodeSignedPayload } from "@bosonprotocol/x402-evm";
+import type { Hex } from "viem";
 import { describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -12,6 +15,7 @@ import {
   type ExchangeReader,
   type ExchangeSnapshot,
   type FetchLike,
+  type RedeemFulfillmentChannel,
 } from "../src/index.js";
 import {
   CHAIN_ID,
@@ -391,6 +395,311 @@ describe("handlers.disputeRaise — DISPUTED post-state path", () => {
       }
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
+  function makeRedeemSignedPayload(from: string): Hex {
+    const metaTx: BosonMetaTx = {
+      from,
+      nonce: "1",
+      functionName: "redeemVoucher(uint256)",
+      functionSignature: `0x${"ab".repeat(36)}`,
+      sig: { v: 28, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
+    };
+    return encodeSignedPayload(metaTx);
+  }
+
+  function makeRedeemReader(fx: { requirements: { offer: { creator: string }; amount: string } }) {
+    return makeSequenceReader([
+      {
+        state: ExchangeState.COMMITTED,
+        seller: fx.requirements.offer.creator,
+        exchangeToken: TOKEN,
+        price: fx.requirements.amount,
+      },
+      {
+        state: ExchangeState.REDEEMED,
+        seller: fx.requirements.offer.creator,
+        exchangeToken: TOKEN,
+        price: fx.requirements.amount,
+      },
+    ]);
+  }
+
+  /**
+   * Spy channel that records every `validate` and `onCommit` call.
+   * `validate` flips to `{ ok: false }` when `failNext` is set.
+   */
+  function makeSpyChannel(id = "email"): RedeemFulfillmentChannel & {
+    validations: Array<Record<string, unknown> | null>;
+    commits: Array<{ exchangeId: string; data: Record<string, unknown> | null }>;
+    failNext: boolean;
+  } {
+    const spy: ReturnType<typeof makeSpyChannel> = {
+      id,
+      validations: [],
+      commits: [],
+      failNext: false,
+      validate(data) {
+        spy.validations.push(data);
+        return spy.failNext ? { ok: false, reason: "bad data" } : { ok: true };
+      },
+      async onCommit(exchangeId, data) {
+        spy.commits.push({ exchangeId, data });
+      },
+    };
+    return spy;
+  }
+
+  async function buildRedeemServer(opts: {
+    facilitator?: (path: string) => unknown;
+    reader: ExchangeReader;
+    buyerStore: Map<string, `0x${string}`>;
+    channels?: readonly RedeemFulfillmentChannel[];
+  }) {
+    const seller = privateKeyToAccount(TEST_SELLER_PK);
+    const stub = makeStubFacilitatorFetch(
+      opts.facilitator ?? (() => ({ ok: true, txHash: "0xfed", newExchangeState: "REDEEMED" })),
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = stub.fetch as unknown as typeof globalThis.fetch;
+    const server = createX402bServer({
+      network: NETWORK,
+      chainId: CHAIN_ID,
+      escrow: ESCROW,
+      signer: seller,
+      facilitator: { url: facilitatorUrl },
+      channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
+      exchangeReader: opts.reader,
+      exchangeBuyerStore: opts.buyerStore,
+      ...(opts.channels !== undefined ? { fulfillmentChannels: opts.channels } : {}),
+    });
+    return { server, stub, restore: () => (globalThis.fetch = originalFetch) };
+  }
+
+  it("Flow A commit writes committer wallet into exchangeBuyerStore", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>();
+    const reader = makeReader({
+      state: ExchangeState.COMMITTED,
+      seller: fx.requirements.offer.creator,
+      exchangeToken: TOKEN,
+      price: fx.requirements.amount,
+    });
+    const seller = privateKeyToAccount(TEST_SELLER_PK);
+    const stub = makeStubFacilitatorFetch((path) =>
+      path === "/settle"
+        ? { ok: true, exchangeId: "42", txHash: "0xabc" }
+        : { ok: false, code: "INTERNAL_ERROR", reason: "unexpected" },
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = stub.fetch as unknown as typeof globalThis.fetch;
+    try {
+      const server = createX402bServer({
+        network: NETWORK,
+        chainId: CHAIN_ID,
+        escrow: ESCROW,
+        signer: seller,
+        facilitator: { url: facilitatorUrl },
+        channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
+        exchangeReader: reader,
+        exchangeBuyerStore: buyerStore,
+      });
+      const result = await server.handlers.commit({
+        paymentHeader: makeBuyerHeader(fx.payload),
+        requirements: fx.requirements,
+      });
+      expect(result.ok).toBe(true);
+      expect(buyerStore.get("42")).toBe(fx.buyer.address);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("same-wallet redeemer without fulfillment → 200, no channel calls", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const channel = makeSpyChannel();
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+      });
+      expect(result.ok).toBe(true);
+      expect(channel.validations).toHaveLength(0);
+      expect(channel.commits).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("same-wallet redeemer with valid fulfillment → 200, channel.onCommit called", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const channel = makeSpyChannel();
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "email", data: { email: "new@example.com" } },
+      });
+      expect(result.ok).toBe(true);
+      expect(channel.commits).toEqual([{ exchangeId: "42", data: { email: "new@example.com" } }]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("different-wallet redeemer without fulfillment → 400 FULFILLMENT_REQUIRED_ON_WALLET_CHANGE", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const channel = makeSpyChannel();
+    const { server, stub, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload("0x9999999999999999999999999999999999999999"),
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(400);
+        expect(result.body.code).toBe("FULFILLMENT_REQUIRED_ON_WALLET_CHANGE");
+      }
+      // Must short-circuit before contacting the facilitator.
+      expect(stub.calls).toHaveLength(0);
+      expect(channel.commits).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("different-wallet redeemer with valid fulfillment → 200, channel.onCommit called", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const channel = makeSpyChannel();
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload("0x9999999999999999999999999999999999999999"),
+        fulfillment: { option: "email", data: { email: "new-owner@example.com" } },
+      });
+      expect(result.ok).toBe(true);
+      expect(channel.commits).toEqual([
+        { exchangeId: "42", data: { email: "new-owner@example.com" } },
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("fulfillment with unknown option → 400 FULFILLMENT_OPTION_UNKNOWN", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const channel = makeSpyChannel("email");
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "ipfs-pointer", data: null },
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.body.code).toBe("FULFILLMENT_OPTION_UNKNOWN");
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("fulfillment that fails channel.validate → 400 FULFILLMENT_DATA_INVALID", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const channel = makeSpyChannel();
+    channel.failNext = true;
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "email", data: { email: "" } },
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.body.code).toBe("FULFILLMENT_DATA_INVALID");
+      }
+      expect(channel.commits).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("fulfillment without fulfillmentChannels configured → 400 FULFILLMENT_CHANNELS_NOT_CONFIGURED", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "email", data: { email: "x@example.com" } },
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.body.code).toBe("FULFILLMENT_CHANNELS_NOT_CONFIGURED");
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("redeem against an exchange with no committer record → wallet check skipped", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>(); // empty — legacy
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload("0x9999999999999999999999999999999999999999"),
+      });
+      expect(result.ok).toBe(true);
+    } finally {
+      restore();
     }
   });
 });

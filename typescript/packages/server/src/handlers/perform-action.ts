@@ -6,7 +6,9 @@
 // fresh `nextActions`.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
+import type { Address } from "@bosonprotocol/x402-core/schemes/escrow";
 import { ACTION_POST_STATE, type ActionId } from "@bosonprotocol/x402-core/state-machine";
+import { decodeSignedPayload } from "@bosonprotocol/x402-evm";
 import type { Hex } from "viem";
 
 import { emitNextActions } from "./next-actions.js";
@@ -27,10 +29,25 @@ export interface PerformActionInput {
   signedPayload: Hex;
 }
 
+/**
+ * Redeem-time variant of `PerformActionInput`. Carries an optional
+ * `fulfillment` update so a redeemer can revise the delivery target
+ * between Flow A commit and redeem. Required when the redeeming
+ * wallet differs from the committing wallet (voucher transfer);
+ * optional when they match.
+ */
+export interface RedeemHandlerInput extends PerformActionInput {
+  fulfillment?: { option: string; data: Record<string, unknown> | null };
+}
+
 export interface PerformActionContext {
   config: X402bServerConfig;
   facilitator: FacilitatorClient;
   exchangeReader: ExchangeReader;
+}
+
+export interface RedeemHandlerContext extends PerformActionContext {
+  exchangeBuyerStore: Map<string, Address>;
 }
 
 export interface PerformActionOk {
@@ -130,9 +147,85 @@ export async function handlePerformAction(
   return handlerOk({ txHash: result.txHash, nextActions });
 }
 
+/**
+ * Redeem handler. Before forwarding to the facilitator, runs a
+ * wallet-rebinding check against `exchangeBuyerStore`:
+ *
+ * - If a committer wallet is on file and differs from the recovered
+ *   redeemer wallet, the client MUST supply `fulfillment` (so the
+ *   new holder's delivery target replaces the original committer's).
+ * - If a committer wallet is on file and matches the redeemer, the
+ *   client MAY omit `fulfillment` — existing data stays in place.
+ * - If no committer record exists (legacy exchange / atomic flow
+ *   that never wrote one), the wallet check is skipped.
+ *
+ * When `fulfillment` is supplied (either branch), the matching
+ * channel's `validate` runs and `onCommit(exchangeId, data)` is
+ * called to upsert the stored delivery target. Channels already
+ * treat `onCommit` as an upsert.
+ */
+export async function handleRedeem(
+  input: RedeemHandlerInput,
+  ctx: RedeemHandlerContext,
+): Promise<HandlerResult<PerformActionOk>> {
+  let redeemer: Address;
+  try {
+    redeemer = decodeSignedPayload(input.signedPayload).from as Address;
+  } catch (e) {
+    return handlerErr(
+      400,
+      "SIGNED_PAYLOAD_DECODE_FAILED",
+      e instanceof Error ? e.message : "signedPayload could not be decoded",
+    );
+  }
+
+  const committer = ctx.exchangeBuyerStore.get(input.exchangeId);
+  const walletChanged = committer !== undefined && !addressesEqual(committer, redeemer);
+
+  if (walletChanged && input.fulfillment === undefined) {
+    return handlerErr(
+      400,
+      "FULFILLMENT_REQUIRED_ON_WALLET_CHANGE",
+      "redeemer wallet differs from committer — new fulfillment data is required",
+      { exchangeId: input.exchangeId, committer, redeemer },
+    );
+  }
+
+  if (input.fulfillment !== undefined) {
+    const channels = ctx.config.fulfillmentChannels;
+    if (channels === undefined) {
+      return handlerErr(
+        400,
+        "FULFILLMENT_CHANNELS_NOT_CONFIGURED",
+        "server received redeem-time fulfillment data but has no fulfillmentChannels registered",
+      );
+    }
+    const channel = channels.find((c) => c.id === input.fulfillment!.option);
+    if (channel === undefined) {
+      return handlerErr(
+        400,
+        "FULFILLMENT_OPTION_UNKNOWN",
+        `fulfillment.option '${input.fulfillment.option}' is not registered with the server`,
+        { option: input.fulfillment.option, registered: channels.map((c) => c.id) },
+      );
+    }
+    const validation = channel.validate(input.fulfillment.data);
+    if (!validation.ok) {
+      return handlerErr(400, "FULFILLMENT_DATA_INVALID", validation.reason, {
+        option: input.fulfillment.option,
+      });
+    }
+    await channel.onCommit(input.exchangeId, input.fulfillment.data);
+  }
+
+  return handlePerformAction("boson-redeem", input, ctx);
+}
+
+function addressesEqual(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 /** Per-action sugar — preserves the action id at the type level. */
-export const handleRedeem = (input: PerformActionInput, ctx: PerformActionContext) =>
-  handlePerformAction("boson-redeem", input, ctx);
 export const handleComplete = (input: PerformActionInput, ctx: PerformActionContext) =>
   handlePerformAction("boson-completeExchange", input, ctx);
 export const handleDisputeRaise = (input: PerformActionInput, ctx: PerformActionContext) =>

@@ -6,7 +6,7 @@
 // envelope.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
-import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { Address, EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 
 import { emitNextActions } from "./next-actions.js";
@@ -33,6 +33,13 @@ export interface CommitHandlerContext {
   config: X402bServerConfig;
   facilitator: FacilitatorClient;
   exchangeReader: ExchangeReader;
+  /**
+   * Committer-wallet store. Flow A writes the buyer address keyed by
+   * the new `exchangeId` so the redeem handler can detect
+   * voucher-transfer mid-flight. Flow B (atomic commit+redeem) skips
+   * the write — the redeem step has already happened on-chain.
+   */
+  exchangeBuyerStore: Map<string, Address>;
 }
 
 export interface CommitOk {
@@ -148,6 +155,13 @@ async function handleCommitImpl(
         got: verifyResult.got,
       },
     );
+  }
+
+  // Flow A only: persist the committer wallet so the redeem handler
+  // can detect a voucher transfer between commit and redeem. Flow B
+  // is already in REDEEMED — there is no later redeem step to gate.
+  if (expected.expectedState === ExchangeState.COMMITTED) {
+    ctx.exchangeBuyerStore.set(settleResult.exchangeId, decoded.payload.payload.buyer);
   }
 
   // Both commit-side actions transition to non-DISPUTED states

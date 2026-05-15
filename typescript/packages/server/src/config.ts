@@ -67,6 +67,42 @@ export interface X402bServerConfig {
    * for the interface.
    */
   exchangeReader?: ExchangeReader;
+  /**
+   * Server-side store of the buyer wallet that originally committed
+   * each exchange (keyed by `exchangeId`). Populated on Flow A commit
+   * acceptance and read at redeem time to detect voucher transfers —
+   * a redeemer whose wallet differs from the recorded committer MUST
+   * supply fresh `fulfillment` data; same-wallet redeemers MAY.
+   *
+   * Optional in the config: when omitted, `createX402bServer` wires up
+   * an in-memory `Map`. Hosts that need cross-process / persistent
+   * tracking supply their own `Map`-shaped backing store.
+   */
+  exchangeBuyerStore?: Map<string, Address>;
+  /**
+   * Fulfillment channels the server accepts at redeem time when the
+   * client re-submits delivery data. Structurally a subset of
+   * `@bosonprotocol/x402-fulfillment`'s `FulfillmentChannel` — only
+   * `id`, `validate`, and `onCommit` are read here, so existing
+   * channel instances pass through directly. Required iff a host
+   * wants to accept redeem-time fulfillment updates; absent means
+   * redeem requests carrying `fulfillment` are rejected with
+   * `FULFILLMENT_CHANNELS_NOT_CONFIGURED`.
+   */
+  fulfillmentChannels?: readonly RedeemFulfillmentChannel[];
+}
+
+/**
+ * Minimal structural slice of `FulfillmentChannel` the redeem
+ * handler needs. Kept inline so `@bosonprotocol/x402-server` does
+ * not depend on `@bosonprotocol/x402-fulfillment` (avoids a hard
+ * coupling between the resource-server SDK and a specific channel
+ * package); any real channel implementation is type-compatible.
+ */
+export interface RedeemFulfillmentChannel {
+  readonly id: string;
+  validate(data: Record<string, unknown> | null): { ok: true } | { ok: false; reason: string };
+  onCommit(exchangeId: string, data: Record<string, unknown> | null): Promise<void>;
 }
 
 const httpUrlSchema = z
@@ -93,6 +129,14 @@ const exchangeReaderShallowSchema = z
   })
   .passthrough();
 
+const fulfillmentChannelShallowSchema = z
+  .object({
+    id: z.string().min(1),
+    validate: z.function(),
+    onCommit: z.function(),
+  })
+  .passthrough();
+
 /**
  * zod validator for `X402bServerConfig`. Shallow on the signer +
  * exchange reader (viem account types bring their own structural
@@ -113,6 +157,8 @@ export const x402bServerConfigSchema = z
       .strict(),
     channelRegistry: channelRegistryZodSchema,
     exchangeReader: exchangeReaderShallowSchema.optional(),
+    exchangeBuyerStore: z.instanceof(Map).optional(),
+    fulfillmentChannels: z.array(fulfillmentChannelShallowSchema).optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {

@@ -22,6 +22,8 @@ export {
   type PerformActionContext,
   type PerformActionInput,
   type PerformActionOk,
+  type RedeemHandlerContext,
+  type RedeemHandlerInput,
 } from "./perform-action.js";
 export { emitNextActions, type EmitNextActionsInput } from "./next-actions.js";
 export {
