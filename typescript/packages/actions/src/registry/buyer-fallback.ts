@@ -10,15 +10,20 @@
 // `BUYER_ONCHAIN_FALLBACK[action]` is `true`, the SDK signs and
 // submits the transaction directly.
 
-import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
+import type { ExchangeActionId } from "@bosonprotocol/x402-core/state-machine";
 
 import type { ActionEntry } from "../types.js";
 
 /**
- * For each `ActionId`, whether the buyer has a guaranteed
+ * For each exchange-keyed `ActionId`, whether the buyer has a guaranteed
  * censorship-resistant on-chain path. Values come from the table at
  * docs/boson-impl-04-state-machine-and-next-actions.md
  * §"Censorship resistance — guarantees".
+ *
+ * Entity-keyed actions (e.g. `boson-withdrawFunds`) are not advertised
+ * in `nextActions.next[]` and therefore don't participate in the
+ * fallback table; `isBuyerOnchainResilient` returns `false` for any id
+ * not listed here.
  *
  * Note: `boson-resolveDispute` requires a counterparty signature
  * (it's the mutual settlement step), so the buyer cannot
@@ -26,7 +31,7 @@ import type { ActionEntry } from "../types.js";
  * is seller-only and not a buyer action; it's listed as `false` for
  * type completeness but will never appear on a buyer-side envelope.
  */
-export const BUYER_ONCHAIN_FALLBACK: Record<ActionId, boolean> = {
+export const BUYER_ONCHAIN_FALLBACK: Record<ExchangeActionId, boolean> = {
   "boson-createOfferAndCommit": true,
   "boson-createOfferCommitAndRedeem": true,
   "boson-redeem": true,
@@ -65,6 +70,6 @@ export function isBuyerOnchainResilient(id: string): boolean {
   // Use `hasOwnProperty` rather than `in` so prototype keys like
   // `"toString"` / `"constructor"` don't accidentally read as resilient.
   return Object.prototype.hasOwnProperty.call(BUYER_ONCHAIN_FALLBACK, id)
-    ? BUYER_ONCHAIN_FALLBACK[id as ActionId]
+    ? BUYER_ONCHAIN_FALLBACK[id as ExchangeActionId]
     : false;
 }

@@ -41,7 +41,23 @@ const POST_COMMIT_ABI = parseAbi([
   "function resolveDispute(uint256 exchangeId, uint256 buyerPercent, bytes counterpartySig)",
   "function escalateDispute(uint256 exchangeId)",
   "function retractDispute(uint256 exchangeId)",
+  "function withdrawFunds(uint256 entityId, address[] tokenList, uint256[] tokenAmounts)",
 ]);
+
+const ENTITY_ID = "99";
+const TOKEN_LIST: Address[] = [
+  "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "0xffffffffffffffffffffffffffffffffffffffff",
+];
+const TOKEN_AMOUNTS = [123n, 456n] as const;
+
+function buildWithdrawCalldata(entityId = ENTITY_ID): Hex {
+  return encodeFunctionData({
+    abi: POST_COMMIT_ABI,
+    functionName: "withdrawFunds",
+    args: [BigInt(entityId), TOKEN_LIST, [...TOKEN_AMOUNTS]],
+  });
+}
 
 function buildPostCommitCalldata(functionName: string, exchangeId = EXCHANGE_ID): Hex {
   switch (functionName) {
@@ -558,6 +574,82 @@ describe("performAction()", () => {
     );
     expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
     expect((result as { ok: false; reason: string }).reason).toMatch(/must be omitted/i);
+  });
+
+  it("happy path: withdrawFunds returns just txHash (no exchange-state transition)", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "withdrawFunds(uint256,address[],uint256[])",
+      functionSignature: buildWithdrawCalldata(),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: ENTITY_ID,
+        action: "boson-withdrawFunds",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toEqual({ ok: true, txHash: TX_HASH });
+  });
+
+  it("withdrawFunds rejects when entityId does not match the signed calldata", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "withdrawFunds(uint256,address[],uint256[])",
+      functionSignature: buildWithdrawCalldata("100"),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: ENTITY_ID,
+        action: "boson-withdrawFunds",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("withdrawFunds rejects when entityId is not a uint256 decimal", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "withdrawFunds(uint256,address[],uint256[])",
+      functionSignature: buildWithdrawCalldata(),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: "0xabc",
+        action: "boson-withdrawFunds",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+  });
+
+  it("withdrawFunds rejects when functionName does not match", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "redeemVoucher(uint256)",
+      functionSignature: buildPostCommitCalldata("redeemVoucher(uint256)"),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: ENTITY_ID,
+        action: "boson-withdrawFunds",
+        signedPayload,
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
   });
 
   it("escalateDispute with tokenAuthStrategy 'permit2' returns UNSUPPORTED_TOKEN_AUTH_STRATEGY", async () => {

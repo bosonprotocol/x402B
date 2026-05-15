@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ACTION_IDS,
   clientLegalActions,
   DisputeState,
+  EXCHANGE_ACTION_IDS,
   ExchangeState,
   isLegalTransition,
   legalActions,
@@ -159,7 +159,7 @@ describe("legalActions(side) parametrized form", () => {
 });
 
 describe("legalActions — coverage", () => {
-  it("every ActionId is reachable from at least one state on at least one side", () => {
+  it("every exchange-keyed ActionId is reachable from at least one state on at least one side", () => {
     const reachable = new Set<string>();
     const states = [
       PRE_COMMIT,
@@ -171,8 +171,21 @@ describe("legalActions — coverage", () => {
       for (const id of clientLegalActions(state)) reachable.add(id);
       for (const id of serverLegalActions(state)) reachable.add(id);
     }
-    for (const id of ACTION_IDS) {
+    for (const id of EXCHANGE_ACTION_IDS) {
       expect(reachable.has(id)).toBe(true);
+    }
+  });
+
+  it("entity-keyed actions are intentionally absent from clientLegalActions / serverLegalActions", () => {
+    const states = [
+      PRE_COMMIT,
+      { exchange: ExchangeState.COMMITTED },
+      { exchange: ExchangeState.REDEEMED },
+      { exchange: ExchangeState.DISPUTED, dispute: DisputeState.RESOLVING },
+    ] as const;
+    for (const state of states) {
+      expect(clientLegalActions(state)).not.toContain("boson-withdrawFunds");
+      expect(serverLegalActions(state)).not.toContain("boson-withdrawFunds");
     }
   });
 });
@@ -254,7 +267,7 @@ describe("isLegalTransition", () => {
       ExchangeState.COMPLETED,
       ExchangeState.REVOKED,
     ]) {
-      for (const id of ACTION_IDS) {
+      for (const id of EXCHANGE_ACTION_IDS) {
         expect(isLegalTransition({ exchange }, id, "client")).toBe(false);
         expect(isLegalTransition({ exchange }, id, "server")).toBe(false);
       }

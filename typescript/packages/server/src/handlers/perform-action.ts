@@ -6,7 +6,7 @@
 // fresh `nextActions`.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
-import { ACTION_POST_STATE, type ActionId } from "@bosonprotocol/x402-core/state-machine";
+import { ACTION_POST_STATE, type ExchangeActionId } from "@bosonprotocol/x402-core/state-machine";
 import type { Hex } from "viem";
 
 import { emitNextActions } from "./next-actions.js";
@@ -37,9 +37,13 @@ export interface PerformActionOk {
   txHash: string;
 }
 
-/** Generic post-commit handler — wired from each of the per-action wrappers below. */
+/**
+ * Generic exchange-keyed post-commit handler — wired from each of the
+ * per-action wrappers below. Entity-keyed actions (e.g. `withdrawFunds`)
+ * have their own handler in `./withdraw-funds.ts`.
+ */
 export async function handlePerformAction(
-  action: ActionId,
+  action: ExchangeActionId,
   input: PerformActionInput,
   ctx: PerformActionContext,
 ): Promise<HandlerResult<PerformActionOk>> {

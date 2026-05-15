@@ -218,13 +218,27 @@ describe("createFacilitatorClient", () => {
     });
   });
 
-  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) on partial perform-action success body", async () => {
-    // `ok: true` for /perform-action requires `txHash` + `newExchangeState`.
-    // A response that drops `newExchangeState` would otherwise typecheck
-    // away to undefined at the call site.
+  it("accepts a perform-action success body with just txHash (entity-keyed variant)", async () => {
+    // Entity-keyed actions (`boson-withdrawFunds`) return just
+    // `{ ok: true, txHash }` — no `newExchangeState`. The validator
+    // therefore can't require `newExchangeState`; it only rejects
+    // bodies that drop `txHash`.
     const stub = makeStubFetch(() => ({
       status: 200,
-      body: { ok: true, txHash: "0xabc" }, // newExchangeState missing
+      body: { ok: true, txHash: "0xabc" },
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    await expect(client.performAction(performActionInput)).resolves.toEqual({
+      ok: true,
+      txHash: "0xabc",
+    });
+  });
+
+  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) when txHash is missing from a 2xx success body", async () => {
+    const stub = makeStubFetch(() => ({
+      status: 200,
+      body: { ok: true, newExchangeState: "COMPLETED" }, // txHash missing
     }));
     const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
 

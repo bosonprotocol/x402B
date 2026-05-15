@@ -1,13 +1,14 @@
 // `performAction` — relay a post-commit transition (redeem / complete /
-// cancel / revoke / raise / retract / escalate / resolve dispute) on
-// behalf of the signer.
+// cancel / revoke / raise / retract / escalate / resolve dispute, or
+// the entity-keyed `boson-withdrawFunds`) on behalf of the signer.
 //
 // Pipeline:
 //   1. Decode signedPayload (ABI-encoded BosonMetaTx) — INVALID_PAYLOAD
 //      on malformed bytes.
 //   2. supportedNetworks gate.
 //   3. Validate action is a post-commit action and that signed calldata
-//      matches `input.action` + `input.exchangeId`.
+//      matches `input.action` + (`input.exchangeId` for exchange-keyed
+//      actions, `input.entityId` for entity-keyed actions).
 //   4. Validate tokenAuthStrategy compatibility. Until the BPIP-12
 //      envelope encoder ships, performAction supports only `"none"` and
 //      rejects all token-auth-related fields on that path.
@@ -25,13 +26,17 @@
 //   9. Build the outer envelope (currently the `"none"` strategy only).
 //  10. Submit + wait for receipt; an on-chain revert surfaces as
 //      ONCHAIN_REVERT.
-//  11. Look up the predicted post-state from ACTION_POST_STATE and
-//      return it so callers can update local state without a subgraph
-//      round-trip.
+//  11. For exchange-keyed actions, look up the predicted post-state
+//      from ACTION_POST_STATE and return it. Entity-keyed actions
+//      return just `{ ok: true, txHash }` — they don't transition the
+//      exchange state machine.
 //
 // Signed by buyer for redeem / raise / retract / escalate, by seller
 // for revoke, by either for cancel / complete / resolve-dispute (the
-// last needs both signatures pre-aggregated in the metaTx.functionSignature).
+// last needs both signatures pre-aggregated in the metaTx.functionSignature),
+// and by the funds entity's authorised signer for withdrawFunds.
+
+import { isEntityKeyedAction } from "@bosonprotocol/x402-core/state-machine";
 
 import { toResult } from "../errors.js";
 import { buildSettleEnvelope } from "../settle/build-envelope.js";
@@ -47,7 +52,10 @@ import { parseChainId } from "../verify/structural.js";
 
 import { decodeSignedPayload } from "@bosonprotocol/x402-evm/codec";
 
-import { validatePerformActionMetaTx } from "./action-calldata.js";
+import {
+  validatePerformEntityActionMetaTx,
+  validatePerformExchangeActionMetaTx,
+} from "./action-calldata.js";
 import { deriveNewState } from "./new-state.js";
 
 export async function performAction(
@@ -81,11 +89,19 @@ export async function performAction(
 
     // 3. Action/calldata validation. The request body is only metadata; the
     //    signed payload decides what the relayer will actually submit.
-    const validation = validatePerformActionMetaTx({
-      action: input.action,
-      exchangeId: input.exchangeId,
-      metaTx,
-    });
+    //    Dispatch on action kind so each variant validates the right key.
+    const isEntityKeyed = isEntityKeyedAction(input.action);
+    const validation = isEntityKeyed
+      ? validatePerformEntityActionMetaTx({
+          action: input.action,
+          entityId: (input as { entityId: string }).entityId,
+          metaTx,
+        })
+      : validatePerformExchangeActionMetaTx({
+          action: input.action,
+          exchangeId: (input as { exchangeId: string }).exchangeId,
+          metaTx,
+        });
     if (!validation.ok) return validation;
 
     // 4. Resolve and validate token-auth strategy. BPIP-12 post-commit
@@ -195,9 +211,14 @@ export async function performAction(
     });
     if (!submitted.ok) return submitted;
 
-    // 11. New state lookup.
-    const newState = deriveNewState(input.action);
-
+    // 11. New state lookup — only exchange-keyed actions transition the
+    //     state machine. Entity-keyed actions return just txHash.
+    if (isEntityKeyed) {
+      return { ok: true, txHash: submitted.txHash };
+    }
+    const newState = deriveNewState(
+      (input as { action: Parameters<typeof deriveNewState>[0] }).action,
+    );
     return {
       ok: true,
       txHash: submitted.txHash,

@@ -146,6 +146,20 @@ The action-id list and the two transition tables live in `@bosonprotocol/x402-co
 
 These will land once the corresponding Boson Diamond facets stabilize.
 
+## Entity-keyed actions
+
+A second flavour of action lives alongside the exchange-keyed table above. **Entity-keyed actions** target a Boson account `entityId` (buyer or seller) rather than a single exchange, and do not transition the exchange / dispute state machine. They are deliberately absent from the `nextActions.next[]` envelope — they apply at any time, regardless of any one exchange's state — and instead surface as standalone server endpoints. The first entry:
+
+| Action ID | Boson primitive | Side | Key | Server endpoint |
+|---|---|---|---|---|
+| `boson-withdrawFunds` | `FundsHandlerFacet.withdrawFunds(uint256,address[],uint256[])` | client OR server (the protocol enforces "must be an authorised signer for the entity") | `entityId` | `POST /x402b/withdraw-funds` |
+
+The action id is exported from `@bosonprotocol/x402-core/state-machine` under `ENTITY_ACTION_IDS`; exchange-keyed ids stay accessible under `EXCHANGE_ACTION_IDS`. `ACTION_IDS` is the union of both. `ACTION_POST_STATE` is narrowed to exchange-keyed ids; `ACTION_FACETS` covers both (withdraw maps to `FundsHandlerFacet`). The helper `isEntityKeyedAction(action)` discriminates at runtime.
+
+Read-only sibling: a `GET /x402b/available-funds` endpoint returns the current funds entity for a buyer/seller (sourced from the protocol subgraph via `coreSdk.getFunds`). Both endpoints accept either `entityId` directly or an EVM `address` (with optional `role: "buyer" | "seller"` to disambiguate addresses registered as both). See `docs/boson-impl-05-server-sdk.md` and `docs/boson-impl-07-facilitator.md` for wire-format details.
+
+Scope cap for v1: the convenience layer signs *all* available funds at once. The on-chain primitive accepts arbitrary `(tokenList, tokenAmounts)` arrays; partial / user-chosen amounts can be added later without a wire-format change.
+
 ## Channels
 
 A **channel** is a transport for invoking an action. The standard registry:

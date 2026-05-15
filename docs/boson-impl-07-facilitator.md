@@ -24,12 +24,21 @@ POST /settle
   -> { ok: true, exchangeId, txHash } | { ok: false, code, reason }
 
 POST /perform-action?action=<ActionId>     // optional, for the "facilitator" channel in nextActions
-  body: {
+  body — exchange-keyed variant (redeem / cancel / revoke / complete /
+  dispute family):
+  {
     network, escrowAddress, exchangeId, action, signedPayload,
     // Only when targeting a `payable` post-commit action (see below):
     tokenAuthStrategy?, tokenAuth?, asset?, amount?, maxTimeoutSeconds?
   }
   -> { ok: true, txHash, newExchangeState, newDisputeState? } | { ok: false, code, reason }
+
+  body — entity-keyed variant (`action=boson-withdrawFunds`):
+  {
+    network, escrowAddress, entityId, action, signedPayload
+    // tokenAuthStrategy must be "none"
+  }
+  -> { ok: true, txHash } | { ok: false, code, reason }
 
   `signedPayload` is the ABI-encoded tuple
     (address from, string functionName, bytes functionSignature,
@@ -39,7 +48,16 @@ POST /perform-action?action=<ActionId>     // optional, for the "facilitator" ch
 
   `newExchangeState` / `newDisputeState` are looked up from the static
   `ACTION_POST_STATE` table in `@bosonprotocol/x402-core/state-machine`
-  so clients can update local state without a subgraph round-trip.
+  so clients can update local state without a subgraph round-trip. They
+  are intentionally omitted from the entity-keyed (`withdrawFunds`)
+  success result — withdraw does not transition the exchange state
+  machine.
+
+  Validation: the request body is metadata. The facilitator decodes
+  `signedPayload` and asserts the calldata's first argument matches
+  `exchangeId` (exchange-keyed variant) or `entityId` (entity-keyed
+  variant). Discrimination is by action id —
+  `isEntityKeyedAction(action)` in `@bosonprotocol/x402-core/state-machine`.
 
   Most post-commit actions are non-payable: `tokenAuthStrategy` defaults
   to `"none"` and the additional fields MUST be omitted. The exception

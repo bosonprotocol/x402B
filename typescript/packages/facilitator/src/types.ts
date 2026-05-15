@@ -18,12 +18,16 @@ import type {
   Hex,
   TokenAuthStrategy,
 } from "@bosonprotocol/x402-core/schemes/escrow";
-import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
+import type {
+  ActionId,
+  EntityActionId,
+  ExchangeActionId,
+} from "@bosonprotocol/x402-core/state-machine";
 import { DisputeState, ExchangeState } from "@bosonprotocol/x402-core/state-machine";
 import type { PublicClient, WalletClient } from "viem";
 
 export { DisputeState, ExchangeState };
-export type { ActionId };
+export type { ActionId, EntityActionId, ExchangeActionId };
 
 /**
  * Stable wire-level error codes. Consumers should branch on these rather
@@ -73,31 +77,10 @@ export type FacilitatorSettleResult =
   | { ok: true; exchangeId: string; txHash: Hex }
   | { ok: false; code: FacilitatorErrorCode; reason: string };
 
-/** Body of `POST /perform-action` (per spec §"Endpoints").
- *
- * Carries enough context for the facilitator to dispatch a post-commit
- * meta-tx without re-fetching protocol state: `network` selects which
- * relayer wallet / RPC to use, and `escrowAddress` is the Boson Diamond
- * the signed meta-tx was bound to (its EIP-712 verifyingContract).
- *
- * `signedPayload` is the ABI-encoded `BosonMetaTx` tuple
- * `(address from, string functionName, bytes functionSignature,
- *   uint256 nonce, uint8 v, bytes32 r, bytes32 s)` —
- * the buyer / seller's pre-signed envelope ready to be wrapped in
- * `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
- *
- * Most post-commit actions are non-payable: the relayer just submits
- * the meta-tx and `tokenAuthStrategy` defaults to `"none"`. The one
- * exception today is `boson-escalateDispute`, which is `payable` on
- * the Diamond. The BPIP-12 post-commit token-auth envelope is not wired
- * yet, so `performAction()` returns `UNSUPPORTED_TOKEN_AUTH_STRATEGY`
- * for `tokenAuthStrategy !== "none"` until that encoder ships.
- */
-export interface FacilitatorPerformActionInput {
+/** Fields shared across every `/perform-action` variant. */
+interface FacilitatorPerformActionInputBase {
   network: EvmNetwork;
   escrowAddress: Address;
-  exchangeId: string;
-  action: ActionId;
   signedPayload: Hex;
   /**
    * Defaults to `"none"`. Only `boson-escalateDispute` accepts non-`"none"`
@@ -123,13 +106,69 @@ export interface FacilitatorPerformActionInput {
   maxTimeoutSeconds?: number;
 }
 
+/** Exchange-keyed variant — the default for redeem / complete / dispute family. */
+export interface FacilitatorPerformExchangeActionInput extends FacilitatorPerformActionInputBase {
+  action: ExchangeActionId;
+  exchangeId: string;
+}
+
+/**
+ * Entity-keyed variant — for actions that target a Boson account
+ * `entityId` (buyer or seller) rather than a single exchange. The only
+ * action today is `boson-withdrawFunds`.
+ */
+export interface FacilitatorPerformEntityActionInput extends FacilitatorPerformActionInputBase {
+  action: EntityActionId;
+  entityId: string;
+}
+
+/** Body of `POST /perform-action` (per spec §"Endpoints").
+ *
+ * Carries enough context for the facilitator to dispatch a post-commit
+ * meta-tx without re-fetching protocol state: `network` selects which
+ * relayer wallet / RPC to use, and `escrowAddress` is the Boson Diamond
+ * the signed meta-tx was bound to (its EIP-712 verifyingContract).
+ *
+ * `signedPayload` is the ABI-encoded `BosonMetaTx` tuple
+ * `(address from, string functionName, bytes functionSignature,
+ *   uint256 nonce, uint8 v, bytes32 r, bytes32 s)` —
+ * the buyer / seller's pre-signed envelope ready to be wrapped in
+ * `MetaTransactionsHandlerFacet.executeMetaTransaction(...)`.
+ *
+ * Most post-commit actions are non-payable: the relayer just submits
+ * the meta-tx and `tokenAuthStrategy` defaults to `"none"`. The one
+ * exception today is `boson-escalateDispute`, which is `payable` on
+ * the Diamond. The BPIP-12 post-commit token-auth envelope is not wired
+ * yet, so `performAction()` returns `UNSUPPORTED_TOKEN_AUTH_STRATEGY`
+ * for `tokenAuthStrategy !== "none"` until that encoder ships.
+ *
+ * Discriminated on `action`: exchange-keyed actions carry `exchangeId`,
+ * entity-keyed actions carry `entityId`.
+ */
+export type FacilitatorPerformActionInput =
+  | FacilitatorPerformExchangeActionInput
+  | FacilitatorPerformEntityActionInput;
+
+/** Successful exchange-keyed result — pins the new exchange / dispute state. */
+export interface FacilitatorPerformExchangeActionOk {
+  ok: true;
+  txHash: Hex;
+  newExchangeState: ExchangeState;
+  newDisputeState?: DisputeState;
+}
+
+/**
+ * Successful entity-keyed result — the action doesn't transition the
+ * exchange state machine, so neither state field is reported.
+ */
+export interface FacilitatorPerformEntityActionOk {
+  ok: true;
+  txHash: Hex;
+}
+
 export type FacilitatorPerformActionResult =
-  | {
-      ok: true;
-      txHash: Hex;
-      newExchangeState: ExchangeState;
-      newDisputeState?: DisputeState;
-    }
+  | FacilitatorPerformExchangeActionOk
+  | FacilitatorPerformEntityActionOk
   | { ok: false; code: FacilitatorErrorCode; reason: string };
 
 /**
