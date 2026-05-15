@@ -680,6 +680,29 @@ describe("performAction()", () => {
     expect(result).toEqual({ ok: true, txHash: TX_HASH });
   });
 
+  it("withdrawFunds rejects token-auth strategies other than none", async () => {
+    const signedPayload = await buildSignedPayload({
+      signer: seller,
+      functionName: "withdrawFunds(uint256,address[],uint256[])",
+      functionSignature: buildWithdrawCalldata(),
+    });
+    const result = await performAction(
+      {
+        network: NETWORK,
+        escrowAddress: ESCROW,
+        entityId: ENTITY_ID,
+        action: "boson-withdrawFunds",
+        signedPayload,
+        tokenAuthStrategy: "permit2",
+      },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(
+      /requires tokenAuthStrategy "none"/i,
+    );
+  });
+
   it("withdrawFunds rejects when entityId does not match the signed calldata", async () => {
     const signedPayload = await buildSignedPayload({
       signer: seller,

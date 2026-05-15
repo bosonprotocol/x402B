@@ -120,6 +120,13 @@ export async function performAction(
     //    `asset` / `amount` / `maxTimeoutSeconds` tuple when one is
     //    declared.
     const tokenAuthStrategy = input.tokenAuthStrategy ?? "none";
+    if (isEntityKeyed && tokenAuthStrategy !== "none") {
+      return {
+        ok: false,
+        code: "INVALID_PAYLOAD",
+        reason: `entity-keyed action "${input.action}" requires tokenAuthStrategy "none"`,
+      };
+    }
     if (tokenAuthStrategy === "none") {
       if (
         input.tokenAuth !== undefined ||

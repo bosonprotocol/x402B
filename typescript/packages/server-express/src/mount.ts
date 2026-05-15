@@ -158,6 +158,13 @@ function withdrawFundsRoute(server: X402bServer): RequestHandler {
         });
         return;
       }
+      if (!HEX_BYTES_RE.test(body.signedPayload)) {
+        res.status(400).json({
+          code: INVALID_REQUEST_BODY,
+          reason: "signedPayload must be a 0x-prefixed hex string",
+        });
+        return;
+      }
       const hasEntityId = typeof body.entityId === "string";
       const hasAddress = typeof body.address === "string";
       if (hasEntityId === hasAddress) {

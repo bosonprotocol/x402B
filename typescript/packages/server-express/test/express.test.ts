@@ -424,6 +424,23 @@ describe("mountX402b — convenience routes", () => {
     expect(res.body.code).toBe("INVALID_REQUEST_BODY");
   });
 
+  it("POST /x402b/withdraw-funds rejects a non-hex signedPayload with 400", async () => {
+    const withdrawFunds = vi.fn();
+    const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+      entityId: "42",
+      signedPayload: "not-hex",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
+    expect(withdrawFunds).not.toHaveBeenCalled();
+  });
+
   it("GET /x402b/available-funds returns the reshaped funds list", async () => {
     const stubCoreSdk = {
       getFunds: async (queryVars: { fundsFilter: { accountId: string } }) => {
