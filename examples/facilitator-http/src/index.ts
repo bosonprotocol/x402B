@@ -7,6 +7,6 @@ const app = createFacilitatorApp(config);
 
 app.listen(env.port, () => {
   console.log(
-    `[facilitator-http] listening on :${env.port} (chain ${env.chainId} via ${env.rpcNode})`,
+    `[facilitator-http] listening on :${env.port} (chain ${env.chainId}, escrow ${env.escrowAddress})`,
   );
 });
