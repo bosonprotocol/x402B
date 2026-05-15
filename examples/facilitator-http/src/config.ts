@@ -56,7 +56,7 @@ function asHex32(value: string, name: string): Hex {
 
 function asInt(value: string, name: string, { min, max }: { min: number; max?: number }): number {
   const n = Number(value);
-  if (!Number.isInteger(n) || n < min || (max !== undefined && n > max)) {
+  if (!Number.isSafeInteger(n) || n < min || (max !== undefined && n > max)) {
     const range = max !== undefined ? `an integer in [${min}, ${max}]` : `an integer >= ${min}`;
     throw new Error(`[facilitator-http] ${name} must be ${range} (got ${JSON.stringify(value)})`);
   }
