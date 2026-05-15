@@ -2,8 +2,8 @@
 
 Express 4/5 adapter for
 [`@bosonprotocol/x402-server`](../x402-server) — provides a
-[`mountX402b(server)`](./src/mount.ts) router that wires the eight
-convenience handlers to `POST /x402B/*` routes, plus
+[`mountX402b(server)`](./src/mount.ts) router that wires the convenience
+handlers to `/x402B/*` routes, plus
 [`expressMiddleware`](./src/middleware.ts) for protecting an
 existing route with a 402 challenge.
 
@@ -48,6 +48,12 @@ The mounted router exposes:
 - `POST /x402B/dispute/resolve`
 - `POST /x402B/dispute/retract`
 - `POST /x402B/dispute/escalate`
+- `POST /x402B/withdraw-funds`
+- `GET /x402B/available-funds`
+
+When `basePath` is omitted, the router also registers legacy `/x402b/*`
+aliases for backward compatibility. Passing `basePath` registers only
+that explicit path.
 
 Each route returns `{ exchangeId?, txHash, nextActions }` on success
 or a structured `{ code, reason, details? }` error body on failure.

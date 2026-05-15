@@ -27,8 +27,10 @@ facilitator implementation no longer throws them.
   facet-only reference, per the repo's "no PR-number references in
   source" rule.
 - Align documentation, JSDoc examples, test fixtures, and the Express
-  convenience-route default with the canonical `/x402B` route mount.
+  convenience-route docs with the canonical `/x402B` route mount while
+  keeping the legacy `/x402b` default alias for existing consumers.
 - Keep the `bosonprotocol/x402B` casing in package `repository` /
   `homepage` / `bugs` URLs and README links.
-- Drop the unused `@x402/core` and `lodash` dependencies from
-  `@bosonprotocol/x402-core`'s `package.json` (no imports in `src/`).
+- Drop the unused `@x402/core` dependency from `@bosonprotocol/x402-core`'s
+  `package.json`; keep `lodash` because `@bosonprotocol/core-sdk` still
+  requires `lodash/groupBy` at runtime under pnpm's strict resolution.
