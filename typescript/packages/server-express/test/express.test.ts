@@ -202,7 +202,7 @@ describe("mountX402b — convenience routes", () => {
   // The fixture signs the Flow A meta-tx (`boson-createOfferAndCommit`)
   // and exercises the matching `/commit` route here. Flow B
   // (`/commit-and-redeem`) has its own happy-path test below.
-  it("POST /x402b/commit returns 200 + nextActions", async () => {
+  it("POST /x402B/commit returns 200 + nextActions", async () => {
     const { requirements, headerValue } = await buildBuyerPayload();
     const server = await buildServer(
       makeStubFetch(() => ({ ok: true, exchangeId: "42", txHash: "0xabc" })),
@@ -221,7 +221,7 @@ describe("mountX402b — convenience routes", () => {
       }),
     );
 
-    const res = await supertest(app).post("/x402b/commit").set("X-PAYMENT", headerValue).send();
+    const res = await supertest(app).post("/x402B/commit").set("X-PAYMENT", headerValue).send();
     expect(res.status).toBe(200);
     expect(res.body.exchangeId).toBe("42");
     expect(res.body.txHash).toBe("0xabc");
@@ -236,7 +236,7 @@ describe("mountX402b — convenience routes", () => {
     expect(decoded.txHash).toBe("0xabc");
   });
 
-  it("POST /x402b/complete forwards to performAction and returns 200", async () => {
+  it("POST /x402B/complete forwards to performAction and returns 200", async () => {
     const { requirements } = await buildBuyerPayload();
     const completedReader: ExchangeReader = {
       read: async () => ({
@@ -282,7 +282,7 @@ describe("mountX402b — convenience routes", () => {
       }),
     );
 
-    const res = await supertest(app).post("/x402b/complete").send({
+    const res = await supertest(app).post("/x402B/complete").send({
       exchangeId: "42",
       signedPayload: "0xc0ffee",
     });
@@ -296,7 +296,7 @@ describe("mountX402b — convenience routes", () => {
     expect(res.headers["x-payment-response"]).toBeUndefined();
   });
 
-  it("POST /x402b/redeem forwards optional fulfillment data", async () => {
+  it("POST /x402B/redeem forwards optional fulfillment data", async () => {
     const redeem = vi.fn(async () => ({
       ok: true as const,
       status: 200 as const,
@@ -309,7 +309,7 @@ describe("mountX402b — convenience routes", () => {
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
     const fulfillment = { option: "email", data: { email: "new@example.com" } };
-    const res = await supertest(app).post("/x402b/redeem").send({
+    const res = await supertest(app).post("/x402B/redeem").send({
       exchangeId: "42",
       signedPayload: "0xc0ffee",
       fulfillment,
@@ -323,14 +323,14 @@ describe("mountX402b — convenience routes", () => {
     });
   });
 
-  it("POST /x402b/redeem rejects a non-hex signedPayload with 400", async () => {
+  it("POST /x402B/redeem rejects a non-hex signedPayload with 400", async () => {
     const redeem = vi.fn();
     const server = { handlers: { redeem } } as unknown as X402bServer;
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/redeem").send({
+    const res = await supertest(app).post("/x402B/redeem").send({
       exchangeId: "42",
       signedPayload: "not-hex",
     });
@@ -340,14 +340,14 @@ describe("mountX402b — convenience routes", () => {
     expect(redeem).not.toHaveBeenCalled();
   });
 
-  it("POST /x402b/redeem rejects malformed fulfillment payload with 400", async () => {
+  it("POST /x402B/redeem rejects malformed fulfillment payload with 400", async () => {
     const redeem = vi.fn();
     const server = { handlers: { redeem } } as unknown as X402bServer;
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/redeem").send({
+    const res = await supertest(app).post("/x402B/redeem").send({
       exchangeId: "42",
       signedPayload: "0xc0ffee",
       fulfillment: "not-an-object",
@@ -358,18 +358,18 @@ describe("mountX402b — convenience routes", () => {
     expect(redeem).not.toHaveBeenCalled();
   });
 
-  it("POST /x402b/complete rejects malformed body with 400", async () => {
+  it("POST /x402B/complete rejects malformed body with 400", async () => {
     const server = await buildServer(makeStubFetch(() => ({ ok: true, txHash: "0x" })));
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/complete").send({ foo: "bar" });
+    const res = await supertest(app).post("/x402B/complete").send({ foo: "bar" });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe(INVALID_REQUEST_BODY);
   });
 
-  it("POST /x402b/withdraw-funds forwards to performAction and returns 200", async () => {
+  it("POST /x402B/withdraw-funds forwards to performAction and returns 200", async () => {
     const stubCoreSdk = {
       getFunds: async () => [],
       getSellersByAddress: async () => [],
@@ -401,7 +401,7 @@ describe("mountX402b — convenience routes", () => {
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
       entityId: "42",
       signedPayload: "0xc0ffee",
     });
@@ -409,13 +409,13 @@ describe("mountX402b — convenience routes", () => {
     expect(res.body).toEqual({ txHash: "0xfed", entityId: "42" });
   });
 
-  it("POST /x402b/withdraw-funds 400s when entityId and address are both set", async () => {
+  it("POST /x402B/withdraw-funds 400s when entityId and address are both set", async () => {
     const server = await buildServer(makeStubFetch(() => ({ ok: true })));
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
       entityId: "42",
       address: "0x1111111111111111111111111111111111111111",
       signedPayload: "0xc0ffee",
@@ -424,14 +424,14 @@ describe("mountX402b — convenience routes", () => {
     expect(res.body.code).toBe("INVALID_REQUEST_BODY");
   });
 
-  it("POST /x402b/withdraw-funds rejects a non-hex signedPayload with 400", async () => {
+  it("POST /x402B/withdraw-funds rejects a non-hex signedPayload with 400", async () => {
     const withdrawFunds = vi.fn();
     const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
       entityId: "42",
       signedPayload: "not-hex",
     });
@@ -441,14 +441,14 @@ describe("mountX402b — convenience routes", () => {
     expect(withdrawFunds).not.toHaveBeenCalled();
   });
 
-  it("POST /x402b/withdraw-funds rejects a non-decimal entityId with 400", async () => {
+  it("POST /x402B/withdraw-funds rejects a non-decimal entityId with 400", async () => {
     const withdrawFunds = vi.fn();
     const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
       entityId: "4two",
       signedPayload: "0xc0ffee",
     });
@@ -458,14 +458,14 @@ describe("mountX402b — convenience routes", () => {
     expect(withdrawFunds).not.toHaveBeenCalled();
   });
 
-  it("POST /x402b/withdraw-funds rejects a malformed address with 400", async () => {
+  it("POST /x402B/withdraw-funds rejects a malformed address with 400", async () => {
     const withdrawFunds = vi.fn();
     const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
       address: "0xnotanaddress",
       signedPayload: "0xc0ffee",
     });
@@ -475,14 +475,14 @@ describe("mountX402b — convenience routes", () => {
     expect(withdrawFunds).not.toHaveBeenCalled();
   });
 
-  it("POST /x402b/withdraw-funds rejects an invalid role with 400", async () => {
+  it("POST /x402B/withdraw-funds rejects an invalid role with 400", async () => {
     const withdrawFunds = vi.fn();
     const server = { handlers: { withdrawFunds } } as unknown as X402bServer;
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).post("/x402b/withdraw-funds").send({
+    const res = await supertest(app).post("/x402B/withdraw-funds").send({
       address: "0x1111111111111111111111111111111111111111",
       role: "admin",
       signedPayload: "0xc0ffee",
@@ -493,7 +493,7 @@ describe("mountX402b — convenience routes", () => {
     expect(withdrawFunds).not.toHaveBeenCalled();
   });
 
-  it("GET /x402b/available-funds returns the reshaped funds list", async () => {
+  it("GET /x402B/available-funds returns the reshaped funds list", async () => {
     const stubCoreSdk = {
       getFunds: async (queryVars: { fundsFilter: { accountId: string } }) => {
         expect(queryVars.fundsFilter.accountId).toBe("42");
@@ -527,7 +527,7 @@ describe("mountX402b — convenience routes", () => {
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).get("/x402b/available-funds?entityId=42");
+    const res = await supertest(app).get("/x402B/available-funds?entityId=42");
     expect(res.status).toBe(200);
     expect(res.body.entityId).toBe("42");
     expect(res.body.funds).toHaveLength(1);
@@ -535,18 +535,18 @@ describe("mountX402b — convenience routes", () => {
     expect(res.body.funds[0].availableAmount).toBe("1500000");
   });
 
-  it("GET /x402b/available-funds 400s when neither entityId nor address is set", async () => {
+  it("GET /x402B/available-funds 400s when neither entityId nor address is set", async () => {
     const server = await buildServer(makeStubFetch(() => ({ ok: true })));
     const app = express();
     app.use(express.json());
     app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
 
-    const res = await supertest(app).get("/x402b/available-funds");
+    const res = await supertest(app).get("/x402B/available-funds");
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_REQUEST_QUERY");
   });
 
-  it.each([["/x402b/commit"], ["/x402b/commit-and-redeem"]])(
+  it.each([["/x402B/commit"], ["/x402B/commit-and-redeem"]])(
     "POST %s without X-PAYMENT returns the canonical x402 challenge",
     async (path) => {
       // Commit routes hit without `X-PAYMENT` should emit the same

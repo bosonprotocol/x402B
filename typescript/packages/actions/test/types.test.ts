@@ -25,7 +25,7 @@ describe("@bosonprotocol/x402-actions public types", () => {
     const entry: ActionEntry = {
       id: "boson-resolveDispute",
       channels: ["server", "facilitator", "onchain", "mcp"],
-      endpoints: { server: "https://seller.example/x402b/dispute/resolve" },
+      endpoints: { server: "https://seller.example/x402B/dispute/resolve" },
       deadline: "2026-05-15T00:00:00Z",
     };
     expectTypeOf(entry.deadline).toEqualTypeOf<string | undefined>();
@@ -37,7 +37,7 @@ describe("@bosonprotocol/x402-actions public types", () => {
         {
           id: "boson-createOfferAndCommit",
           channels: ["server", "facilitator", "onchain", "mcp"],
-          endpoints: { server: "https://seller.example/x402b/commit" },
+          endpoints: { server: "https://seller.example/x402B/commit" },
         },
       ],
     };

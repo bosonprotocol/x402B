@@ -17,7 +17,7 @@
 //    target a Boson account `entityId` (buyer or seller) rather than a
 //    specific exchange. They do not transition the exchange state
 //    machine and are deliberately absent from `next[]`; they expose
-//    their own server endpoints (e.g. `POST /x402b/withdraw-funds`).
+//    their own server endpoints (e.g. `POST /x402B/withdraw-funds`).
 //    See spec doc §"Entity-keyed actions".
 //
 // Scope: actions either the client (buyer) OR the server (seller) can

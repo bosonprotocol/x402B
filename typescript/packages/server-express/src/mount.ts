@@ -1,6 +1,6 @@
 // `mountX402b` — Express router exposing the eight convenience
-// handlers as `POST /x402b/*` routes. The router is mountable at any
-// path (default `/x402b`); the trailing path segments are fixed by
+// handlers as `POST /x402B/*` routes. The router is mountable at any
+// path (default `/x402B`); the trailing path segments are fixed by
 // the spec.
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
@@ -22,7 +22,7 @@ import type { Hex } from "viem";
 
 import { respondWithChallenge } from "./internal/x402-challenge.js";
 
-/** Shared error code for malformed `POST /x402b/*` bodies. */
+/** Shared error code for malformed `POST /x402B/*` bodies. */
 export const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
 
 export interface MountX402bOptions {
@@ -34,7 +34,7 @@ export interface MountX402bOptions {
   resolveRequirements: (
     req: Request,
   ) => Promise<EscrowPaymentRequirements> | EscrowPaymentRequirements;
-  /** Optional mount path. Defaults to `/x402b`. */
+  /** Optional mount path. Defaults to `/x402B`. */
   basePath?: string;
 }
 
@@ -43,7 +43,7 @@ export interface MountX402bOptions {
  */
 export function mountX402b(server: X402bServer, opts: MountX402bOptions): Router {
   const router = Router();
-  const basePath = opts.basePath ?? "/x402b";
+  const basePath = opts.basePath ?? "/x402B";
 
   router.post(`${basePath}/commit`, commitRoute(server, opts, "commit"));
   router.post(`${basePath}/commit-and-redeem`, commitRoute(server, opts, "commit-and-redeem"));

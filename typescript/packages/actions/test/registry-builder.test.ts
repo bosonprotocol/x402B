@@ -7,8 +7,8 @@ describe("buildChannelRegistry — happy path", () => {
     const registry = buildChannelRegistry({
       channels: ["server", "facilitator", "onchain", "mcp"],
       endpoints: {
-        "boson-redeem": "https://seller.example/x402b/redeem",
-        "boson-completeExchange": "https://seller.example/x402b/complete",
+        "boson-redeem": "https://seller.example/x402B/redeem",
+        "boson-completeExchange": "https://seller.example/x402B/complete",
       },
       xmtp: "0xdddddddddddddddddddddddddddddddddddddddd",
       mcp: "boson://seller/12345",

@@ -50,7 +50,7 @@ const channelRegistrySchema = z
  * const registry = buildChannelRegistry({
  *   channels: ["server", "facilitator", "onchain", "mcp"],
  *   endpoints: {
- *     "boson-redeem": "https://seller.example/x402b/redeem",
+ *     "boson-redeem": "https://seller.example/x402B/redeem",
  *   },
  *   xmtp: "0xSellerXMTP...",
  *   mcp: "boson://seller/12345",

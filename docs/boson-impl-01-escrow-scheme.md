@@ -55,12 +55,12 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
           {
             "id": "boson-createOfferAndCommit",                  // -> ExchangeCommitFacet.createOfferAndCommit
             "channels": ["server", "facilitator", "onchain", "mcp"],
-            "endpoints": { "server": "https://seller.example/x402b/commit" }
+            "endpoints": { "server": "https://seller.example/x402B/commit" }
           },
           {
             "id": "boson-createOfferCommitAndRedeem",            // -> OrchestrationHandlerFacet2.createOfferCommitAndRedeem
             "channels": ["server", "facilitator", "onchain", "mcp"],
-            "endpoints": { "server": "https://seller.example/x402b/commit-and-redeem" }
+            "endpoints": { "server": "https://seller.example/x402B/commit-and-redeem" }
           }
         ],
         "fallback": {

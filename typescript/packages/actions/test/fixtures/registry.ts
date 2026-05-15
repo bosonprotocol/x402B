@@ -7,8 +7,8 @@ import type { ChannelRegistry } from "../../src/index.js";
 export const REGISTRY: ChannelRegistry = {
   channels: ["server", "facilitator", "onchain", "mcp", "xmtp"],
   endpoints: {
-    "boson-redeem": "https://seller.example/x402b/redeem",
-    "boson-cancelVoucher": "https://seller.example/x402b/cancel",
+    "boson-redeem": "https://seller.example/x402B/redeem",
+    "boson-cancelVoucher": "https://seller.example/x402B/cancel",
   },
   xmtp: "0xSellerXMTP",
   mcp: "boson://seller/12345",

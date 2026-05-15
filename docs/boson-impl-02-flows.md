@@ -134,7 +134,7 @@ sequenceDiagram
     end
 ```
 
-The buyer reaches the dispute primitives through whichever channel `nextActions.fallback` advertises. The server's convenience endpoint (e.g. `POST /x402b/dispute/raise`) is one option; the others are facilitator, on-chain direct, MCP, XMTP-to-seller. See [boson-impl-04-state-machine-and-next-actions.md](./boson-impl-04-state-machine-and-next-actions.md) for the full channel registry.
+The buyer reaches the dispute primitives through whichever channel `nextActions.fallback` advertises. The server's convenience endpoint (e.g. `POST /x402B/dispute/raise`) is one option; the others are facilitator, on-chain direct, MCP, XMTP-to-seller. See [boson-impl-04-state-machine-and-next-actions.md](./boson-impl-04-state-machine-and-next-actions.md) for the full channel registry.
 
 ## Flow D — Channel fallback (when the server is unreachable)
 
@@ -149,7 +149,7 @@ sequenceDiagram
     participant M as MCP
     participant D as Boson Diamond
 
-    C->>Sv: POST /x402b/redeem (preferred)
+    C->>Sv: POST /x402B/redeem (preferred)
     Sv-->>C: timeout / 5xx
 
     C->>F: POST /redeem (next preferred)

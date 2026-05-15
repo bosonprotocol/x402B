@@ -119,15 +119,9 @@ importers:
       '@bosonprotocol/core-sdk':
         specifier: 1.48.0-alpha.3
         version: 1.48.0-alpha.3
-      '@x402/core':
-        specifier: ^2.11.0
-        version: 2.11.0
       '@x402/evm':
         specifier: ^2.11.0
         version: 2.11.0(typescript@5.9.3)
-      lodash:
-        specifier: ^4.18.1
-        version: 4.18.1
       viem:
         specifier: ^2.39.3
         version: 2.48.11(typescript@5.9.3)(zod@3.25.76)
@@ -1941,9 +1935,6 @@ packages:
 
   lodash.startcase@4.4.0:
     resolution: {integrity: sha512-+WKqsK294HMSc2jEbNgpHpd0JfIBhp7rEV4aqXWqFr6AlXov+SlcgB1Fv01y2kGe3Gc8nMW7VA0SrGuSkRfIEg==}
-
-  lodash@4.18.1:
-    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
@@ -4357,8 +4348,6 @@ snapshots:
   lodash.merge@4.6.2: {}
 
   lodash.startcase@4.4.0: {}
-
-  lodash@4.18.1: {}
 
   loupe@3.2.1: {}
 

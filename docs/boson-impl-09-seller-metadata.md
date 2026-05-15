@@ -16,8 +16,8 @@ When the buyer falls off the seller's HTTP server (server down, server censoring
   "channels": {
     "x402B": {
       "endpoints": {
-        "base":         "https://seller.example/x402b",        // discoverable root, all server-side endpoints under here
-        "openapi":      "https://seller.example/x402b/openapi.json"  // optional
+        "base":         "https://seller.example/x402B",        // discoverable root, all server-side endpoints under here
+        "openapi":      "https://seller.example/x402B/openapi.json"  // optional
       },
       "xmtp":          "0xSellerXMTPInbox...",                  // for xmtp channel
       "mcp": {
