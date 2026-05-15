@@ -35,8 +35,8 @@ export function decodeXPaymentHeader(header: string | undefined | null): DecodeX
   // base64url → base64 (RFC 4648 §5) then decode. We prefer `atob` so
   // the validator stays edge-runtime compatible; `atob` returns a
   // Latin-1 binary string though, so we re-encode through `TextDecoder`
-  // to recover the original UTF-8 (a buyer's `fulfillment.data` may
-  // legitimately carry non-ASCII bytes — names, addresses, etc.).
+  // to recover the original UTF-8 (offer metadata and other inner
+  // fields can carry non-ASCII bytes).
   const padded = base64UrlToBase64(header);
   let decoded: string;
   try {

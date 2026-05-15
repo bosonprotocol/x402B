@@ -50,16 +50,19 @@ describe("resolveFulfillment", () => {
     );
   });
 
-  it("accepts atomic option (schema: null) without validating data", () => {
+  it("accepts atomic option (schema: null) and returns option-only commit-time slot", () => {
     const req = baseRequirements();
     req.fulfillment = { required: true, options: [{ id: "atomic", schema: null }] };
     expect(resolveFulfillment(req, { fulfillment: { option: "atomic", data: {} } })).toEqual({
       option: "atomic",
-      data: {},
     });
   });
 
-  it("accepts data that validates against the option's JSON Schema", () => {
+  it("validates data against the option's JSON Schema but returns option-only", () => {
+    // The commit-time payload carries only the chosen option (capability
+    // negotiation); delivery data flows on the redeem-time path. The
+    // client still validates data here so callers fail fast before
+    // signing if their data won't pass the option's schema.
     const req = baseRequirements();
     req.fulfillment = {
       required: true,
@@ -69,7 +72,7 @@ describe("resolveFulfillment", () => {
       resolveFulfillment(req, {
         fulfillment: { option: "email", data: { email: "buyer@example.com" } },
       }),
-    ).toEqual({ option: "email", data: { email: "buyer@example.com" } });
+    ).toEqual({ option: "email" });
   });
 
   it("throws when data fails the option's JSON Schema", () => {

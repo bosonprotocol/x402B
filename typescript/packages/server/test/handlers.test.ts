@@ -650,7 +650,7 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     };
     const payload = {
       ...fx.payload,
-      fulfillment: { option: "email", data: { email: "buyer@example.com" } },
+      fulfillment: { option: "email" },
     };
     const originalFetch = globalThis.fetch;
     globalThis.fetch = stub.fetch as unknown as typeof globalThis.fetch;

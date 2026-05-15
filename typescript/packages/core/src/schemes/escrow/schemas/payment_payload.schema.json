@@ -144,12 +144,9 @@
     "fulfillment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["option", "data"],
+      "required": ["option"],
       "properties": {
-        "option": { "type": "string", "minLength": 1 },
-        "data": {
-          "oneOf": [{ "type": "object" }, { "type": "null" }]
-        }
+        "option": { "type": "string", "minLength": 1 }
       }
     }
   }

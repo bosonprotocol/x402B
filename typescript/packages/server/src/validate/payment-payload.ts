@@ -19,7 +19,6 @@ import { recoverMetaTransactionSigner } from "@bosonprotocol/x402-core/eip712";
 import type {
   EscrowPaymentPayload,
   EscrowPaymentRequirements,
-  FulfillmentOption,
 } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
   buildCreateOfferAndCommitCalldata,
@@ -59,8 +58,7 @@ export type ValidationErrorCode =
   | "TOKEN_AUTH_UNEXPECTED"
   | "TOKEN_AUTH_UNKNOWN_STRATEGY"
   | "FULFILLMENT_REQUIRED"
-  | "FULFILLMENT_OPTION_NOT_ADVERTISED"
-  | "FULFILLMENT_DATA_INVALID";
+  | "FULFILLMENT_OPTION_NOT_ADVERTISED";
 
 export interface ValidationWarning {
   rule: number;
@@ -75,11 +73,6 @@ export interface ValidatePaymentPayloadArgs {
   chainId: number;
   /** Reference time in seconds since epoch for rules 9–11. Defaults to `Math.floor(Date.now() / 1000)`. */
   now?: number;
-  /** Optional per-fulfillment-option data validator (typically the `FulfillmentRegistry`'s per-channel `validate`). Without it, rule 13 only checks `option` membership. */
-  validateFulfillmentData?: (
-    option: string,
-    data: Record<string, unknown> | null,
-  ) => { ok: true } | { ok: false; reason: string };
 }
 
 /**
@@ -201,8 +194,10 @@ export async function validatePaymentPayload(
   // chain. Intentionally not enforced here; runs as part of
   // `verifyExchange` in PR 4 (RPC dependency).
 
-  // Rule 13 — fulfillment.
-  const fulfillmentResult = checkFulfillment(payload, requirements, args.validateFulfillmentData);
+  // Rule 13 — fulfillment option must be one the server advertised.
+  // The buyer's actual delivery data (`fulfillment.data`) flows on the
+  // redeem-time path, not here; rule 13 is option-membership only.
+  const fulfillmentResult = checkFulfillment(payload, requirements);
   if (fulfillmentResult !== null) return fulfillmentResult;
 
   return { ok: true };
@@ -441,23 +436,16 @@ function checkTokenAuthRules(
 function checkFulfillment(
   payload: EscrowPaymentPayload,
   requirements: EscrowPaymentRequirements,
-  validator?: ValidatePaymentPayloadArgs["validateFulfillmentData"],
 ): ValidatePaymentPayloadResult | null {
   const required = requirements.fulfillment?.required === true;
   const carried = payload.fulfillment;
   if (!required) return null;
 
   if (carried === undefined) {
-    return failure(
-      13,
-      "FULFILLMENT_REQUIRED",
-      "payload.fulfillment",
-      "<option + data>",
-      "undefined",
-    );
+    return failure(13, "FULFILLMENT_REQUIRED", "payload.fulfillment", "<option>", "undefined");
   }
 
-  const advertised: FulfillmentOption[] = requirements.fulfillment?.options ?? [];
+  const advertised = requirements.fulfillment?.options ?? [];
   const matched = advertised.find((option) => option.id === carried.option);
   if (!matched) {
     return failure(
@@ -469,19 +457,6 @@ function checkFulfillment(
     );
   }
 
-  if (validator !== undefined) {
-    const result = validator(carried.option, carried.data);
-    if (!result.ok) {
-      return failure(
-        13,
-        "FULFILLMENT_DATA_INVALID",
-        "payload.fulfillment.data",
-        matched.schema,
-        carried.data,
-        result.reason,
-      );
-    }
-  }
   return null;
 }
 

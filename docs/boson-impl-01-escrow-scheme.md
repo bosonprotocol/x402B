@@ -184,11 +184,19 @@ The header value is base64(JSON):
   },
 
   "fulfillment": {
-    "option": "email",
-    "data":   { "email": "buyer@example.com" }
+    "option": "email"
   }
 }
 ```
+
+The commit-time `fulfillment` slot carries only the buyer's chosen `option`
+— used for capability negotiation against the server-advertised set. The
+buyer's actual delivery data (`fulfillment.data`) flows with the
+redeem-time POST body (`boson-redeem`); see
+[03 — Fulfillment Channels](./boson-impl-03-fulfillment-channels.md). Atomic
+Flow B (`boson-createOfferCommitAndRedeem`) is only appropriate for
+channels embedded in the offer (e.g. `inline`) or off-band — Flow B
+clients send no buyer-supplied delivery data.
 
 ### Field reference (PaymentPayload)
 
@@ -200,8 +208,7 @@ The header value is base64(JSON):
 | `payload.buyer` | yes | Buyer wallet (recovered from sigs by the protocol; included for routing). |
 | `payload.metaTx` | yes | Boson meta-tx envelope authorising execution of `<action>` on behalf of `buyer`. EIP-712 signed under the **protocol Diamond** domain (see §4.2). The single buyer signature for the action itself — independent of `tokenAuthStrategy`. |
 | `payload.tokenAuth` | iff `tokenAuthStrategy ≠ "none"` | Token-transfer authorization for *this exact spend* (see §4.3). The facilitator passes it through `executeMetaTransactionWithTokenTransferAuthorization` as a queued entry the protocol consumes during `transferFundsIn`. |
-| `fulfillment.option` | iff requirements `fulfillment.required = true` | Must be one of `fulfillment.options[].id`. |
-| `fulfillment.data` | per the option's schema | Validated against `fulfillment.options[i].schema`. |
+| `fulfillment.option` | iff requirements `fulfillment.required = true` | Must be one of `fulfillment.options[].id`. The commit-time slot carries only the option id; delivery data flows on the redeem-time path. |
 
 ## 4. Signatures
 
@@ -285,7 +292,7 @@ For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomica
 10. For `tokenAuthStrategy = "permit"`: `tokenAuth.data.value === requirements.amount`, `tokenAuth.data.spender === requirements.escrowAddress`, `tokenAuth.data.deadline − now ≤ requirements.maxTimeoutSeconds`.
 11. For `tokenAuthStrategy = "permit2"`: `tokenAuth.data.permitted.amount === requirements.amount`, `tokenAuth.data.permitted.token === requirements.asset`, `tokenAuth.data.spender === requirements.escrowAddress`, `tokenAuth.data.deadline − now ≤ requirements.maxTimeoutSeconds`.
 12. For `tokenAuthStrategy = "none"`: server SHOULD pre-flight `IERC20.allowance(buyer, diamond) ≥ amount` and reject early on insufficient allowance.
-13. If `requirements.fulfillment.required`, `payload.fulfillment.option ∈ requirements.fulfillment.options[].id` and `payload.fulfillment.data` validates against the chosen option's `schema`.
+13. If `requirements.fulfillment.required`, `payload.fulfillment.option ∈ requirements.fulfillment.options[].id`. The commit-time payload carries only the chosen option for capability negotiation; the buyer's delivery data (validated against the option's `schema`) flows with `boson-redeem` — see [03 — Fulfillment Channels](./boson-impl-03-fulfillment-channels.md).
 
 A failure on any rule returns `400` with a structured `{ code, field, expected, got }` body. The server does **not** consult the facilitator until §1–§13 pass.
 

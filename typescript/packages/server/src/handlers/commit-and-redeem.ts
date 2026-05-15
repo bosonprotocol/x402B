@@ -168,6 +168,9 @@ async function handleCommitImpl(
   // is already in REDEEMED — there is no later redeem step to gate.
   if (expected.expectedState === ExchangeState.COMMITTED) {
     ctx.exchangeBuyerStore.set(settleResult.exchangeId, decoded.payload.payload.buyer);
+    // Tracks the *advertised* option ids from the original 402, not the
+    // buyer's chosen option — the redeem handler uses this to constrain
+    // any redeem-time fulfillment update to the offer's advertised set.
     ctx.exchangeFulfillmentOptionStore.set(
       settleResult.exchangeId,
       input.requirements.fulfillment?.options.map((option) => option.id) ?? [],

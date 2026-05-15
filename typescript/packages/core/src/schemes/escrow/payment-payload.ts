@@ -106,13 +106,19 @@ export interface EscrowPaymentPayloadInner {
 /**
  * Wire-format type for the `escrow` PaymentPayload that a client base64's into
  * the `X-PAYMENT` header. See docs/boson-impl-01-escrow-scheme.md §3.
+ *
+ * `fulfillment.option` is the buyer's pick from the server-advertised option
+ * set — used only for capability negotiation at commit time. The buyer's
+ * actual delivery data (`fulfillment.data`) flows on the redeem-time path
+ * (`boson-redeem`'s POST body), not here. See
+ * `docs/boson-impl-03-fulfillment-channels.md`.
  */
 export interface EscrowPaymentPayload {
   x402Version: number;
   scheme: "escrow";
   network: EvmNetwork;
   payload: EscrowPaymentPayloadInner;
-  fulfillment?: { option: string; data: Record<string, unknown> | null };
+  fulfillment?: { option: string };
 }
 
 /**
@@ -144,7 +150,6 @@ export const escrowPaymentPayloadSchema = z
     fulfillment: z
       .object({
         option: z.string().min(1),
-        data: z.union([z.record(z.unknown()), z.null()]),
       })
       .strict()
       .optional(),

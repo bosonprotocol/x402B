@@ -49,9 +49,9 @@ describe("EscrowPaymentPayload — happy path", () => {
     });
   }
 
-  it("accepts null fulfillment data for schemaless options", () => {
+  it("accepts the option-only commit-time fulfillment slot", () => {
     const parsed = parseEscrowPaymentPayload(validPayloadNone);
-    expect(parsed.fulfillment).toEqual({ option: "inline", data: null });
+    expect(parsed.fulfillment).toEqual({ option: "inline" });
     expect(ajvValidate(validPayloadNone)).toBe(true);
   });
 });
@@ -100,6 +100,17 @@ describe("EscrowPaymentPayload — rejection cases", () => {
   it("rejects negative validBefore in erc3009", () => {
     const bad = JSON.parse(JSON.stringify(validPayloadErc3009));
     bad.payload.tokenAuth.data.validBefore = -1;
+    expect(escrowPaymentPayloadSchema.safeParse(bad).success).toBe(false);
+    expect(ajvValidate(bad)).toBe(false);
+  });
+
+  it("rejects a commit-time payload carrying fulfillment.data", () => {
+    // Wire-format change: the commit-time slot now carries only the
+    // chosen option; buyer-supplied delivery data flows on the
+    // redeem-time POST body. Both zod and the JSON Schema must enforce
+    // this strictly so clients that haven't migrated surface the error.
+    const bad = JSON.parse(JSON.stringify(validPayloadNone));
+    bad.fulfillment = { option: "inline", data: null };
     expect(escrowPaymentPayloadSchema.safeParse(bad).success).toBe(false);
     expect(ajvValidate(bad)).toBe(false);
   });

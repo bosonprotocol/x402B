@@ -1,7 +1,10 @@
-// Resolve the `fulfillment` slot the client will attach to the payment
-// payload. Validates the buyer-supplied data against the chosen option's
-// JSON Schema via ajv — same library the server/facilitator will use to
-// re-validate.
+// Resolve the `fulfillment` slot the client will attach to the commit-time
+// payment payload. The commit-time slot carries only the buyer's chosen
+// option (for capability negotiation against the server's advertised set);
+// the buyer's delivery data flows on the redeem-time path. We still
+// validate the buyer-supplied data here against the option's JSON Schema
+// — that way clients fail fast before signing if their delivery data is
+// malformed for the channel they've picked.
 
 import Ajv from "ajv";
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
@@ -11,15 +14,18 @@ import type { FulfillmentConfig, X402bClientConfig } from "./types.js";
 
 export interface ResolvedFulfillment {
   option: string;
-  data: Record<string, unknown>;
 }
 
 /**
- * Returns the payload's `fulfillment` slot, or `undefined` when the
- * requirements don't request one. Throws when the requirements demand a
- * fulfillment but the client config doesn't supply one, when the option id
- * isn't advertised by the server, or when the buyer data doesn't validate
- * against the option's schema.
+ * Returns the payload's commit-time `fulfillment` slot (just the chosen
+ * `option`), or `undefined` when the requirements don't request one.
+ * Throws when the requirements demand a fulfillment but the client config
+ * doesn't supply one, when the option id isn't advertised by the server,
+ * or when the buyer data doesn't validate against the option's schema.
+ *
+ * The returned object intentionally omits `data` — buyer-supplied
+ * delivery data flows with the redeem-time POST body, not the commit-time
+ * X-PAYMENT header. See `docs/boson-impl-03-fulfillment-channels.md`.
  */
 export function resolveFulfillment(
   requirements: EscrowPaymentRequirements,
@@ -56,5 +62,5 @@ export function resolveFulfillment(
     }
   }
 
-  return { option: fulfillmentConfig.option, data: fulfillmentConfig.data };
+  return { option: fulfillmentConfig.option };
 }

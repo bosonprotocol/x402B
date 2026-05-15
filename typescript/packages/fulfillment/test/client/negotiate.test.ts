@@ -55,10 +55,12 @@ describe("negotiateFulfillment", () => {
     const choice = await negotiateFulfillment([INLINE], {
       supports: ["inline"],
     });
+    // Commit-time payload carries only `option` — fulfillment `data` flows
+    // on the redeem-time path, see boson-impl-01 rule 13.
     expect(() =>
       parseEscrowPaymentPayload({
         ...paymentPayloadBase,
-        fulfillment: choice,
+        fulfillment: { option: choice.option },
       }),
     ).not.toThrow();
   });

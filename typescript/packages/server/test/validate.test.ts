@@ -311,7 +311,7 @@ describe("validatePaymentPayload — rule failures", () => {
     const fx = await makePaymentFixture();
     const payloadWithBadOption = {
       ...fx.payload,
-      fulfillment: { option: "smoke-signal", data: {} },
+      fulfillment: { option: "smoke-signal" },
     };
     const result = await validatePaymentPayload({
       payload: payloadWithBadOption,
@@ -325,19 +325,21 @@ describe("validatePaymentPayload — rule failures", () => {
     });
   });
 
-  it("rule 13 — rejects fulfillment data when caller-supplied validator fails", async () => {
+  it("rule 13 — accepts an advertised option (option-membership only)", async () => {
+    // The commit-time validator no longer inspects buyer-supplied
+    // delivery data; rule 13 is option-membership only. Buyer data
+    // moves to the redeem-time path.
     const fx = await makePaymentFixture();
     const payloadWithFulfillment = {
       ...fx.payload,
-      fulfillment: { option: "email", data: { email: "not-an-email" } },
+      fulfillment: { option: "email" },
     };
     const result = await validatePaymentPayload({
       payload: payloadWithFulfillment,
       requirements: withRequiredEmailFulfillment(fx.requirements),
       chainId: CHAIN_ID,
-      validateFulfillmentData: (_option, _data) => ({ ok: false, reason: "bad email" }),
     });
-    expect(result).toMatchObject({ ok: false, rule: 13, code: "FULFILLMENT_DATA_INVALID" });
+    expect(result.ok).toBe(true);
   });
 });
 
@@ -452,22 +454,29 @@ describe("decodeXPaymentHeader", () => {
     });
   });
 
-  it("preserves non-ASCII UTF-8 in fulfillment.data through the atob path", () => {
-    // Buyer-provided fulfilment data can carry non-ASCII bytes — names,
-    // addresses, locale-specific strings. Round-trip a valid payload
-    // whose `fulfillment.data.name` carries multi-byte characters and
+  it("preserves non-ASCII UTF-8 in the inner payload through the atob path", () => {
+    // Offer metadata and other inner fields can carry non-ASCII bytes —
+    // names, locale-specific strings. Round-trip a valid payload whose
+    // echoed `offerRef.fullOffer` carries multi-byte characters and
     // assert the decoder recovers UTF-8 rather than Latin-1 mojibake.
+    const base = makeBaseWirePayload();
     const wirePayload = {
-      ...makeBaseWirePayload(),
-      fulfillment: { option: "email", data: { name: "Bär ✓ — 你好" } },
+      ...base,
+      payload: {
+        ...base.payload,
+        offerRef: {
+          ...base.payload.offerRef,
+          fullOffer: { metadataUri: "ipfs://Bär ✓ — 你好" },
+        },
+      },
     };
     const header = Buffer.from(JSON.stringify(wirePayload), "utf8").toString("base64");
     const result = decodeXPaymentHeader(header);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect((result.payload.fulfillment?.data as { name?: string } | null | undefined)?.name).toBe(
-        "Bär ✓ — 你好",
-      );
+      expect(
+        (result.payload.payload.offerRef.fullOffer as { metadataUri?: string }).metadataUri,
+      ).toBe("ipfs://Bär ✓ — 你好");
     }
   });
 });
