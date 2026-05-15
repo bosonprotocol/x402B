@@ -13,8 +13,18 @@
 // `resolveDispute` is mutual — both parties' signatures are required — and
 // appears in BOTH tables: either side can initiate it once they hold the
 // counterparty's signature. `revokeVoucher` is seller-only and appears
-// only in SERVER. The other 8 actions are buyer-only and appear only in
-// CLIENT.
+// only in SERVER. The other 8 exchange-keyed actions are buyer-only and
+// appear only in CLIENT.
+//
+// One entity-keyed action — `boson-withdrawFunds` — is carved into the
+// `(DISPUTED, RESOLVED)` row on both sides. A successful `resolveDispute`
+// releases the buyer's and seller's escrowed funds to their respective
+// available balances; surfacing withdraw on the very next `nextActions`
+// envelope lets either party drain those funds in one click without
+// needing to know about the standalone endpoint up-front. Other
+// fund-releasing transitions (`completeExchange`, `cancelVoucher`,
+// `revokeVoucher`, `retractDispute`, `decideDispute`, `refuseDispute`)
+// could receive the same treatment in follow-up work.
 //
 // Higher-level concerns (deadline math, channel selection, channel
 // fallback, the `nextActions` envelope) belong in
@@ -46,7 +56,7 @@ const CLIENT_BY_DISPUTE: DisputeTransitions = {
     "boson-retractDispute",
   ],
   [DisputeState.ESCALATED]: [], // resolver decides; buyer waits.
-  [DisputeState.RESOLVED]: [],
+  [DisputeState.RESOLVED]: ["boson-withdrawFunds"],
   [DisputeState.RETRACTED]: [],
   [DisputeState.DECIDED]: [],
   [DisputeState.REFUSED]: [],
@@ -65,7 +75,7 @@ const SERVER_BY_EXCHANGE: ExchangeTransitions = {
 const SERVER_BY_DISPUTE: DisputeTransitions = {
   [DisputeState.RESOLVING]: ["boson-resolveDispute"], // mutual; seller-initiable.
   [DisputeState.ESCALATED]: [],
-  [DisputeState.RESOLVED]: [],
+  [DisputeState.RESOLVED]: ["boson-withdrawFunds"],
   [DisputeState.RETRACTED]: [],
   [DisputeState.DECIDED]: [],
   [DisputeState.REFUSED]: [],

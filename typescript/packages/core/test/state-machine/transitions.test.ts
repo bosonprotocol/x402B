@@ -55,13 +55,11 @@ describe("clientLegalActions — buyer-side, spec-pinned shape", () => {
     ).toEqual([]);
   });
 
-  it("DISPUTED + post-settlement dispute states have no further buyer actions", () => {
-    for (const dispute of [
-      DisputeState.RESOLVED,
-      DisputeState.RETRACTED,
-      DisputeState.DECIDED,
-      DisputeState.REFUSED,
-    ]) {
+  it("DISPUTED + RESOLVED only offers withdraw (other post-settlement states have no buyer actions)", () => {
+    expect(
+      clientLegalActions({ exchange: ExchangeState.DISPUTED, dispute: DisputeState.RESOLVED }),
+    ).toEqual(["boson-withdrawFunds"]);
+    for (const dispute of [DisputeState.RETRACTED, DisputeState.DECIDED, DisputeState.REFUSED]) {
       expect(clientLegalActions({ exchange: ExchangeState.DISPUTED, dispute })).toEqual([]);
     }
   });
@@ -105,10 +103,12 @@ describe("serverLegalActions — seller-side", () => {
     }
   });
 
-  it("dispute states beyond RESOLVING admit no server actions", () => {
+  it("dispute states beyond RESOLVING admit only the withdraw carve-out (RESOLVED) or nothing", () => {
+    expect(
+      serverLegalActions({ exchange: ExchangeState.DISPUTED, dispute: DisputeState.RESOLVED }),
+    ).toEqual(["boson-withdrawFunds"]);
     for (const dispute of [
       DisputeState.ESCALATED,
-      DisputeState.RESOLVED,
       DisputeState.RETRACTED,
       DisputeState.DECIDED,
       DisputeState.REFUSED,
@@ -176,7 +176,10 @@ describe("legalActions — coverage", () => {
     }
   });
 
-  it("entity-keyed actions are intentionally absent from clientLegalActions / serverLegalActions", () => {
+  it("entity-keyed actions are intentionally absent from non-terminal in-flight states", () => {
+    // Withdraw funds is carved into the `(DISPUTED, RESOLVED)` row
+    // (see the next test) — checked separately. Everywhere else
+    // entity-keyed actions stay out of the exchange transition tables.
     const states = [
       PRE_COMMIT,
       { exchange: ExchangeState.COMMITTED },
@@ -187,6 +190,15 @@ describe("legalActions — coverage", () => {
       expect(clientLegalActions(state)).not.toContain("boson-withdrawFunds");
       expect(serverLegalActions(state)).not.toContain("boson-withdrawFunds");
     }
+  });
+
+  it("offers boson-withdrawFunds to both sides once the dispute is RESOLVED", () => {
+    const state = {
+      exchange: ExchangeState.DISPUTED,
+      dispute: DisputeState.RESOLVED,
+    } as const;
+    expect(clientLegalActions(state)).toContain("boson-withdrawFunds");
+    expect(serverLegalActions(state)).toContain("boson-withdrawFunds");
   });
 });
 
