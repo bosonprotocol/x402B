@@ -48,6 +48,7 @@ import {
 import { stampFacilitatorEndpoints } from "./internal/facilitator-endpoints.js";
 import { asCoreSdkReadAdapter, type CoreSdkReadAdapter } from "./onchain/core-sdk-read.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
+import { mapAsStore, type Store } from "./store.js";
 
 /** Per-offer inputs for `server.buildPaymentRequirements` — everything the offer-level args carry, minus the per-server context the factory already holds. */
 export interface BuildRequirementsInput {
@@ -111,11 +112,14 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   const facilitator = createFacilitatorClient({ url: validated.facilitator.url });
   // Default to a fresh in-memory store when the host doesn't supply
   // one. Single shared reference for the lifetime of this server — so
-  // commit-time writes and redeem-time reads observe the same Map.
-  const exchangeFulfillmentOptionStore: Map<string, readonly string[]> =
-    validated.exchangeFulfillmentOptionStore ?? new Map();
-  const fulfillmentRecoveryStore: Map<string, FulfillmentRecoveryEntry> =
-    validated.fulfillmentRecoveryStore ?? new Map();
+  // commit-time writes and redeem-time reads observe the same backing
+  // state. `mapAsStore` keeps single-process / dev deployments free of
+  // extra wiring; multi-instance / restart-surviving hosts plug in
+  // their own `Store` impl (Redis, Postgres, …).
+  const exchangeFulfillmentOptionStore: Store<readonly string[]> =
+    validated.exchangeFulfillmentOptionStore ?? mapAsStore(new Map<string, readonly string[]>());
+  const fulfillmentRecoveryStore: Store<FulfillmentRecoveryEntry> =
+    validated.fulfillmentRecoveryStore ?? mapAsStore(new Map<string, FulfillmentRecoveryEntry>());
   validated.exchangeFulfillmentOptionStore = exchangeFulfillmentOptionStore;
   validated.fulfillmentRecoveryStore = fulfillmentRecoveryStore;
 

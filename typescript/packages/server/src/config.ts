@@ -22,6 +22,7 @@ import { z } from "zod";
 
 import type { CoreSdkReadAdapter } from "./onchain/core-sdk-read.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
+import { isStore, type Store } from "./store.js";
 
 /**
  * Minimal signing surface needed by `signFullOffer`. Structurally
@@ -92,19 +93,29 @@ export interface X402bServerConfig {
    * cannot switch to a channel the offer never advertised.
    *
    * Optional in the config: when omitted, `createX402bServer` wires up
-   * an in-memory `Map`. Hosts running multiple instances should plug
-   * in their own cross-process `Map`-shaped backing store.
+   * an in-memory `Map` via `mapAsStore`. Single-process / dev
+   * deployments need no extra plumbing; hosts running multiple
+   * instances or who need to survive a restart MUST supply their own
+   * `Store` implementation (Redis, Postgres, etc.) — otherwise the
+   * Flow A redeem-time option-policy check is silently bypassed after
+   * a restart because the in-memory `Map` is empty.
    */
-  exchangeFulfillmentOptionStore?: Map<string, readonly string[]>;
+  exchangeFulfillmentOptionStore?: Store<readonly string[]>;
   /**
    * Pending fulfillment updates that reached REDEEMED on-chain but
    * failed the server-side `channel.onCommit(...)` upsert. The commit
    * handler records Flow B updates here before attempting the channel
-   * write; the redeem handler does the same for Flow A. Both delete the
-   * record on success and leave it behind with the error message on
-   * failure so the host can replay/reconcile out of band.
+   * write; the redeem handler does the same for Flow A. Both delete
+   * the record on success and leave it behind with the error message
+   * on failure so the host can replay/reconcile out of band.
+   *
+   * Same persistence story as `exchangeFulfillmentOptionStore`:
+   * defaults to in-memory `Map`; production hosts MUST supply a
+   * persistent `Store` or lose the recovery queue on every restart —
+   * the on-chain voucher is irreversibly REDEEMED in that window and
+   * the buyer's delivery payload becomes unrecoverable.
    */
-  fulfillmentRecoveryStore?: Map<string, FulfillmentRecoveryEntry>;
+  fulfillmentRecoveryStore?: Store<FulfillmentRecoveryEntry>;
   /**
    * Fulfillment channels the server accepts at redeem time when the
    * client re-submits delivery data. Structurally a subset of
@@ -202,8 +213,16 @@ export const x402bServerConfigSchema = z
     exchangeReader: exchangeReaderShallowSchema.optional(),
     subgraphUrl: httpUrlSchema.optional(),
     coreSdkRead: coreSdkReadShallowSchema.optional(),
-    exchangeFulfillmentOptionStore: z.instanceof(Map).optional(),
-    fulfillmentRecoveryStore: z.instanceof(Map).optional(),
+    exchangeFulfillmentOptionStore: z
+      .custom<Store<readonly string[]>>(isStore, {
+        message: "must implement the async Store<V> interface (get/set/delete/entries)",
+      })
+      .optional(),
+    fulfillmentRecoveryStore: z
+      .custom<Store<FulfillmentRecoveryEntry>>(isStore, {
+        message: "must implement the async Store<V> interface (get/set/delete/entries)",
+      })
+      .optional(),
     fulfillmentChannels: z
       .array(fulfillmentChannelShallowSchema)
       .superRefine((channels, ctx) => {

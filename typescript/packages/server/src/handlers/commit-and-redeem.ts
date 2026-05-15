@@ -21,6 +21,7 @@ import {
 import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
 import type { FulfillmentRecoveryEntry, X402bServerConfig } from "../config.js";
+import type { Store } from "../store.js";
 
 export interface CommitHandlerInput {
   /** Raw `X-PAYMENT` header value (base64'd JSON). */
@@ -33,13 +34,13 @@ export interface CommitHandlerContext {
   config: X402bServerConfig;
   facilitator: FacilitatorClient;
   exchangeReader: ExchangeReader;
-  fulfillmentRecoveryStore: Map<string, FulfillmentRecoveryEntry>;
+  fulfillmentRecoveryStore: Store<FulfillmentRecoveryEntry>;
   /**
    * Per-exchange fulfillment option policy. Flow A writes the ids
    * advertised by the original requirements so the redeem-time choice
    * is constrained to the offer's own channel set.
    */
-  exchangeFulfillmentOptionStore: Map<string, readonly string[]>;
+  exchangeFulfillmentOptionStore: Store<readonly string[]>;
 }
 
 export interface CommitOk {
@@ -192,7 +193,7 @@ async function handleCommitImpl(
   // fulfillment choice to the offer's own channel set. Flow B is
   // already in REDEEMED — there is no later redeem step to gate.
   if (expected.expectedState === ExchangeState.COMMITTED) {
-    ctx.exchangeFulfillmentOptionStore.set(
+    await ctx.exchangeFulfillmentOptionStore.set(
       settleResult.exchangeId,
       input.requirements.fulfillment?.options.map((option) => option.id) ?? [],
     );
@@ -218,12 +219,12 @@ async function handleCommitImpl(
       redeemer: decoded.payload.payload.buyer,
       recordedAt: Date.now(),
     };
-    ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, pending);
+    await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, pending);
 
     const channel = channelById.get(decoded.payload.fulfillment.option);
     if (channel === undefined) {
       const reason = "no channel adapter is registered";
-      ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
+      await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
         ...pending,
         error: reason,
       });
@@ -242,10 +243,10 @@ async function handleCommitImpl(
     } else {
       try {
         await channel.onCommit(settleResult.exchangeId, decoded.payload.fulfillment.data);
-        ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
+        await ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
-        ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
+        await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
           ...pending,
           error: reason,
         });
