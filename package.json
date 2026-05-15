@@ -25,10 +25,14 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "turbo run build && changeset publish"
+    "release": "turbo run build && changeset publish",
+    "publish:alpha": "node scripts/publish-alpha.mjs",
+    "publish:latest": "node scripts/publish-latest.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.10",
+    "@changesets/get-release-plan": "^4.0.16",
+    "@changesets/read": "^0.6.7",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
     "eslint": "^9.17.0",

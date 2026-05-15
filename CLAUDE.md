@@ -155,11 +155,34 @@ migration so `actions/checkout` / `actions/setup-node` /
 
 ### Release
 
-[changesets](https://github.com/changesets/changesets) handles
-versioning. The release workflow is **disabled** (trigger:
-`workflow_dispatch` only) until at least one `@bosonprotocol/x402-*`
-package is publish-ready; once it is, restore the `push: branches: [main]`
-trigger and add `NPM_TOKEN` to GitHub Actions secrets.
+[changesets](https://github.com/changesets/changesets) drives versioning.
+A single workflow [`release.yml`](./.github/workflows/release.yml) handles
+both publish flows so the npm
+[trusted-publisher](https://docs.npmjs.com/trusted-publishers) binding
+(repo + workflow filename) covers them under one config:
+
+- **Alpha** — every push to `main` triggers
+  [`scripts/publish-alpha.mjs`](./scripts/publish-alpha.mjs). It uses
+  `@changesets/get-release-plan` to find the packages affected by
+  currently-queued changesets, queries npm for any prior
+  `<currentVersion>-alpha-N` versions, and publishes
+  `<currentVersion>-alpha-<next-N>` for each affected package (transitive
+  workspace dependents included so cross-package `workspace:*` references
+  resolve to consistent alpha versions). Queued `.md` changesets are
+  **not** consumed by the alpha flow.
+- **Latest** — `workflow_dispatch` from the Actions UI runs
+  `changeset version` (consuming queued changesets, bumping each affected
+  package per semver, writing CHANGELOG entries), commits those bumps to
+  `main`, then runs [`scripts/publish-latest.mjs`](./scripts/publish-latest.mjs)
+  which invokes `changeset publish` (default `latest` dist-tag), pushes
+  the per-package git tags, and creates one GitHub Release per package
+  with notes pulled from its CHANGELOG section.
+
+Publishing uses OIDC (`id-token: write`) against npm trusted publishers —
+no `NPM_TOKEN` secret. Each new package needs a one-time bootstrap
+publish on the maintainer's machine (or via a short-lived granular
+token) so its npmjs.com settings page exists; then the trusted-publisher
+entry for repo + `release.yml` can be added there.
 
 ## When in doubt
 
