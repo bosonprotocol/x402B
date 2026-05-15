@@ -17,7 +17,7 @@ import { Router, type Request, type RequestHandler, type Response } from "expres
 import { respondWithChallenge } from "./internal/x402-challenge.js";
 
 /** Shared error code for malformed `POST /x402b/*` bodies. */
-const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
+export const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
 
 /** Hex-string check matching the `0x[0-9a-fA-F]*` shape `signedPayload` is typed as. */
 const HEX_BYTES_RE = /^0x[0-9a-fA-F]*$/;

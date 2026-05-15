@@ -19,7 +19,7 @@ import { describe, expect, it, vi } from "vitest";
 import { parseSignature } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { expressMiddleware, mountX402b } from "../src/index.js";
+import { expressMiddleware, INVALID_REQUEST_BODY, mountX402b } from "../src/index.js";
 
 const ESCROW = "0xdddddddddddddddddddddddddddddddddddddddd" as const;
 const TOKEN = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" as const;
@@ -336,7 +336,7 @@ describe("mountX402b — convenience routes", () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe("INVALID_REQUEST_BODY");
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
     expect(redeem).not.toHaveBeenCalled();
   });
 
@@ -354,7 +354,7 @@ describe("mountX402b — convenience routes", () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe("INVALID_REQUEST_BODY");
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
     expect(redeem).not.toHaveBeenCalled();
   });
 
@@ -366,7 +366,7 @@ describe("mountX402b — convenience routes", () => {
 
     const res = await supertest(app).post("/x402b/complete").send({ foo: "bar" });
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe("INVALID_REQUEST_BODY");
+    expect(res.body.code).toBe(INVALID_REQUEST_BODY);
   });
 
   it.each([["/x402b/commit"], ["/x402b/commit-and-redeem"]])(
