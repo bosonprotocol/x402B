@@ -46,17 +46,47 @@ export interface BuiltTokenAuth {
 
 const STRATEGY_PREFERENCE: readonly TokenAuthStrategy[] = ["erc3009", "permit2", "permit"];
 
+function strategyIsAvailable(s: TokenAuthStrategy, args: BuildTokenAuthArgs): boolean {
+  switch (s) {
+    case "erc3009":
+      return args.tokenDomainResolver !== undefined;
+    case "permit":
+      return args.tokenDomainResolver !== undefined && args.publicClient !== undefined;
+    case "permit2":
+      return true;
+    case "none":
+      return false;
+    default: {
+      const _exhaustive: never = s;
+      void _exhaustive;
+      return false;
+    }
+  }
+}
+
 /**
  * Pick the highest-preference strategy from `requirements.tokenAuthStrategies`,
  * sign the corresponding payload via core-sdk, and return the wire-format
  * `BosonTokenAuth` slot.
+ *
+ * The picker is capability-aware: a strategy is only chosen when the runtime
+ * config has the prerequisites for it (e.g. `tokenDomainResolver` for
+ * ERC-3009, both `tokenDomainResolver` and `publicClient` for Permit). This
+ * lets a deployment without `tokenDomainResolver` still satisfy servers that
+ * advertise `["erc3009", "permit2"]` by falling back to Permit2.
  */
 export async function buildAndSignTokenAuth(args: BuildTokenAuthArgs): Promise<BuiltTokenAuth> {
   const advertised = args.requirements.tokenAuthStrategies;
-  const chosen = STRATEGY_PREFERENCE.find((s) => advertised.includes(s));
+  const chosen = STRATEGY_PREFERENCE.find(
+    (s) => advertised.includes(s) && strategyIsAvailable(s, args),
+  );
   if (!chosen) {
     throw new UnsupportedTokenAuthError(
-      `server advertises tokenAuthStrategies=[${advertised.join(", ")}]; client supports [${STRATEGY_PREFERENCE.join(", ")}]`,
+      `server advertises tokenAuthStrategies=[${advertised.join(", ")}]; ` +
+        `client supports [${STRATEGY_PREFERENCE.join(", ")}] but none are usable ` +
+        `with the current X402bClientConfig ` +
+        `(ERC-3009 and Permit require tokenDomainResolver; Permit also requires ` +
+        `a PublicClient for the requirements' chain via publicClients)`,
     );
   }
 
