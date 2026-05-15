@@ -48,6 +48,7 @@ import {
 import { stampFacilitatorEndpoints } from "./internal/facilitator-endpoints.js";
 import { asCoreSdkReadAdapter, type CoreSdkReadAdapter } from "./onchain/core-sdk-read.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
+import { noopLogger, type Logger } from "./logger.js";
 
 /** Per-offer inputs for `server.buildPaymentRequirements` — everything the offer-level args carry, minus the per-server context the factory already holds. */
 export interface BuildRequirementsInput {
@@ -108,7 +109,14 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   const validated = x402bServerConfigSchema.parse(config) as X402bServerConfig;
   assertChannelRegistryEscrowMatch(validated);
 
-  const facilitator = createFacilitatorClient({ url: validated.facilitator.url });
+  const logger: Logger = validated.logger ?? noopLogger;
+  logger.info("x402-server: createX402bServer", {
+    network: validated.network,
+    chainId: validated.chainId,
+    escrow: validated.escrow,
+    facilitatorUrl: validated.facilitator.url,
+  });
+  const facilitator = createFacilitatorClient({ url: validated.facilitator.url, logger });
   // Default to a fresh in-memory store when the host doesn't supply
   // one. Single shared reference for the lifetime of this server — so
   // commit-time writes and redeem-time reads observe the same Map.
@@ -190,6 +198,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           exchangeReader: await requireReader("commit"),
           fulfillmentRecoveryStore,
           exchangeFulfillmentOptionStore,
+          logger,
         }),
       commitAndRedeem: async (input) =>
         handleCommitAndRedeem(input, {
@@ -198,6 +207,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           exchangeReader: await requireReader("commitAndRedeem"),
           fulfillmentRecoveryStore,
           exchangeFulfillmentOptionStore,
+          logger,
         }),
       redeem: async (input) =>
         handleRedeem(input, {
@@ -206,36 +216,42 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           exchangeReader: await requireReader("redeem"),
           exchangeFulfillmentOptionStore,
           fulfillmentRecoveryStore,
+          logger,
         }),
       complete: async (input) =>
         handleComplete(input, {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("complete"),
+          logger,
         }),
       disputeRaise: async (input) =>
         handleDisputeRaise(input, {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("disputeRaise"),
+          logger,
         }),
       disputeResolve: async (input) =>
         handleDisputeResolve(input, {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("disputeResolve"),
+          logger,
         }),
       disputeRetract: async (input) =>
         handleDisputeRetract(input, {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("disputeRetract"),
+          logger,
         }),
       disputeEscalate: async (input) =>
         handleDisputeEscalate(input, {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("disputeEscalate"),
+          logger,
         }),
       withdrawFunds: async (input) =>
         handleWithdrawFunds(input, {

@@ -113,3 +113,4 @@ export {
   encodeXPaymentResponse,
   X_PAYMENT_RESPONSE_HEADER,
 } from "./internal/x-payment-response.js";
+export { noopLogger, type Logger } from "./logger.js";
