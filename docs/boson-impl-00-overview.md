@@ -27,7 +27,7 @@ flowchart LR
 
     subgraph Shared
       CORE[("@bosonprotocol/x402-core<br/>schemas + EIP-712 + state machine")]
-      EVM[("@bosonprotocol/x402-evm<br/>calldata builders")]
+      EVM[("@bosonprotocol/x402-evm<br/>calldata builders + adapters")]
     end
 
     subgraph Off-server
@@ -55,10 +55,10 @@ All packages publish under `@bosonprotocol/`.
 | Package | Purpose |
 |---|---|
 | `x402-core` | `escrow` scheme JSON schemas + TypeScript types; EIP-712 builders for FullOffer (protocol domain), the protocol meta-tx envelope, and the four BPIP-12 token-auth strategies (ERC-3009 ReceiveWithAuthorization, EIP-2612 Permit, Permit2, plain approve); exchange state machine model. |
-| `x402-evm` | EVM-specific implementation. Calldata builders for `ExchangeCommitFacet.createOfferAndCommit` (deferred), `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (atomic on-chain redeem), and the `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization` envelope that carries them. Wraps `@bosonprotocol/core-sdk`. |
+| `x402-evm` | EVM-specific implementation. Calldata builders for `ExchangeCommitFacet.createOfferAndCommit` (deferred) and `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (atomic on-chain redeem), plus viem `Web3LibAdapter` bridges used by facilitator/core-sdk meta-transaction submission. Wraps `@bosonprotocol/core-sdk`. |
 | `x402-server` | Framework-agnostic resource server. 402 builder, FullOffer signer wrapper, fulfillment negotiator, `nextActions` emitter, post-redeem endpoint set. Adapter sub-packages: `x402-server-express`, `x402-server-hono`, `x402-server-next`. |
 | `x402-client` | Framework-agnostic client. Interceptor that parses the 402, picks a fulfillment channel option and a token-auth strategy, signs the meta-tx + token authorization(s), retries, then drives post-redeem actions through whichever channel is preferred. Adapters: `x402-client-axios`, `x402-client-fetch`. |
-| `x402-facilitator` | Reference verify + settle service for the `escrow` scheme. Submits via `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`. |
+| `x402-facilitator` | Reference verify + settle + perform-action service for the `escrow` scheme. Submits through `coreSdk.executeMetaTransaction(...)`, which routes to the bare meta-tx entrypoint or the BPIP-12 token-transfer-authorization entrypoint based on the chosen token-auth strategy. |
 | `x402-fulfillment` | Pluggable `FulfillmentChannel` interface + atomic / email / XMTP / webhook / IPFS-pointer implementations. |
 | `x402-actions` | Exchange state machine + channel registry. Powers the `nextActions` envelope on every server response and the post-redeem endpoint set. |
 | `x402-agent` | Thin glue layer for AI-agent clients. Bridges to `bosonprotocol/agentic-commerce` MCP and lets agents pick channel (server / facilitator / on-chain / MCP) per action. |
@@ -88,6 +88,6 @@ All packages publish under `@bosonprotocol/`.
 | 04 | [state-machine-and-next-actions.md](./boson-impl-04-state-machine-and-next-actions.md) | detailed |
 | 05 | [server-sdk.md](./boson-impl-05-server-sdk.md) | stub |
 | 06 | [client-sdk.md](./boson-impl-06-client-sdk.md) | stub |
-| 07 | [facilitator.md](./boson-impl-07-facilitator.md) | stub |
+| 07 | [facilitator.md](./boson-impl-07-facilitator.md) | implemented library surface |
 | 08 | [agent-mode.md](./boson-impl-08-agent-mode.md) | stub |
 | 09 | [seller-metadata.md](./boson-impl-09-seller-metadata.md) | stub |

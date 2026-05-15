@@ -15,7 +15,14 @@ already provides:
 | Subpath | Purpose |
 |---|---|
 | `./actions` | Inner-action ABI encoding for the commit step. `buildCreateOfferAndCommitCalldata` (Flow A, deferred-redeem) and `buildCreateOfferCommitAndRedeemCalldata` (Flow B, atomic commit+redeem) each return the `{ functionName, functionSignature }` pair that feeds the meta-tx typed-data the buyer signs. Both delegate to `metaTx.handler.signMetaTx*({ returnTypedDataToSign: true })` in core-sdk so the selector literal and ABI encoding come from the same source the buyer signs against — no drift between signing and verification. |
-| `./envelope` | Outer meta-tx envelope. `buildExecuteMetaTransactionTx` targets `MetaTransactionsHandlerFacet.executeMetaTransaction(...)` for the `tokenAuthStrategy: "none"` flow; `buildExecuteMetaTransactionWithTokenAuthTx` targets the BPIP-12 variant `executeMetaTransactionWithTokenTransferAuthorization(...)` for ERC-3009 / Permit / Permit2. |
+| `./adapters` | viem ↔ `Web3LibAdapter` bridges. `walletClientToWeb3LibAdapter` wraps a viem `WalletClient` + `PublicClient` so `coreSdk.executeMetaTransaction(...)` (the unified entrypoint for the outer envelope) can submit through viem-configured transports. Submission failures surface as a tagged `RelayerSubmitError` so callers can preserve precise error codes (`INSUFFICIENT_FUNDS_FOR_GAS`, `ONCHAIN_REVERT`, `INTERNAL_ERROR`). |
+
+The outer meta-tx envelope (`executeMetaTransaction` /
+`executeMetaTransactionWithTokenTransferAuthorization`) is **not**
+re-implemented here. Submit through core-sdk's
+`coreSdk.executeMetaTransaction(metaTxParams)`, which accepts an
+optional `transferAuthorizations` array and routes to the right
+on-chain entrypoint internally.
 
 ## What this package deliberately does NOT ship
 
@@ -33,7 +40,7 @@ expects for that action family (`MetaTxExchange` for
 `MetaTransaction` for `createOfferAndCommit` and friends). It returns
 `SignedMetaTx = { functionName, functionSignature, r, s, v }` — exactly
 the buyer-side payload the `X-PAYMENT` header carries, ready for the
-facilitator to wrap with `buildExecuteMetaTransactionTx`.
+facilitator to submit via `coreSdk.executeMetaTransaction(metaTxParams)`.
 
 ```ts
 const signed = await coreSdk.signMetaTxRedeemVoucher({ nonce, exchangeId });

@@ -1,6 +1,6 @@
 # 07 — Facilitator
 
-> **Status:** partial implementation (v0.1, 2026-05-04). `verify()` is implemented; `settle()` and `performAction()` remain relayer stubs.
+> **Status:** implemented library surface (v0.1, updated 2026-05-15). `verify()`, `settle()`, and `performAction()` are wired through the core-sdk meta-transaction path.
 
 ## Goals
 
@@ -26,7 +26,7 @@ POST /settle
 POST /perform-action?action=<ActionId>     // optional, for the "facilitator" channel in nextActions
   body: {
     network, escrowAddress, exchangeId, action, signedPayload,
-    // Only when targeting a `payable` post-commit action (see below):
+    // Required when tokenAuthStrategy !== "none"; omitted otherwise:
     tokenAuthStrategy?, tokenAuth?, asset?, amount?, maxTimeoutSeconds?
   }
   -> { ok: true, txHash, newExchangeState, newDisputeState? } | { ok: false, code, reason }
@@ -42,13 +42,12 @@ POST /perform-action?action=<ActionId>     // optional, for the "facilitator" ch
   so clients can update local state without a subgraph round-trip.
 
   Most post-commit actions are non-payable: `tokenAuthStrategy` defaults
-  to `"none"` and the additional fields MUST be omitted. The exception
-  today is `boson-escalateDispute`, which is `payable` on the Diamond —
-  it carries the dispute resolver's escalation deposit. The BPIP-12
-  post-commit token-auth envelope is not wired yet, so
-  `tokenAuthStrategy !== "none"` returns
-  `UNSUPPORTED_TOKEN_AUTH_STRATEGY` until the
-  `executeMetaTransactionWithTokenTransferAuthorization` encoder ships.
+  to `"none"` and the additional fields MUST be omitted. When
+  `tokenAuthStrategy !== "none"`, `tokenAuth`, `asset`, `amount`, and
+  `maxTimeoutSeconds` are all required. The facilitator recovers and
+  cross-checks the token-auth signature before simulation/submission,
+  then submits the BPIP-12 token-transfer-authorization envelope through
+  core-sdk.
 ```
 
 `FacilitatorChannelAdapter` stamps `endpoints.facilitator` with:
@@ -71,13 +70,19 @@ contract on a supported chain that exposes a compatible
 `executeMetaTransaction(...)` selector — the facilitator would become
 a generic gas sponsor rather than a Boson-only relay.
 
-## Settle path
+## Submit path
 
-In v0.1, `verify()` performs structural validation, offer/calldata
-consistency checks, signature recovery, token-auth constraints, and
-simulation pre-flight. `settle()` and `performAction()` throw
-`NotImplementedError` until the relayer implementation lands. The intended
-submit path is selected by the buyer's `tokenAuthStrategy`.
+`verify()` performs structural validation, offer/calldata consistency
+checks, signature recovery, token-auth constraints, and simulation
+pre-flight. `settle()` and `performAction()` then submit the signed
+meta-transaction through `coreSdk.executeMetaTransaction(...)`. The
+facilitator config provides a viem `WalletClient` (gas payer) and
+`PublicClient` (simulation and receipt polling); the SDK receives them
+through `@bosonprotocol/x402-evm/adapters`' viem-backed
+`Web3LibAdapter`.
+
+The submit path is selected by whether a non-empty
+`transferAuthorizations` queue is supplied.
 
 For `tokenAuthStrategy = "none"`, the facilitator wraps the signed
 meta-transaction with the existing Boson entrypoint:
@@ -92,21 +97,25 @@ MetaTransactionsHandlerFacet.executeMetaTransaction(
 )
 ```
 
-For `tokenAuthStrategy = "erc3009" | "permit" | "permit2"`, the planned
-BPIP-12 path is:
+For `tokenAuthStrategy = "erc3009" | "permit" | "permit2"`, the
+facilitator lifts `payload.tokenAuth` / `performAction.tokenAuth` into a
+single-entry `transferAuthorizations` queue and core-sdk routes to the
+BPIP-12 entrypoint:
 
 ```solidity
 MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization(
-  metaTxParams,                  // built from payload.metaTx
-  tokenTransferAuthorizations,   // bytes[] queue, one entry encoding payload.tokenAuth
-  r, s, v                        // payload.metaTx.sig
+  userAddress,
+  functionName,
+  functionSignature,
+  nonce,
+  packedSig,
+  tokenTransferAuthorization     // ABI-encoded bytes[] queue
 )
 ```
 
-That BPIP-12 builder is currently represented by a throwing
-`buildExecuteMetaTransactionWithTokenAuthTx` stub in `@bosonprotocol/x402-evm`.
-Facilitator implementation should map that unsupported path to
-`UNSUPPORTED_TOKEN_AUTH_STRATEGY` until the ABI support ships.
+Simulation uses the same core-sdk handler helpers in `returnTxInfo: true`
+mode to build `{ to, data }` for `eth_call`, so pre-flight and broadcast
+calldata stay aligned.
 
 The inner `payload.metaTx.functionName` selects which protocol facet runs:
 

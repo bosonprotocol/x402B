@@ -88,10 +88,15 @@ export type FacilitatorSettleResult =
  *
  * Most post-commit actions are non-payable: the relayer just submits
  * the meta-tx and `tokenAuthStrategy` defaults to `"none"`. The one
- * exception today is `boson-escalateDispute`, which is `payable` on
- * the Diamond. The BPIP-12 post-commit token-auth envelope is not wired
- * yet, so `performAction()` returns `UNSUPPORTED_TOKEN_AUTH_STRATEGY`
- * for `tokenAuthStrategy !== "none"` until that encoder ships.
+ * action that may need value transfer today is `boson-escalateDispute`,
+ * which is `payable` on the Diamond. `performAction()` routes through
+ * `coreSdk.executeMetaTransaction(...)`, which accepts any
+ * `tokenAuthStrategy` — the SDK dispatches between the bare envelope
+ * and the BPIP-12 token-transfer-authorization variant internally.
+ * When `tokenAuthStrategy !== "none"`, `tokenAuth`, `asset`, `amount`,
+ * and `maxTimeoutSeconds` are all required so the facilitator can
+ * verify the token-auth signature and cross-check the declared
+ * metadata; when it is `"none"`, all four must be omitted.
  */
 export interface FacilitatorPerformActionInput {
   network: EvmNetwork;
@@ -99,27 +104,15 @@ export interface FacilitatorPerformActionInput {
   exchangeId: string;
   action: ActionId;
   signedPayload: Hex;
-  /**
-   * Defaults to `"none"`. Only `boson-escalateDispute` accepts non-`"none"`
-   * once the BPIP-12 post-commit envelope is wired.
-   */
+  /** Defaults to `"none"`. */
   tokenAuthStrategy?: TokenAuthStrategy;
-  /** Reserved for the future BPIP-12 post-commit envelope. Omit while strategy is `"none"`. */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   tokenAuth?: BosonTokenAuth;
-  /**
-   * Reserved for the future BPIP-12 post-commit envelope. Omit while
-   * strategy is `"none"`.
-   */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   asset?: Address;
-  /**
-   * Reserved for the future BPIP-12 post-commit envelope. Omit while
-   * strategy is `"none"`.
-   */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   amount?: string;
-  /**
-   * Reserved for the future BPIP-12 post-commit envelope. Omit while
-   * strategy is `"none"`.
-   */
+  /** Required when `tokenAuthStrategy !== "none"`; must be omitted otherwise. */
   maxTimeoutSeconds?: number;
 }
 

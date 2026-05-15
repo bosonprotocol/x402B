@@ -1,10 +1,12 @@
 // On-chain simulation pre-flight.
 //
-// Builds the outer envelope (same calldata `settle()` will broadcast)
-// via the shared `buildSettleEnvelope` helper, then submits it via
-// `publicClient.call` from the relayer's address. The `"none"` path
-// targets `executeMetaTransaction`; ERC-3009 / Permit / Permit2 target
-// the BPIP-12 `executeMetaTransactionWithTokenTransferAuthorization`.
+// Builds the outer-envelope calldata via core-sdk's
+// `metaTx.handler.executeMetaTransaction(..., returnTxInfo: true)` (and
+// the BPIP-12 token-auth variant when an authorization queue is
+// supplied), then drives it through `publicClient.call` from the
+// relayer's address. The `"none"` path targets
+// `executeMetaTransaction`; ERC-3009 / Permit / Permit2 target
+// `executeMetaTransactionWithTokenTransferAuthorization`.
 //
 // viem throws a structured error chain on revert; we walk that chain
 // looking for a `RawContractError` / `ContractFunctionRevertedError` to
@@ -30,7 +32,12 @@ import {
   type PublicClient,
 } from "viem";
 
-import { buildSettleEnvelope } from "../settle/build-envelope.js";
+import { buildSettleCalldata } from "../internal/build-settle-calldata.js";
+import {
+  bosonTokenAuthToTransferAuthorization,
+  type TransferAuthorization,
+} from "../internal/token-auth-lift.js";
+
 import type { StepResult } from "./structural.js";
 
 export interface SimulateExecuteMetaTransactionArgs {
@@ -48,22 +55,39 @@ export interface SimulateExecuteMetaTransactionArgs {
 export async function simulateExecuteMetaTransaction(
   args: SimulateExecuteMetaTransactionArgs,
 ): Promise<StepResult> {
-  const envelope = buildSettleEnvelope({
-    escrowAddress: args.escrowAddress as `0x${string}`,
-    buyer: args.buyer as `0x${string}`,
-    metaTx: args.metaTx,
-    strategy: args.tokenAuthStrategy,
-    tokenAuth: args.tokenAuth,
-  });
-  if (!envelope.ok) {
-    return { ok: false, code: envelope.code, reason: envelope.reason };
+  let transferAuthorizations: TransferAuthorization[] | undefined;
+  if (args.tokenAuthStrategy !== "none") {
+    if (!args.tokenAuth) {
+      return {
+        ok: false,
+        code: "INVALID_PAYLOAD",
+        reason: `tokenAuthStrategy "${args.tokenAuthStrategy}" requires payload.tokenAuth but none was provided`,
+      };
+    }
+    transferAuthorizations = [bosonTokenAuthToTransferAuthorization(args.tokenAuth)];
+  }
+
+  let calldata: { to: string; data: string };
+  try {
+    calldata = await buildSettleCalldata({
+      escrowAddress: args.escrowAddress,
+      userAddress: args.buyer,
+      metaTx: args.metaTx,
+      transferAuthorizations,
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      code: "INTERNAL_ERROR",
+      reason: e instanceof Error ? e.message : String(e),
+    };
   }
 
   try {
     await args.publicClient.call({
       account: args.relayerAddress as `0x${string}`,
-      to: envelope.tx.to as `0x${string}`,
-      data: envelope.tx.data as `0x${string}`,
+      to: calldata.to as `0x${string}`,
+      data: calldata.data as `0x${string}`,
     });
     return { ok: true };
   } catch (e) {
