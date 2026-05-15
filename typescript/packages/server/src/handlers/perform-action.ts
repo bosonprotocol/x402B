@@ -12,10 +12,14 @@ import { decodeSignedPayload } from "@bosonprotocol/x402-evm";
 import type { Hex } from "viem";
 
 import { emitNextActions } from "./next-actions.js";
-import { handlerErr, handlerOk, type HandlerResult } from "./types.js";
+import { handlerErr, handlerOk, type HandlerResult, type HandlerWarning } from "./types.js";
 import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
-import type { RedeemFulfillmentChannel, X402bServerConfig } from "../config.js";
+import type {
+  RedeemFulfillmentChannel,
+  RedeemFulfillmentUpdate,
+  X402bServerConfig,
+} from "../config.js";
 import {
   verifyExchange,
   type ExchangeReader,
@@ -48,10 +52,13 @@ export interface PerformActionContext {
 
 export interface RedeemHandlerContext extends PerformActionContext {
   exchangeBuyerStore: Map<string, Address>;
+  exchangeFulfillmentOptionStore: Map<string, readonly string[]>;
+  redeemFulfillmentUpdateStore: Map<string, RedeemFulfillmentUpdate>;
 }
 
 export interface PerformActionOk {
   txHash: string;
+  warnings?: HandlerWarning[];
 }
 
 /** Generic post-commit handler — wired from each of the per-action wrappers below. */
@@ -197,6 +204,27 @@ export async function handleRedeem(
 
   let resolvedChannel: RedeemFulfillmentChannel | undefined;
   if (input.fulfillment !== undefined) {
+    const advertisedOptions = ctx.exchangeFulfillmentOptionStore.get(input.exchangeId);
+    if (committer !== undefined && advertisedOptions === undefined) {
+      return handlerErr(
+        500,
+        "FULFILLMENT_OPTIONS_NOT_TRACKED",
+        "server has a committer record for this exchange but no fulfillment option policy",
+        { exchangeId: input.exchangeId },
+      );
+    }
+    if (
+      advertisedOptions !== undefined &&
+      !advertisedOptions.includes(input.fulfillment.option)
+    ) {
+      return handlerErr(
+        400,
+        "FULFILLMENT_OPTION_NOT_ADVERTISED",
+        `fulfillment.option '${input.fulfillment.option}' was not advertised for this exchange`,
+        { option: input.fulfillment.option, advertised: advertisedOptions },
+      );
+    }
+
     const channels = ctx.config.fulfillmentChannels;
     if (channels === undefined) {
       return handlerErr(
@@ -227,18 +255,62 @@ export async function handleRedeem(
   if (!result.ok) return result;
 
   // Redeem confirmed REDEEMED on-chain — only now is it safe to
-  // upsert the channel's delivery-target store and free the
-  // committer-wallet entry (the rebinding rule no longer applies).
+  // upsert the channel's delivery-target store. Record a pending
+  // update first so a failing channel write leaves the host with an
+  // explicit recovery item instead of losing the buyer's new target.
+  let warning: HandlerWarning | undefined;
   if (resolvedChannel !== undefined && input.fulfillment !== undefined) {
-    await resolvedChannel.onCommit(input.exchangeId, input.fulfillment.data);
+    const pending: RedeemFulfillmentUpdate = {
+      exchangeId: input.exchangeId,
+      option: input.fulfillment.option,
+      data: input.fulfillment.data,
+      redeemer,
+      recordedAt: Date.now(),
+    };
+    ctx.redeemFulfillmentUpdateStore.set(input.exchangeId, pending);
+    try {
+      await resolvedChannel.onCommit(input.exchangeId, input.fulfillment.data);
+      ctx.redeemFulfillmentUpdateStore.delete(input.exchangeId);
+    } catch (e) {
+      const reason = errorMessage(e);
+      ctx.redeemFulfillmentUpdateStore.set(input.exchangeId, { ...pending, error: reason });
+      warning = {
+        code: "FULFILLMENT_UPDATE_DEFERRED",
+        reason:
+          "redeem succeeded on-chain, but the server could not persist the fulfillment update",
+        details: {
+          exchangeId: input.exchangeId,
+          option: input.fulfillment.option,
+          error: reason,
+        },
+      };
+    }
   }
+
+  // The exchange is REDEEMED even if the fulfillment write is deferred,
+  // so the wallet-rebinding gate no longer applies to this exchange.
   ctx.exchangeBuyerStore.delete(input.exchangeId);
+  ctx.exchangeFulfillmentOptionStore.delete(input.exchangeId);
+
+  if (warning !== undefined) {
+    return {
+      ...result,
+      body: {
+        ...result.body,
+        warnings: [...(result.body.warnings ?? []), warning],
+      },
+    };
+  }
 
   return result;
 }
 
 function addressesEqual(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
+}
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 /** Per-action sugar — preserves the action id at the type level. */

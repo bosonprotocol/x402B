@@ -11,10 +11,11 @@ import {
   signFullOffer,
   type ExchangeReader,
   type FetchLike,
+  type X402bServer,
 } from "@bosonprotocol/x402-server";
 import express from "express";
 import supertest from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseSignature } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -293,6 +294,33 @@ describe("mountX402b — convenience routes", () => {
     // commit-time settlement responses (and the future deposit-paying
     // `escalateDispute` flow).
     expect(res.headers["x-payment-response"]).toBeUndefined();
+  });
+
+  it("POST /x402b/redeem forwards optional fulfillment data", async () => {
+    const redeem = vi.fn(async () => ({
+      ok: true as const,
+      status: 200 as const,
+      body: { txHash: "0xfed", nextActions: { next: [] } },
+    }));
+    const server = { handlers: { redeem } } as unknown as X402bServer;
+
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const fulfillment = { option: "email", data: { email: "new@example.com" } };
+    const res = await supertest(app).post("/x402b/redeem").send({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+      fulfillment,
+    });
+
+    expect(res.status).toBe(200);
+    expect(redeem).toHaveBeenCalledWith({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+      fulfillment,
+    });
   });
 
   it("POST /x402b/complete rejects malformed body with 400", async () => {

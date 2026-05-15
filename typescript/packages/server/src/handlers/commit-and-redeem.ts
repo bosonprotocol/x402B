@@ -40,6 +40,12 @@ export interface CommitHandlerContext {
    * the write — the redeem step has already happened on-chain.
    */
   exchangeBuyerStore: Map<string, Address>;
+  /**
+   * Per-exchange fulfillment option policy. Flow A writes the ids
+   * advertised by the original requirements so redeem-time updates are
+   * constrained to the offer's own channel set.
+   */
+  exchangeFulfillmentOptionStore: Map<string, readonly string[]>;
 }
 
 export interface CommitOk {
@@ -162,6 +168,10 @@ async function handleCommitImpl(
   // is already in REDEEMED — there is no later redeem step to gate.
   if (expected.expectedState === ExchangeState.COMMITTED) {
     ctx.exchangeBuyerStore.set(settleResult.exchangeId, decoded.payload.payload.buyer);
+    ctx.exchangeFulfillmentOptionStore.set(
+      settleResult.exchangeId,
+      input.requirements.fulfillment?.options.map((option) => option.id) ?? [],
+    );
   }
 
   // Both commit-side actions transition to non-DISPUTED states

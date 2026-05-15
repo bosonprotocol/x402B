@@ -11,6 +11,7 @@ export {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
   type RedeemFulfillmentChannel,
+  type RedeemFulfillmentUpdate,
   type SellerSigner,
   type X402bServerConfig,
 } from "./config.js";
@@ -65,6 +66,7 @@ export {
   type HandlerErrorBody,
   type HandlerResult,
   type HandlerStatus,
+  type HandlerWarning,
   type PerformActionContext,
   type PerformActionInput,
   type PerformActionOk,

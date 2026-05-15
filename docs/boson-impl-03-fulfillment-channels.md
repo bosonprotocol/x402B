@@ -137,7 +137,9 @@ In the two-step flow A (`boson-createOfferAndCommit` followed later by `boson-re
 | `A` | `B` (different) | **REQUIRED** — server rejects with `FULFILLMENT_REQUIRED_ON_WALLET_CHANGE` if absent |
 | absent (legacy / atomic) | any | no-op |
 
-When a redeem request carries `fulfillment`, the server runs `channel.validate(data)` and then `channel.onCommit(exchangeId, data)` — channels treat `onCommit` as an upsert. The wire shape is identical to the commit-time `fulfillment` envelope: `{ option: string, data: <schema-of-option> | null }`.
+When a redeem request carries `fulfillment`, `option` MUST be one of the options advertised in the original 402 for that exchange. The server runs `channel.validate(data)` and then `channel.onCommit(exchangeId, data)` — channels treat `onCommit` as an upsert. The wire shape is identical to the commit-time `fulfillment` envelope: `{ option: string, data: <schema-of-option> | null }`.
+
+Because the on-chain redeem is irreversible, servers should record a pending fulfillment update before the post-redeem channel upsert and clear it only after `onCommit` succeeds. If that upsert fails, the redeem response should still report the successful transaction and include a warning such as `FULFILLMENT_UPDATE_DEFERRED`, leaving the pending update for host-side replay/reconciliation.
 
 Flow B (`boson-createOfferCommitAndRedeem`, atomic) is unaffected — the exchange reaches `REDEEMED` in a single transaction; there is no later redeem step.
 

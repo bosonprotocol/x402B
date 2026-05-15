@@ -32,4 +32,5 @@ export {
   type HandlerErrorBody,
   type HandlerResult,
   type HandlerStatus,
+  type HandlerWarning,
 } from "./types.js";

@@ -15,6 +15,7 @@ import { signFullOffer } from "./challenge/sign-full-offer.js";
 import {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
+  type RedeemFulfillmentUpdate,
   type X402bServerConfig,
 } from "./config.js";
 import { createFacilitatorClient, type FacilitatorClient } from "./facilitator/client.js";
@@ -99,6 +100,13 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   // one. Single shared reference for the lifetime of this server — so
   // commit-time writes and redeem-time reads observe the same Map.
   const exchangeBuyerStore: Map<string, Address> = validated.exchangeBuyerStore ?? new Map();
+  const exchangeFulfillmentOptionStore: Map<string, readonly string[]> =
+    validated.exchangeFulfillmentOptionStore ?? new Map();
+  const redeemFulfillmentUpdateStore: Map<string, RedeemFulfillmentUpdate> =
+    validated.redeemFulfillmentUpdateStore ?? new Map();
+  validated.exchangeBuyerStore = exchangeBuyerStore;
+  validated.exchangeFulfillmentOptionStore = exchangeFulfillmentOptionStore;
+  validated.redeemFulfillmentUpdateStore = redeemFulfillmentUpdateStore;
 
   const signOffer = (unsigned: UnsignedFullOffer): Promise<BosonOfferRef> =>
     signFullOffer({
@@ -144,6 +152,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           facilitator,
           exchangeReader: await requireReader("commit"),
           exchangeBuyerStore,
+          exchangeFulfillmentOptionStore,
         }),
       commitAndRedeem: async (input) =>
         handleCommitAndRedeem(input, {
@@ -151,6 +160,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           facilitator,
           exchangeReader: await requireReader("commitAndRedeem"),
           exchangeBuyerStore,
+          exchangeFulfillmentOptionStore,
         }),
       redeem: async (input) =>
         handleRedeem(input, {
@@ -158,6 +168,8 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           facilitator,
           exchangeReader: await requireReader("redeem"),
           exchangeBuyerStore,
+          exchangeFulfillmentOptionStore,
+          redeemFulfillmentUpdateStore,
         }),
       complete: async (input) =>
         handleComplete(input, {

@@ -80,6 +80,26 @@ export interface X402bServerConfig {
    */
   exchangeBuyerStore?: Map<string, Address>;
   /**
+   * Server-side store of the fulfillment option ids advertised for
+   * each Flow A exchange (keyed by `exchangeId`). Populated from the
+   * original `PaymentRequirements` after commit verification and read
+   * at redeem time so re-submitted fulfillment data cannot switch to a
+   * channel the offer never advertised.
+   *
+   * Optional in the config: when omitted, `createX402bServer` wires up
+   * an in-memory `Map`. Hosts that provide `exchangeBuyerStore` for
+   * cross-process tracking should normally provide this store too.
+   */
+  exchangeFulfillmentOptionStore?: Map<string, readonly string[]>;
+  /**
+   * Pending fulfillment updates that reached REDEEMED on-chain but
+   * failed the server-side `channel.onCommit(...)` upsert. The redeem
+   * handler records the update here before attempting the channel write,
+   * deletes it on success, and leaves it behind with the error message
+   * on failure so the host can replay/reconcile out of band.
+   */
+  redeemFulfillmentUpdateStore?: Map<string, RedeemFulfillmentUpdate>;
+  /**
    * Fulfillment channels the server accepts at redeem time when the
    * client re-submits delivery data. Structurally a subset of
    * `@bosonprotocol/x402-fulfillment`'s `FulfillmentChannel` — only
@@ -103,6 +123,15 @@ export interface RedeemFulfillmentChannel {
   readonly id: string;
   validate(data: Record<string, unknown> | null): { ok: true } | { ok: false; reason: string };
   onCommit(exchangeId: string, data: Record<string, unknown> | null): Promise<void>;
+}
+
+export interface RedeemFulfillmentUpdate {
+  exchangeId: string;
+  option: string;
+  data: Record<string, unknown> | null;
+  redeemer: Address;
+  recordedAt: number;
+  error?: string;
 }
 
 const httpUrlSchema = z
@@ -158,6 +187,8 @@ export const x402bServerConfigSchema = z
     channelRegistry: channelRegistryZodSchema,
     exchangeReader: exchangeReaderShallowSchema.optional(),
     exchangeBuyerStore: z.instanceof(Map).optional(),
+    exchangeFulfillmentOptionStore: z.instanceof(Map).optional(),
+    redeemFulfillmentUpdateStore: z.instanceof(Map).optional(),
     fulfillmentChannels: z
       .array(fulfillmentChannelShallowSchema)
       .superRefine((channels, ctx) => {
