@@ -62,9 +62,9 @@ describe("resolveFulfillment", () => {
   it("throws when a schemaless option receives non-null data", () => {
     const req = baseRequirements();
     req.fulfillment = { required: true, options: [{ id: "atomic", schema: null }] };
-    expect(() =>
-      resolveFulfillment(req, { fulfillment: { option: "atomic", data: {} } }),
-    ).toThrow(FulfillmentValidationError);
+    expect(() => resolveFulfillment(req, { fulfillment: { option: "atomic", data: {} } })).toThrow(
+      FulfillmentValidationError,
+    );
   });
 
   it("validates data against the option's JSON Schema and returns it for the assembler", () => {

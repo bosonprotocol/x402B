@@ -93,9 +93,7 @@ async function buildServerWithStubs(
         escrow: ESCROW,
       },
       ...(opts.reader !== undefined ? { exchangeReader: opts.reader } : {}),
-      ...(opts.recoveryStore !== undefined
-        ? { fulfillmentRecoveryStore: opts.recoveryStore }
-        : {}),
+      ...(opts.recoveryStore !== undefined ? { fulfillmentRecoveryStore: opts.recoveryStore } : {}),
       ...(opts.channels !== undefined ? { fulfillmentChannels: opts.channels } : {}),
     });
     return { server, fetchStub, seller };
