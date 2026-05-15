@@ -54,14 +54,23 @@ function asHex32(value: string, name: string): Hex {
   return value as Hex;
 }
 
+function asInt(value: string, name: string, { min, max }: { min: number; max?: number }): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min || (max !== undefined && n > max)) {
+    const range = max !== undefined ? `an integer in [${min}, ${max}]` : `an integer >= ${min}`;
+    throw new Error(`[facilitator-http] ${name} must be ${range} (got ${JSON.stringify(value)})`);
+  }
+  return n;
+}
+
 export function readEnv(): FacilitatorEnv {
   return {
     url: required("FACILITATOR_URL"),
     rpcNode: required("RPC_NODE"),
-    chainId: Number(optional("CHAIN_ID", "31337")),
+    chainId: asInt(optional("CHAIN_ID", "31337"), "CHAIN_ID", { min: 1 }),
     escrowAddress: asAddress(required("ESCROW_ADDRESS"), "ESCROW_ADDRESS"),
     relayerPk: asHex32(required("RELAYER_PK"), "RELAYER_PK"),
-    port: Number(optional("PORT", "8889")),
+    port: asInt(optional("PORT", "8889"), "PORT", { min: 1, max: 65535 }),
   };
 }
 
