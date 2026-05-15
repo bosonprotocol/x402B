@@ -1,0 +1,52 @@
+# dependencies
+node_modules/
+**/node_modules/
+
+# build artifacts
+dist/
+**/dist/
+build/
+**/build/
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# turbo
+.turbo/
+**/.turbo/
+
+# test / coverage
+coverage/
+**/coverage/
+.nyc_output/
+**/.nyc_output/
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# logs / env
+*.log
+**/*.log
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+
+# git / CI / tooling
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# pnpm store
+.pnpm-store/
+
+# claude
+.claude/
+
+# example-level dockerignore is obsolete now that the build context is the repo root
