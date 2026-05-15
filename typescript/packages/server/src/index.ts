@@ -6,7 +6,13 @@
 // facilitator HTTP client, and convenience-endpoint handlers land in
 // follow-up PRs and slot onto the same factory output.
 
-export { createX402bServer, type BuildRequirementsInput, type X402bServer } from "./server.js";
+export {
+  createX402bServer,
+  type BuildRequirementsInput,
+  type RecoveryApi,
+  type RecoveryReplayResult,
+  type X402bServer,
+} from "./server.js";
 export {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
