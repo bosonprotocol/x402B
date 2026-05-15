@@ -238,32 +238,71 @@ async function resolveEntityIdClientSide(
       ? Promise.resolve<Array<{ id: string }>>([])
       : coreSdk.getBuyers({ buyersFilter: { wallet: address } }),
   ]);
-  const sellerId = sellers[0]?.id;
-  const buyerId = buyers[0]?.id;
+  const sellerIds = sellers.map((s) => s.id);
+  const buyerIds = buyers.map((b) => b.id);
+
   if (role === "seller") {
-    if (sellerId === undefined) {
+    if (sellerIds.length === 0) {
       throw new Error(
         `signWithdrawAllAvailableFunds: no seller entity found for address ${address}`,
       );
     }
-    return sellerId;
+    if (sellerIds.length > 1) {
+      throw new Error(
+        `signWithdrawAllAvailableFunds: address ${address} resolves to multiple seller entities (ids ${sellerIds.join(", ")}); pass entityId to disambiguate`,
+      );
+    }
+    return sellerIds[0]!;
   }
   if (role === "buyer") {
-    if (buyerId === undefined) {
+    if (buyerIds.length === 0) {
       throw new Error(
         `signWithdrawAllAvailableFunds: no buyer entity found for address ${address}`,
       );
     }
-    return buyerId;
+    if (buyerIds.length > 1) {
+      throw new Error(
+        `signWithdrawAllAvailableFunds: address ${address} resolves to multiple buyer entities (ids ${buyerIds.join(", ")}); pass entityId to disambiguate`,
+      );
+    }
+    return buyerIds[0]!;
   }
-  if (sellerId !== undefined && buyerId !== undefined) {
+
+  // role unspecified — exactly-one rule across both sides. Refuse to
+  // guess when the address resolves to multiple sellers, multiple
+  // buyers, or any combination of the two: the signed payload commits
+  // to a single entityId, so silently picking `[0]` would be a bug
+  // farm waiting to bite.
+  const totalMatches = sellerIds.length + buyerIds.length;
+  if (totalMatches === 0) {
     throw new Error(
-      `signWithdrawAllAvailableFunds: address ${address} resolves to both seller (id ${sellerId}) and buyer (id ${buyerId}); pass role to disambiguate`,
+      `signWithdrawAllAvailableFunds: no seller or buyer entity found for address ${address}`,
     );
   }
-  if (sellerId !== undefined) return sellerId;
-  if (buyerId !== undefined) return buyerId;
-  throw new Error(
-    `signWithdrawAllAvailableFunds: no seller or buyer entity found for address ${address}`,
-  );
+  if (totalMatches > 1) {
+    throw new Error(
+      `signWithdrawAllAvailableFunds: address ${address} resolves to ${describeClientMatches(sellerIds, buyerIds)}; pass role and/or entityId to disambiguate`,
+    );
+  }
+  if (sellerIds.length === 1) return sellerIds[0]!;
+  return buyerIds[0]!;
+}
+
+function describeClientMatches(sellerIds: string[], buyerIds: string[]): string {
+  const parts: string[] = [];
+  if (sellerIds.length > 0) {
+    parts.push(
+      sellerIds.length === 1
+        ? `seller (id ${sellerIds[0]})`
+        : `${sellerIds.length} sellers (ids ${sellerIds.join(", ")})`,
+    );
+  }
+  if (buyerIds.length > 0) {
+    parts.push(
+      buyerIds.length === 1
+        ? `buyer (id ${buyerIds[0]})`
+        : `${buyerIds.length} buyers (ids ${buyerIds.join(", ")})`,
+    );
+  }
+  return parts.join(" and ");
 }

@@ -78,7 +78,7 @@ The response intentionally carries **no** `nextActions` envelope — withdraw do
 
 Read-only. Returns the current funds entity for a buyer or seller via the protocol subgraph (`coreSdk.getFunds`). Query parameters:
 
-```
+```text
 ?entityId=12345
   or
 ?address=0xabc...&role=buyer    // role optional
@@ -103,7 +103,7 @@ Response:
 }
 ```
 
-Failure modes: `400` for malformed `entityId` / `address` / `role`; `404` when the address resolves to no entity; `409` when the address resolves to both roles and `role` was omitted (response body includes `details.sellerId` and `details.buyerId` to help the caller re-issue with `role`); `502` on subgraph failure.
+Failure modes: `400` for malformed `entityId` / `address` / `role`; `404` when the address resolves to no entity; `409` when the address resolves ambiguously — either to both roles with `role` omitted, or to multiple entities within a single role (one wallet registered as admin of several Boson sellers, for example). The 409 body includes `details.sellerIds` and/or `details.buyerIds` (arrays of the matching entity ids) so the caller can re-issue with an explicit `entityId`. `502` on subgraph failure.
 
 ## Sections to write
 
