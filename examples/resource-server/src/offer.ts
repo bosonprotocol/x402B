@@ -5,8 +5,10 @@
 // vary per request in this example. We only env-drive what's typically
 // configurable per offer (price, asset, seller identity, dispute
 // resolver) and pin the rest to reasonable defaults that work against
-// a local Boson stack. Integrators forking this example should adapt
-// `metadataUri` / `validUntil` / `royaltyInfo` etc. to their catalogue.
+// a local Boson stack. See the JSDoc on `buildUnsignedOffer` below for
+// the timing model and how to adapt each window when forking; other
+// fields (`metadataUri`, `royaltyInfo`, …) should be swapped to match
+// the catalogue.
 
 import type { UnsignedFullOffer } from "@bosonprotocol/x402-core/eip712";
 import type { Address } from "viem";
@@ -23,6 +25,70 @@ export interface BuildOfferArgs {
   now?: number;
 }
 
+/**
+ * Build an unsigned FullOffer with demo-friendly defaults.
+ *
+ * ## Time units
+ *
+ * Every `*InMS` field is in **milliseconds** — the core-sdk wire
+ * convention. The SDK converts to seconds internally for the on-chain
+ * ABI (`IBosonOfferHandler` and friends), so do not pre-convert. See
+ * {@link https://github.com/bosonprotocol/core-components/blob/main/packages/common/src/types/offers.ts core-sdk offer types}
+ * and {@link https://github.com/bosonprotocol/boson-protocol-contracts/blob/main/contracts/interfaces/handlers/IBosonOfferHandler.sol IBosonOfferHandler}.
+ *
+ * ## Two independent windows
+ *
+ * An exchange is governed by two windows that are intentionally
+ * decoupled — a buyer may commit on the last second of the offer
+ * window and still have the full redemption window ahead of them.
+ *
+ * - **Offer validity** — `validFromDateInMS` … `validUntilDateInMS`.
+ *   When the offer is *committable*. After `validUntilDateInMS`, no
+ *   new commits land. Bound to the offer.
+ * - **Voucher redemption** — `voucherRedeemableFromDateInMS` …
+ *   *either* `voucherRedeemableUntilDateInMS` *or*
+ *   `voucherValidDurationInMS`. When a committed voucher can be
+ *   *redeemed*. Bound to the exchange that the commit produced.
+ *
+ * **Protocol invariant (enforced on-chain):** exactly one of
+ * `voucherRedeemableUntilDateInMS` and `voucherValidDurationInMS`
+ * must be non-zero.
+ *
+ * - **Absolute deadline** (used in this example) — set
+ *   `voucherRedeemableUntilDateInMS` to a fixed timestamp and leave
+ *   `voucherValidDurationInMS` at `"0"`. Every buyer's redemption
+ *   deadline lands at the same wall-clock moment. Right for
+ *   fixed-date events (concert tickets, scheduled drops).
+ * - **Sliding window** — set `voucherRedeemableUntilDateInMS` to
+ *   `"0"` and `voucherValidDurationInMS` to a duration. The
+ *   redemption window then closes at
+ *   `commitTime + voucherValidDurationInMS`. Right for evergreen
+ *   catalogues ("redeemable for 30 days after commit, whenever you
+ *   commit").
+ *
+ * ## Dispute / resolution durations
+ *
+ * `disputePeriodDurationInMS` runs from redemption — how long the
+ * buyer has to raise a dispute. `resolutionPeriodDurationInMS` runs
+ * from dispute-raised — how long both sides have to resolve mutually
+ * before escalation paths open. Both are *baked into the exchange at
+ * commit* and cannot be extended, so over-provision rather than
+ * under-provision when forking.
+ *
+ * ## Customising for your catalogue
+ *
+ * The demo uses deliberately short windows (offer 1 h, redemption 1 h,
+ * dispute 1 d, resolution 1 w) so e2e runs finish quickly. Real
+ * catalogues should widen all four to whatever fits the product. The
+ * only hard constraints are the validation rules in
+ * `IBosonOfferHandler` and core-sdk's `CreateOfferArgs`:
+ *
+ * - `validFromDateInMS < validUntilDateInMS`, and `validUntilDateInMS`
+ *   must be in the future at submission time.
+ * - `voucherRedeemableFromDateInMS < voucherRedeemableUntilDateInMS`
+ *   when the absolute form is used.
+ * - `buyerCancelPenalty <= price`.
+ */
 export function buildUnsignedOffer({ env, sellerAddress, now }: BuildOfferArgs): UnsignedFullOffer {
   const t = now ?? Date.now();
   const oneHour = 60 * 60 * 1000;
