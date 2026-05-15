@@ -146,16 +146,7 @@ export function walletClientToWeb3LibAdapter(params: {
             hash,
             timeout: receiptTimeoutMs,
           });
-          return {
-            from: receipt.from,
-            to: receipt.to ?? "",
-            status: receipt.status === "success" ? 1 : 0,
-            logs: receipt.logs.map((log) => ({ data: log.data, topics: [...log.topics] })),
-            transactionHash: receipt.transactionHash,
-            effectiveGasPrice: receipt.effectiveGasPrice,
-            blockNumber: Number(receipt.blockNumber),
-            gasUsed: receipt.gasUsed,
-          };
+          return mapReceipt(receipt);
         },
       };
     },
@@ -174,18 +165,30 @@ export function walletClientToWeb3LibAdapter(params: {
     },
     getTransactionReceipt: async (txHash) => {
       const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
-      return {
-        from: receipt.from,
-        to: receipt.to ?? "",
-        status: receipt.status === "success" ? 1 : 0,
-        logs: receipt.logs.map((log) => ({ data: log.data, topics: [...log.topics] })),
-        transactionHash: receipt.transactionHash,
-        effectiveGasPrice: receipt.effectiveGasPrice,
-        blockNumber: Number(receipt.blockNumber),
-        gasUsed: receipt.gasUsed,
-      };
+      return mapReceipt(receipt);
     },
     getCurrentTimeMs: async () => Date.now(),
+  };
+}
+
+/**
+ * Normalize a viem `TransactionReceipt` into the SDK's `TransactionReceipt`
+ * shape from `@bosonprotocol/common`. viem's logs carry extra fields the
+ * SDK doesn't reference; we strip them so the adapter returns exactly the
+ * shape the contract is typed against (and keep both
+ * `sendTransaction().wait()` and `getTransactionReceipt(...)` paths from
+ * drifting).
+ */
+function mapReceipt(receipt: Awaited<ReturnType<PublicClient["getTransactionReceipt"]>>) {
+  return {
+    from: receipt.from,
+    to: receipt.to ?? "",
+    status: receipt.status === "success" ? 1 : 0,
+    logs: receipt.logs.map((log) => ({ data: log.data, topics: [...log.topics] })),
+    transactionHash: receipt.transactionHash,
+    effectiveGasPrice: receipt.effectiveGasPrice,
+    blockNumber: Number(receipt.blockNumber),
+    gasUsed: receipt.gasUsed,
   };
 }
 

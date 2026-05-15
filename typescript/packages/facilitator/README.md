@@ -63,7 +63,7 @@ The facilitator's responsibilities are:
    `coreSdk.executeMetaTransaction(...)`, which chooses the bare
    `executeMetaTransaction(...)` entrypoint or the BPIP-12
    `executeMetaTransactionWithTokenTransferAuthorization(...)` entrypoint
-   based on whether `transferAuthorizations` is supplied. The configured
+   based on whether `transferAuthorizations` is non-empty. The configured
    viem `WalletClient` pays gas through the relayer adapter.
 3. **Relay post-commit transitions** — same envelope, same submit path,
    for `redeem` / `complete` / `cancel` / `revoke` / `raise` / `retract` /
