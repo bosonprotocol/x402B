@@ -63,7 +63,13 @@ export function resolveFulfillment(
     );
   }
 
-  if (option.schema !== null) {
+  if (option.schema === null) {
+    if (fulfillmentConfig.data !== null) {
+      throw new FulfillmentValidationError(
+        `fulfillment option '${option.id}' accepts no buyer data; use null`,
+      );
+    }
+  } else {
     const ajv = new Ajv({ allErrors: true, strict: false });
     const validate = ajv.compile(option.schema);
     const ok = validate(fulfillmentConfig.data);

@@ -157,7 +157,7 @@ Servers SHOULD advertise at least one in-payload-shaped fulfillment channel (ema
 The `webhook` channel hands the seller a buyer-controlled HTTPS URL — the buyer's endpoint can become a target as soon as the URL is known. The protocol layers three independent protections; the buyer SHOULD use all three:
 
 1. **Server signature (always on).** The seller signs every webhook envelope with the key advertised under `metadata.serverPublicKey`. The envelope MUST include the `exchangeId` and a millisecond `timestamp`. The buyer MUST verify the signature, MUST reject envelopes whose `timestamp` is older than a small freshness window (recommended: ≤ 300 s), and MUST treat repeated deliveries with the same `exchangeId` as idempotent (one logical delivery, dedupe on the buyer's side).
-2. **Bearer token (optional, buyer-published).** When the buyer sets `authToken`, the seller MUST send it as `Authorization: Bearer <authToken>` on every webhook request. This lets the buyer's edge layer reject unauthenticated traffic before any signature work — useful against random POSTers and leaked-URL scanning. The token travels in the redeem-time POST body, so it offers no protection against an attacker who can read that traffic; pair it with (1) for end-to-end authenticity.
+2. **Bearer token (optional, buyer-published).** When the buyer sets `authToken`, the seller MUST send it as `Authorization: Bearer <authToken>` on every webhook request. This lets the buyer's edge layer reject unauthenticated traffic before any signature work — useful against random POSTers and leaked-URL scanning. The token travels with `fulfillment.data` (atomic `boson-createOfferCommitAndRedeem` Flow B: commit-time `X-PAYMENT`; two-step Flow A: redeem-time POST body), so it offers no protection against an attacker who can read that traffic; pair it with (1) for end-to-end authenticity.
 3. **Encryption to buyer (optional, buyer-published).** When the buyer sets `encryptionPubKey`, the seller MAY encrypt the resource body to that key (cipher specified in `03b-webhook-encryption.md`; not yet implemented). Protects confidentiality against any actor with the URL but without the buyer's private key.
 
 Seller adapters MUST refuse plain `http://` URLs — TLS is mandatory for the transport. Buyers SHOULD also rotate `authToken` per offer / per session if the same endpoint is reused across many exchanges.
@@ -170,7 +170,7 @@ Seller adapters MUST refuse plain `http://` URLs — TLS is mandatory for the tr
 2. Action-conditional `payload.fulfillment.data`:
    - For `payload.action = boson-createOfferCommitAndRedeem` (atomic Flow B): `data` MUST be present. The chosen option's `buyerDataSchema` MUST validate `data` (or `null` when the schema is `null`). The server-side channel instance MUST be configured (at boot, not per-request).
    - For `payload.action = boson-createOfferAndCommit` (two-step Flow A): `data` MUST be absent — it's reserved for the redeem POST body.
-3. **Flow B only:** after the atomic redeem confirms on chain, the commit handler calls `channel.onCommit(exchangeId, data)` to persist the buyer's delivery target. A failing channel write surfaces as a `FULFILLMENT_COMMIT_DEFERRED` warning on the 200 response; the on-chain state is already irreversibly `REDEEMED`.
+3. **Flow B only:** after the atomic redeem confirms on chain, the commit handler records a pending fulfillment update and calls `channel.onCommit(exchangeId, data)` to persist the buyer's delivery target. A successful write clears the pending update. A failing channel write leaves the pending update for host-side replay/reconciliation and surfaces a `FULFILLMENT_COMMIT_DEFERRED` warning on the 200 response; the on-chain state is already irreversibly `REDEEMED`.
 4. **Flow A only:** the server persists the *advertised* option ids against the exchange so the redeem-time check below can constrain the buyer's choice when the voucher has been transferred between commit and redeem.
 
 ### Redeem-time (server, on `boson-redeem` POST)
@@ -187,7 +187,7 @@ When a redeem request carries `fulfillment`, `option` MUST be one of the options
 
 Because the on-chain redeem is irreversible, servers record a pending fulfillment update before the post-redeem channel upsert and clear it only after `onCommit` succeeds. If that upsert fails, the redeem response still reports the successful transaction and includes a warning such as `FULFILLMENT_UPDATE_DEFERRED`, leaving the pending update for host-side replay/reconciliation.
 
-Flow B (`boson-createOfferCommitAndRedeem`, atomic) is symmetric: the buyer's delivery data rides with the commit-time payload (see [Atomic Flow B](#atomic-flow-b--boson-createoffercommitandredeem)) and the commit handler invokes `channel.onCommit` after the on-chain redeem settles. A failing `onCommit` surfaces as a `FULFILLMENT_COMMIT_DEFERRED` warning on the 200 response.
+Flow B (`boson-createOfferCommitAndRedeem`, atomic) is symmetric: the buyer's delivery data rides with the commit-time payload (see [Atomic Flow B](#atomic-flow-b--boson-createoffercommitandredeem)) and the commit handler invokes `channel.onCommit` after the on-chain redeem settles. A failing `onCommit` leaves a pending fulfillment update for host-side replay/reconciliation and surfaces as a `FULFILLMENT_COMMIT_DEFERRED` warning on the 200 response.
 
 ## Client-side helper
 

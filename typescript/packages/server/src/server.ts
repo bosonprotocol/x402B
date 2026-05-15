@@ -18,7 +18,7 @@ import { signFullOffer } from "./challenge/sign-full-offer.js";
 import {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
-  type RedeemFulfillmentUpdate,
+  type FulfillmentRecoveryEntry,
   type X402bServerConfig,
 } from "./config.js";
 import { createFacilitatorClient, type FacilitatorClient } from "./facilitator/client.js";
@@ -114,10 +114,10 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   // commit-time writes and redeem-time reads observe the same Map.
   const exchangeFulfillmentOptionStore: Map<string, readonly string[]> =
     validated.exchangeFulfillmentOptionStore ?? new Map();
-  const redeemFulfillmentUpdateStore: Map<string, RedeemFulfillmentUpdate> =
-    validated.redeemFulfillmentUpdateStore ?? new Map();
+  const fulfillmentRecoveryStore: Map<string, FulfillmentRecoveryEntry> =
+    validated.fulfillmentRecoveryStore ?? new Map();
   validated.exchangeFulfillmentOptionStore = exchangeFulfillmentOptionStore;
-  validated.redeemFulfillmentUpdateStore = redeemFulfillmentUpdateStore;
+  validated.fulfillmentRecoveryStore = fulfillmentRecoveryStore;
 
   const signOffer = (unsigned: UnsignedFullOffer): Promise<BosonOfferRef> =>
     signFullOffer({
@@ -188,6 +188,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("commit"),
+          fulfillmentRecoveryStore,
           exchangeFulfillmentOptionStore,
         }),
       commitAndRedeem: async (input) =>
@@ -195,6 +196,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("commitAndRedeem"),
+          fulfillmentRecoveryStore,
           exchangeFulfillmentOptionStore,
         }),
       redeem: async (input) =>
@@ -203,7 +205,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           facilitator,
           exchangeReader: await requireReader("redeem"),
           exchangeFulfillmentOptionStore,
-          redeemFulfillmentUpdateStore,
+          fulfillmentRecoveryStore,
         }),
       complete: async (input) =>
         handleComplete(input, {

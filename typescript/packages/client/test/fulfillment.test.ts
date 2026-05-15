@@ -50,13 +50,21 @@ describe("resolveFulfillment", () => {
     );
   });
 
-  it("returns both option and data (assembler picks which to emit based on action)", () => {
+  it("accepts null data for schemaless options", () => {
     const req = baseRequirements();
     req.fulfillment = { required: true, options: [{ id: "atomic", schema: null }] };
-    expect(resolveFulfillment(req, { fulfillment: { option: "atomic", data: {} } })).toEqual({
+    expect(resolveFulfillment(req, { fulfillment: { option: "atomic", data: null } })).toEqual({
       option: "atomic",
-      data: {},
+      data: null,
     });
+  });
+
+  it("throws when a schemaless option receives non-null data", () => {
+    const req = baseRequirements();
+    req.fulfillment = { required: true, options: [{ id: "atomic", schema: null }] };
+    expect(() =>
+      resolveFulfillment(req, { fulfillment: { option: "atomic", data: {} } }),
+    ).toThrow(FulfillmentValidationError);
   });
 
   it("validates data against the option's JSON Schema and returns it for the assembler", () => {

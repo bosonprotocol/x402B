@@ -14,9 +14,9 @@ import {
   createX402bServer,
   type ExchangeReader,
   type ExchangeSnapshot,
+  type FulfillmentRecoveryEntry,
   type FetchLike,
   type RedeemFulfillmentChannel,
-  type RedeemFulfillmentUpdate,
 } from "../src/index.js";
 import {
   CHAIN_ID,
@@ -71,6 +71,7 @@ async function buildServerWithStubs(
   opts: {
     facilitator?: (path: string) => unknown;
     reader?: ExchangeReader;
+    recoveryStore?: Map<string, FulfillmentRecoveryEntry>;
     channels?: readonly RedeemFulfillmentChannel[];
   } = {},
 ) {
@@ -92,6 +93,9 @@ async function buildServerWithStubs(
         escrow: ESCROW,
       },
       ...(opts.reader !== undefined ? { exchangeReader: opts.reader } : {}),
+      ...(opts.recoveryStore !== undefined
+        ? { fulfillmentRecoveryStore: opts.recoveryStore }
+        : {}),
       ...(opts.channels !== undefined ? { fulfillmentChannels: opts.channels } : {}),
     });
     return { server, fetchStub, seller };
@@ -550,7 +554,7 @@ describe("handlers.redeem — fulfillment update", () => {
     facilitator?: (path: string) => unknown;
     reader: ExchangeReader;
     optionStore?: Map<string, readonly string[]>;
-    pendingStore?: Map<string, RedeemFulfillmentUpdate>;
+    recoveryStore?: Map<string, FulfillmentRecoveryEntry>;
     channels?: readonly RedeemFulfillmentChannel[];
   }) {
     const seller = privateKeyToAccount(TEST_SELLER_PK);
@@ -571,8 +575,8 @@ describe("handlers.redeem — fulfillment update", () => {
         ...(opts.optionStore !== undefined
           ? { exchangeFulfillmentOptionStore: opts.optionStore }
           : {}),
-        ...(opts.pendingStore !== undefined
-          ? { redeemFulfillmentUpdateStore: opts.pendingStore }
+        ...(opts.recoveryStore !== undefined
+          ? { fulfillmentRecoveryStore: opts.recoveryStore }
           : {}),
         ...(opts.channels !== undefined ? { fulfillmentChannels: opts.channels } : {}),
       });
@@ -680,10 +684,11 @@ describe("handlers.redeem — fulfillment update", () => {
     }
   });
 
-  it("Flow B onCommit failure → 200 + FULFILLMENT_COMMIT_DEFERRED warning", async () => {
+  it("Flow B onCommit failure → 200 + FULFILLMENT_COMMIT_DEFERRED warning + pending recovery update", async () => {
     const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
     const channel = makeSpyChannel("email");
     channel.throwOnCommit = true;
+    const recoveryStore = new Map<string, FulfillmentRecoveryEntry>();
     const reader = makeReader({
       state: ExchangeState.REDEEMED,
       seller: fx.requirements.offer.creator,
@@ -711,6 +716,7 @@ describe("handlers.redeem — fulfillment update", () => {
     const { server } = await buildServerWithStubs({
       facilitator: () => ({ ok: true, exchangeId: "42", txHash: "0xabc" }),
       reader,
+      recoveryStore,
       channels: [channel],
     });
     const result = await server.handlers.commitAndRedeem({
@@ -723,6 +729,13 @@ describe("handlers.redeem — fulfillment update", () => {
         expect.objectContaining({ code: "FULFILLMENT_COMMIT_DEFERRED" }),
       ]);
     }
+    expect(recoveryStore.get("42")).toMatchObject({
+      exchangeId: "42",
+      option: "email",
+      data: { email: "buyer@example.com" },
+      redeemer: fx.buyer.address,
+      error: "store unavailable",
+    });
   });
 
   it("redeemer without fulfillment → 200, no channel calls", async () => {
@@ -927,13 +940,13 @@ describe("handlers.redeem — fulfillment update", () => {
   it("onCommit failure after confirmed redeem returns 200 with a pending recovery update", async () => {
     const fx = await makePaymentFixture();
     const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
-    const pendingStore = new Map<string, RedeemFulfillmentUpdate>();
+    const recoveryStore = new Map<string, FulfillmentRecoveryEntry>();
     const channel = makeSpyChannel();
     channel.throwOnCommit = true;
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
       optionStore,
-      pendingStore,
+      recoveryStore,
       channels: [channel],
     });
     try {
@@ -946,7 +959,7 @@ describe("handlers.redeem — fulfillment update", () => {
       if (result.ok) {
         expect(result.body.warnings?.[0]?.code).toBe("FULFILLMENT_UPDATE_DEFERRED");
       }
-      expect(pendingStore.get("42")).toMatchObject({
+      expect(recoveryStore.get("42")).toMatchObject({
         exchangeId: "42",
         option: "email",
         data: { email: "new@example.com" },

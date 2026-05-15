@@ -462,10 +462,11 @@ function checkFulfillment(
 ): ValidatePaymentPayloadResult | null {
   const required = requirements.fulfillment?.required === true;
   const carried = payload.fulfillment;
-  if (!required) return null;
 
   if (carried === undefined) {
-    return failure(13, "FULFILLMENT_REQUIRED", "payload.fulfillment", "<option>", "undefined");
+    return required
+      ? failure(13, "FULFILLMENT_REQUIRED", "payload.fulfillment", "<option>", "undefined")
+      : null;
   }
 
   const advertised: FulfillmentOption[] = requirements.fulfillment?.options ?? [];

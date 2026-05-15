@@ -98,12 +98,13 @@ export interface X402bServerConfig {
   exchangeFulfillmentOptionStore?: Map<string, readonly string[]>;
   /**
    * Pending fulfillment updates that reached REDEEMED on-chain but
-   * failed the server-side `channel.onCommit(...)` upsert. The redeem
-   * handler records the update here before attempting the channel write,
-   * deletes it on success, and leaves it behind with the error message
-   * on failure so the host can replay/reconcile out of band.
+   * failed the server-side `channel.onCommit(...)` upsert. The commit
+   * handler records Flow B updates here before attempting the channel
+   * write; the redeem handler does the same for Flow A. Both delete the
+   * record on success and leave it behind with the error message on
+   * failure so the host can replay/reconcile out of band.
    */
-  redeemFulfillmentUpdateStore?: Map<string, RedeemFulfillmentUpdate>;
+  fulfillmentRecoveryStore?: Map<string, FulfillmentRecoveryEntry>;
   /**
    * Fulfillment channels the server accepts at redeem time when the
    * client re-submits delivery data. Structurally a subset of
@@ -130,7 +131,7 @@ export interface RedeemFulfillmentChannel {
   onCommit(exchangeId: string, data: Record<string, unknown> | null): Promise<void>;
 }
 
-export interface RedeemFulfillmentUpdate {
+export interface FulfillmentRecoveryEntry {
   exchangeId: string;
   option: string;
   data: Record<string, unknown> | null;
@@ -202,7 +203,7 @@ export const x402bServerConfigSchema = z
     subgraphUrl: httpUrlSchema.optional(),
     coreSdkRead: coreSdkReadShallowSchema.optional(),
     exchangeFulfillmentOptionStore: z.instanceof(Map).optional(),
-    redeemFulfillmentUpdateStore: z.instanceof(Map).optional(),
+    fulfillmentRecoveryStore: z.instanceof(Map).optional(),
     fulfillmentChannels: z
       .array(fulfillmentChannelShallowSchema)
       .superRefine((channels, ctx) => {

@@ -20,7 +20,7 @@ import {
 } from "../onchain/verify-exchange.js";
 import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
-import type { X402bServerConfig } from "../config.js";
+import type { FulfillmentRecoveryEntry, X402bServerConfig } from "../config.js";
 
 export interface CommitHandlerInput {
   /** Raw `X-PAYMENT` header value (base64'd JSON). */
@@ -33,6 +33,7 @@ export interface CommitHandlerContext {
   config: X402bServerConfig;
   facilitator: FacilitatorClient;
   exchangeReader: ExchangeReader;
+  fulfillmentRecoveryStore: Map<string, FulfillmentRecoveryEntry>;
   /**
    * Per-exchange fulfillment option policy. Flow A writes the ids
    * advertised by the original requirements so the redeem-time choice
@@ -202,15 +203,30 @@ async function handleCommitImpl(
   // trip for it. The on-chain redeem has already settled at this
   // point; channel persistence is best-effort and surfaces as a
   // warning on failure (the buyer's funds + voucher are irreversibly
-  // committed regardless).
+  // committed regardless). Record a pending update before the channel
+  // write so the host can recover if the write fails after redeem.
   const warnings: HandlerWarning[] = [];
   if (
     expected.expectedState === ExchangeState.REDEEMED &&
     decoded.payload.fulfillment !== undefined &&
     decoded.payload.fulfillment.data !== undefined
   ) {
+    const pending: FulfillmentRecoveryEntry = {
+      exchangeId: settleResult.exchangeId,
+      option: decoded.payload.fulfillment.option,
+      data: decoded.payload.fulfillment.data,
+      redeemer: decoded.payload.payload.buyer,
+      recordedAt: Date.now(),
+    };
+    ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, pending);
+
     const channel = channelById.get(decoded.payload.fulfillment.option);
     if (channel === undefined) {
+      const reason = "no channel adapter is registered";
+      ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
+        ...pending,
+        error: reason,
+      });
       // Validation should have caught this (rule 13 rejects an option
       // with no registered adapter). Surface a warning rather than
       // silently dropping the data if it slips past.
@@ -220,19 +236,26 @@ async function handleCommitImpl(
         details: {
           exchangeId: settleResult.exchangeId,
           option: decoded.payload.fulfillment.option,
+          error: reason,
         },
       });
     } else {
       try {
         await channel.onCommit(settleResult.exchangeId, decoded.payload.fulfillment.data);
+        ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
       } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
+          ...pending,
+          error: reason,
+        });
         warnings.push({
           code: "FULFILLMENT_COMMIT_DEFERRED",
           reason: "atomic redeem succeeded on-chain, but the channel adapter rejected the data",
           details: {
             exchangeId: settleResult.exchangeId,
             option: decoded.payload.fulfillment.option,
-            error: e instanceof Error ? e.message : String(e),
+            error: reason,
           },
         });
       }

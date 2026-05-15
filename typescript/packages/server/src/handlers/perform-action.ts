@@ -16,8 +16,8 @@ import { handlerErr, handlerOk, type HandlerResult, type HandlerWarning } from "
 import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
 import type {
+  FulfillmentRecoveryEntry,
   RedeemFulfillmentChannel,
-  RedeemFulfillmentUpdate,
   X402bServerConfig,
 } from "../config.js";
 import {
@@ -52,7 +52,7 @@ export interface PerformActionContext {
 
 export interface RedeemHandlerContext extends PerformActionContext {
   exchangeFulfillmentOptionStore: Map<string, readonly string[]>;
-  redeemFulfillmentUpdateStore: Map<string, RedeemFulfillmentUpdate>;
+  fulfillmentRecoveryStore: Map<string, FulfillmentRecoveryEntry>;
 }
 
 export interface PerformActionOk {
@@ -241,20 +241,20 @@ export async function handleRedeem(
   // explicit recovery item instead of losing the buyer's target.
   let warning: HandlerWarning | undefined;
   if (resolvedChannel !== undefined && input.fulfillment !== undefined) {
-    const pending: RedeemFulfillmentUpdate = {
+    const pending: FulfillmentRecoveryEntry = {
       exchangeId: input.exchangeId,
       option: input.fulfillment.option,
       data: input.fulfillment.data,
       redeemer,
       recordedAt: Date.now(),
     };
-    ctx.redeemFulfillmentUpdateStore.set(input.exchangeId, pending);
+    ctx.fulfillmentRecoveryStore.set(input.exchangeId, pending);
     try {
       await resolvedChannel.onCommit(input.exchangeId, input.fulfillment.data);
-      ctx.redeemFulfillmentUpdateStore.delete(input.exchangeId);
+      ctx.fulfillmentRecoveryStore.delete(input.exchangeId);
     } catch (e) {
       const reason = errorMessage(e);
-      ctx.redeemFulfillmentUpdateStore.set(input.exchangeId, { ...pending, error: reason });
+      ctx.fulfillmentRecoveryStore.set(input.exchangeId, { ...pending, error: reason });
       warning = {
         code: "FULFILLMENT_UPDATE_DEFERRED",
         reason:
