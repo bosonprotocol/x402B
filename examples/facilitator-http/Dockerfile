@@ -1,47 +1,37 @@
-# Build context: the repo root.
-# Compose reference: `build: { context: ../../, dockerfile: examples/facilitator-http/Dockerfile }`.
+# syntax=docker/dockerfile:1.7
+#
+# Build from the monorepo root so the root pnpm-lock.yaml is in context:
+#   docker build -t x402b-facilitator-http -f examples/facilitator-http/Dockerfile .
+#
+# corepack reads `packageManager` from the root package.json and pins pnpm.
 
-FROM node:22-alpine AS builder
-
-RUN apk add --no-cache git
-RUN npm install -g pnpm@10.7.0
-
+FROM node:22-alpine AS base
+RUN corepack enable
 WORKDIR /repo
 
-# Copy lockfile + workspace manifest first so the install layer caches.
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc tsconfig.base.json turbo.json ./
+FROM base AS deps
+COPY . .
+RUN pnpm install --frozen-lockfile \
+    --filter @bosonprotocol/x402-example-facilitator-http...
 
-# Copy the manifests of every workspace package so pnpm can resolve the graph.
-COPY typescript/packages/core/package.json typescript/packages/core/
-COPY typescript/packages/actions/package.json typescript/packages/actions/
-COPY typescript/packages/fulfillment/package.json typescript/packages/fulfillment/
-COPY typescript/packages/evm/package.json typescript/packages/evm/
-COPY typescript/packages/server/package.json typescript/packages/server/
-COPY typescript/packages/server-express/package.json typescript/packages/server-express/
-COPY typescript/packages/client/package.json typescript/packages/client/
-COPY typescript/packages/client-fetch/package.json typescript/packages/client-fetch/
-COPY typescript/packages/facilitator/package.json typescript/packages/facilitator/
-COPY typescript/packages/facilitator-express/package.json typescript/packages/facilitator-express/
-COPY examples/facilitator-http/package.json examples/facilitator-http/
-COPY examples/webhook-sink/package.json examples/webhook-sink/
-
-RUN pnpm install --frozen-lockfile
-
-# Copy source + build the workspace deps we'll consume at runtime.
-COPY typescript ./typescript
-COPY examples/facilitator-http ./examples/facilitator-http
+# Build the workspace deps the example imports (tsup emits dist/ + the
+# exports map points at it). The trailing `...` includes transitive
+# workspace deps (x402-core, x402-evm, x402-actions, x402-fulfillment).
 RUN pnpm --filter @bosonprotocol/x402-facilitator-express... build
 
-# Runtime image — same base, copy the built workspace from the builder.
-FROM node:22-alpine
+# See examples/webhook-sink/Dockerfile for the rationale behind
+# `pnpm deploy --legacy` (flattens the virtual store into a self-contained
+# dir; --legacy keeps the pnpm-9 deploy semantics).
+RUN pnpm --filter @bosonprotocol/x402-example-facilitator-http deploy --legacy /deploy
 
-RUN npm install -g pnpm@10.7.0
-WORKDIR /repo
-COPY --from=builder /repo /repo
-
-WORKDIR /repo/examples/facilitator-http
+FROM node:22-alpine AS runtime
+WORKDIR /app
+COPY --from=deps /deploy ./
 
 ENV PORT=8889
 EXPOSE 8889
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT}/health" >/dev/null || exit 1
 
-CMD ["pnpm", "start"]
+USER node
+CMD ["npx", "tsx", "src/index.ts"]
