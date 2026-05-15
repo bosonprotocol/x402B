@@ -16,7 +16,7 @@ import {
   type X402bServerConfig,
 } from "@bosonprotocol/x402-server";
 import { expressMiddleware, mountX402b } from "@bosonprotocol/x402-server-express";
-import express, { type Express, type Request } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 
 import { buildExampleChannelRegistry } from "./channel-registry.js";
@@ -105,6 +105,16 @@ export function createResourceServerApp(
   });
 
   app.use(mountX402b(server, { resolveRequirements }));
+
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    const status =
+      typeof err === "object" && err !== null && "status" in err && typeof err.status === "number"
+        ? err.status
+        : 500;
+    const message =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "Internal Server Error";
+    res.status(status).json({ error: message });
+  });
 
   return { app, server, seller };
 }
