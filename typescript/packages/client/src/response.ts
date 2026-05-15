@@ -48,6 +48,28 @@ export function parsePaymentResponse(response: ResponseLike): ExchangeSummary | 
     if (isClientStateShape(obj.state)) {
       summary.state = obj.state;
     }
+
+    // Fallback for the server-emitted shape, which carries exchange state
+    // under `nextActions.exchangeState` (and optionally `disputeState`)
+    // rather than a top-level `state` field. The top-level lookup above
+    // still wins when present, preserving forward-compat with external
+    // servers that publish the flatter shape.
+    if (
+      summary.state === undefined &&
+      typeof obj.nextActions === "object" &&
+      obj.nextActions !== null &&
+      !Array.isArray(obj.nextActions)
+    ) {
+      const na = obj.nextActions as Record<string, unknown>;
+      const exchange = typeof na.exchangeState === "string" ? na.exchangeState : undefined;
+      const dispute = typeof na.disputeState === "string" ? na.disputeState : undefined;
+      if (exchange !== undefined) {
+        const candidate = dispute !== undefined ? { exchange, dispute } : exchange;
+        if (isClientStateShape(candidate)) {
+          summary.state = candidate;
+        }
+      }
+    }
   }
 
   return summary;
