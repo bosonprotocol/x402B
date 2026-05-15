@@ -6,7 +6,14 @@
 // facilitator HTTP client, and convenience-endpoint handlers land in
 // follow-up PRs and slot onto the same factory output.
 
-export { createX402bServer, type BuildRequirementsInput, type X402bServer } from "./server.js";
+export {
+  createX402bServer,
+  type BuildRequirementsInput,
+  type RecoveryApi,
+  type RecoveryReplayResult,
+  type X402bServer,
+} from "./server.js";
+export { createHealthCheck, type HealthCheckResult, type HealthState } from "./health.js";
 export {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
@@ -34,12 +41,14 @@ export {
 export {
   createFacilitatorClient,
   FacilitatorHttpError,
+  IDEMPOTENCY_KEY_HEADER,
   type CreateFacilitatorClientOptions,
   type FacilitatorClient,
   type FacilitatorErrorCode,
   type FacilitatorHttpErrorCode,
   type FacilitatorPerformActionInput,
   type FacilitatorPerformActionResult,
+  type FacilitatorRetryOptions,
   type FacilitatorSettleInput,
   type FacilitatorSettleResult,
   type FacilitatorVerifyInput,
@@ -113,3 +122,6 @@ export {
   encodeXPaymentResponse,
   X_PAYMENT_RESPONSE_HEADER,
 } from "./internal/x-payment-response.js";
+export { isStore, mapAsStore, type Store } from "./store.js";
+export { createKeyedMutex, type KeyedMutex } from "./concurrency.js";
+export { noopLogger, type Logger } from "./logger.js";

@@ -20,6 +20,8 @@ import type {
   RedeemFulfillmentChannel,
   X402bServerConfig,
 } from "../config.js";
+import type { Store } from "../store.js";
+import { noopLogger, type Logger } from "../logger.js";
 import {
   verifyExchange,
   type ExchangeReader,
@@ -48,11 +50,13 @@ export interface PerformActionContext {
   config: X402bServerConfig;
   facilitator: FacilitatorClient;
   exchangeReader: ExchangeReader;
+  /** Optional structured logger. Defaults to no-op when absent. */
+  logger?: Logger;
 }
 
 export interface RedeemHandlerContext extends PerformActionContext {
-  exchangeFulfillmentOptionStore: Map<string, readonly string[]>;
-  fulfillmentRecoveryStore: Map<string, FulfillmentRecoveryEntry>;
+  exchangeFulfillmentOptionStore: Store<readonly string[]>;
+  fulfillmentRecoveryStore: Store<FulfillmentRecoveryEntry>;
 }
 
 export interface PerformActionOk {
@@ -186,7 +190,7 @@ export async function handleRedeem(
 
   let resolvedChannel: RedeemFulfillmentChannel | undefined;
   if (input.fulfillment !== undefined) {
-    const advertisedOptions = ctx.exchangeFulfillmentOptionStore.get(input.exchangeId);
+    const advertisedOptions = await ctx.exchangeFulfillmentOptionStore.get(input.exchangeId);
     if (advertisedOptions !== undefined && !advertisedOptions.includes(input.fulfillment.option)) {
       return handlerErr(
         400,
@@ -248,13 +252,27 @@ export async function handleRedeem(
       redeemer,
       recordedAt: Date.now(),
     };
-    ctx.fulfillmentRecoveryStore.set(input.exchangeId, pending);
+    const logger = ctx.logger ?? noopLogger;
+    await ctx.fulfillmentRecoveryStore.set(input.exchangeId, pending);
+    logger.debug("x402-server: fulfillment recovery entry recorded (Flow A redeem)", {
+      exchangeId: input.exchangeId,
+      option: input.fulfillment.option,
+    });
     try {
       await resolvedChannel.onCommit(input.exchangeId, input.fulfillment.data);
-      ctx.fulfillmentRecoveryStore.delete(input.exchangeId);
+      await ctx.fulfillmentRecoveryStore.delete(input.exchangeId);
+      logger.debug("x402-server: Flow A channel onCommit succeeded", {
+        exchangeId: input.exchangeId,
+        option: input.fulfillment.option,
+      });
     } catch (e) {
       const reason = errorMessage(e);
-      ctx.fulfillmentRecoveryStore.set(input.exchangeId, { ...pending, error: reason });
+      await ctx.fulfillmentRecoveryStore.set(input.exchangeId, { ...pending, error: reason });
+      logger.warn("x402-server: Flow A channel onCommit failed; recovery entry retained", {
+        exchangeId: input.exchangeId,
+        option: input.fulfillment.option,
+        error: reason,
+      });
       warning = {
         code: "FULFILLMENT_UPDATE_DEFERRED",
         reason:
@@ -270,7 +288,7 @@ export async function handleRedeem(
 
   // The exchange is REDEEMED even if the fulfillment write is deferred;
   // the per-exchange option-policy entry is no longer consulted.
-  ctx.exchangeFulfillmentOptionStore.delete(input.exchangeId);
+  await ctx.exchangeFulfillmentOptionStore.delete(input.exchangeId);
 
   if (warning !== undefined) {
     return {

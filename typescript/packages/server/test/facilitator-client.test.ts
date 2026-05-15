@@ -173,7 +173,14 @@ describe("createFacilitatorClient", () => {
 
   it("throws FacilitatorHttpError(NETWORK_ERROR) when fetch rejects", async () => {
     const stub = makeStubFetch(() => ({ throwError: new Error("ECONNREFUSED") }));
-    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+    // `retry: { attempts: 1 }` keeps this test focused on the single-call
+    // error mapping rather than the retry policy. Retry behaviour is
+    // covered separately below.
+    const client = createFacilitatorClient({
+      url: BASE_URL,
+      fetch: stub.fetch,
+      retry: { attempts: 1, backoffMs: 0 },
+    });
 
     await expect(client.verify(verifyInput)).rejects.toMatchObject({
       name: "FacilitatorHttpError",
@@ -203,7 +210,11 @@ describe("createFacilitatorClient", () => {
       status: 500,
       body: { ok: false, code: "INTERNAL_ERROR", reason: "boom" },
     }));
-    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+    const client = createFacilitatorClient({
+      url: BASE_URL,
+      fetch: stub.fetch,
+      retry: { attempts: 1, backoffMs: 0 },
+    });
 
     await expect(client.settle(settleInput)).rejects.toMatchObject({
       name: "FacilitatorHttpError",
@@ -379,5 +390,220 @@ describe("createFacilitatorClient", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  describe("transport hardening", () => {
+    // Synchronous setTimeout / clearTimeout overrides so retry backoff
+    // sleeps + timeout firings are instant and deterministic without
+    // touching the real clock.
+    function fakeTimers() {
+      let nextId = 1;
+      const pending = new Map<number, () => void>();
+      const setTimeoutImpl = ((fn: () => void) => {
+        const id = nextId++;
+        pending.set(id, fn);
+        return id as unknown as ReturnType<typeof setTimeout>;
+      }) as unknown as typeof setTimeout;
+      const clearTimeoutImpl = ((id: unknown) => {
+        pending.delete(id as number);
+      }) as unknown as typeof clearTimeout;
+      const fireAll = () => {
+        for (const [id, fn] of [...pending]) {
+          pending.delete(id);
+          fn();
+        }
+      };
+      return { setTimeoutImpl, clearTimeoutImpl, fireAll, pendingCount: () => pending.size };
+    }
+
+    it("aborts the request and throws TIMEOUT after timeoutMs", async () => {
+      // Stub fetch that never resolves on its own — only the
+      // AbortController abort can settle it. The promise rejects with
+      // a synthetic abort error once the abort fires.
+      const stub = makeStubFetch(() => ({}));
+      const timers = fakeTimers();
+      stub.fetch = (async (_url, init) => {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        });
+      }) as FetchLike;
+
+      const client = createFacilitatorClient({
+        url: BASE_URL,
+        fetch: stub.fetch,
+        timeoutMs: 100,
+        retry: { attempts: 1, backoffMs: 0 },
+        setTimeout: timers.setTimeoutImpl,
+        clearTimeout: timers.clearTimeoutImpl,
+      });
+
+      const verifyPromise = client.verify(verifyInput);
+      // Let the fetch microtask register the abort listener, then fire
+      // the pending timeout to simulate the timeoutMs elapsing.
+      await Promise.resolve();
+      await Promise.resolve();
+      timers.fireAll();
+
+      await expect(verifyPromise).rejects.toMatchObject({
+        name: "FacilitatorHttpError",
+        code: "TIMEOUT",
+      });
+    });
+
+    it("retries 5xx and resolves once the facilitator recovers", async () => {
+      let call = 0;
+      const stub = makeStubFetch(() => {
+        call += 1;
+        if (call < 3) return { status: 502, body: { ok: false, code: "BAD_GATEWAY" } };
+        return { status: 200, body: { ok: true } };
+      });
+      const timers = fakeTimers();
+
+      const client = createFacilitatorClient({
+        url: BASE_URL,
+        fetch: stub.fetch,
+        retry: { attempts: 3, backoffMs: 50 },
+        setTimeout: timers.setTimeoutImpl,
+        clearTimeout: timers.clearTimeoutImpl,
+      });
+
+      // Each retry awaits a backoff sleep — drain those instantly by
+      // firing the fake timers whenever the test loop yields.
+      const verifyPromise = (async () => {
+        let result;
+        const ticker = setInterval(timers.fireAll, 0);
+        try {
+          result = await client.verify(verifyInput);
+        } finally {
+          clearInterval(ticker);
+        }
+        return result;
+      })();
+
+      await expect(verifyPromise).resolves.toEqual({ ok: true });
+      expect(stub.calls).toHaveLength(3);
+    });
+
+    it("retries NETWORK_ERROR and gives up after the attempt budget", async () => {
+      const stub = makeStubFetch(() => ({ throwError: new Error("ECONNRESET") }));
+      const timers = fakeTimers();
+
+      const client = createFacilitatorClient({
+        url: BASE_URL,
+        fetch: stub.fetch,
+        retry: { attempts: 3, backoffMs: 25 },
+        setTimeout: timers.setTimeoutImpl,
+        clearTimeout: timers.clearTimeoutImpl,
+      });
+
+      const verifyPromise = (async () => {
+        const ticker = setInterval(timers.fireAll, 0);
+        try {
+          return await client.verify(verifyInput);
+        } finally {
+          clearInterval(ticker);
+        }
+      })();
+
+      await expect(verifyPromise).rejects.toMatchObject({
+        name: "FacilitatorHttpError",
+        code: "NETWORK_ERROR",
+      });
+      expect(stub.calls).toHaveLength(3);
+    });
+
+    it("does not retry on 4xx (treat as a definitive answer)", async () => {
+      const stub = makeStubFetch(() => ({
+        status: 400,
+        body: { random: "shape" }, // off-shape → BAD_HTTP_STATUS, not retryable
+      }));
+      const client = createFacilitatorClient({
+        url: BASE_URL,
+        fetch: stub.fetch,
+        retry: { attempts: 3, backoffMs: 0 },
+      });
+
+      await expect(client.settle(settleInput)).rejects.toMatchObject({
+        name: "FacilitatorHttpError",
+        code: "BAD_HTTP_STATUS",
+        status: 400,
+      });
+      expect(stub.calls).toHaveLength(1);
+    });
+
+    it("attaches x-x402b-idempotency-key on /settle only", async () => {
+      const stub = makeStubFetch((req) => {
+        if (req.url.endsWith("/settle")) {
+          return { body: { ok: true, exchangeId: "1", txHash: "0xabc" } };
+        }
+        return { body: { ok: true, txHash: "0xdef" } };
+      });
+      const keys: string[] = [];
+      let n = 0;
+      const client = createFacilitatorClient({
+        url: BASE_URL,
+        fetch: stub.fetch,
+        idempotencyKey: () => {
+          n += 1;
+          const k = `key-${n}`;
+          keys.push(k);
+          return k;
+        },
+      });
+
+      await client.settle(settleInput);
+      await client.verify(verifyInput);
+      await client.performAction(performActionInput);
+
+      // The /settle call carries the header; the other two do not.
+      const settleCall = stub.calls.find((c) => c.url.endsWith("/settle"))!;
+      const verifyCall = stub.calls.find((c) => c.url.endsWith("/verify"))!;
+      const performCall = stub.calls.find((c) => c.url.includes("/perform-action"))!;
+      expect(settleCall.init?.headers?.["x-x402b-idempotency-key"]).toBe("key-1");
+      expect(verifyCall.init?.headers?.["x-x402b-idempotency-key"]).toBeUndefined();
+      expect(performCall.init?.headers?.["x-x402b-idempotency-key"]).toBeUndefined();
+      // The factory ran exactly once (only /settle pulls a key).
+      expect(keys).toEqual(["key-1"]);
+    });
+
+    it("uses the same idempotency key across retry attempts of one settle call", async () => {
+      let call = 0;
+      const stub = makeStubFetch(() => {
+        call += 1;
+        if (call < 3) return { status: 503, body: { ok: false, code: "UPSTREAM_DOWN" } };
+        return { body: { ok: true, exchangeId: "1", txHash: "0xabc" } };
+      });
+      const timers = fakeTimers();
+      let n = 0;
+      const client = createFacilitatorClient({
+        url: BASE_URL,
+        fetch: stub.fetch,
+        retry: { attempts: 3, backoffMs: 25 },
+        idempotencyKey: () => {
+          n += 1;
+          return `key-${n}`;
+        },
+        setTimeout: timers.setTimeoutImpl,
+        clearTimeout: timers.clearTimeoutImpl,
+      });
+
+      const settlePromise = (async () => {
+        const ticker = setInterval(timers.fireAll, 0);
+        try {
+          return await client.settle(settleInput);
+        } finally {
+          clearInterval(ticker);
+        }
+      })();
+      await expect(settlePromise).resolves.toMatchObject({ ok: true });
+
+      // All three /settle calls must carry the same key.
+      const settleHeaders = stub.calls.map(
+        (c) => c.init?.headers?.["x-x402b-idempotency-key"] as string | undefined,
+      );
+      expect(settleHeaders).toEqual(["key-1", "key-1", "key-1"]);
+      // The factory ran exactly once (one logical settle → one key).
+      expect(n).toBe(1);
+    });
   });
 });

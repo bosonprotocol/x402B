@@ -22,6 +22,9 @@ import { z } from "zod";
 
 import type { CoreSdkReadAdapter } from "./onchain/core-sdk-read.js";
 import type { ExchangeReader } from "./onchain/verify-exchange.js";
+import { isStore, type Store } from "./store.js";
+import type { FacilitatorRetryOptions } from "./facilitator/client.js";
+import type { Logger } from "./logger.js";
 
 /**
  * Minimal signing surface needed by `signFullOffer`. Structurally
@@ -56,8 +59,21 @@ export interface X402bServerConfig {
   escrow: Address;
   /** Seller signer (signs the FullOffer EIP-712 typed-data). */
   signer: SellerSigner;
-  /** Facilitator service the server forwards meta-tx envelopes to. The URL is also advertised in `nextActions[].endpoints.facilitator`. */
-  facilitator: { url: string };
+  /**
+   * Facilitator service the server forwards meta-tx envelopes to. The
+   * URL is also advertised in `nextActions[].endpoints.facilitator`.
+   *
+   * `timeoutMs`, `retry`, and `idempotencyKey` tune the HTTP client at
+   * `./facilitator/client.ts`. Defaults: 30 s timeout; 3 attempts at
+   * 0 / 200 / 400 ms; idempotency key sourced from `crypto.randomUUID()`
+   * on every `/settle` call.
+   */
+  facilitator: {
+    url: string;
+    timeoutMs?: number;
+    retry?: FacilitatorRetryOptions;
+    idempotencyKey?: () => string;
+  };
   /** Per-seller channel + endpoint registry consumed by `deriveNextActions`. */
   channelRegistry: ChannelRegistry;
   /**
@@ -92,19 +108,29 @@ export interface X402bServerConfig {
    * cannot switch to a channel the offer never advertised.
    *
    * Optional in the config: when omitted, `createX402bServer` wires up
-   * an in-memory `Map`. Hosts running multiple instances should plug
-   * in their own cross-process `Map`-shaped backing store.
+   * an in-memory `Map` via `mapAsStore`. Single-process / dev
+   * deployments need no extra plumbing; hosts running multiple
+   * instances or who need to survive a restart MUST supply their own
+   * `Store` implementation (Redis, Postgres, etc.) — otherwise the
+   * Flow A redeem-time option-policy check is silently bypassed after
+   * a restart because the in-memory `Map` is empty.
    */
-  exchangeFulfillmentOptionStore?: Map<string, readonly string[]>;
+  exchangeFulfillmentOptionStore?: Store<readonly string[]>;
   /**
    * Pending fulfillment updates that reached REDEEMED on-chain but
    * failed the server-side `channel.onCommit(...)` upsert. The commit
    * handler records Flow B updates here before attempting the channel
-   * write; the redeem handler does the same for Flow A. Both delete the
-   * record on success and leave it behind with the error message on
-   * failure so the host can replay/reconcile out of band.
+   * write; the redeem handler does the same for Flow A. Both delete
+   * the record on success and leave it behind with the error message
+   * on failure so the host can replay/reconcile out of band.
+   *
+   * Same persistence story as `exchangeFulfillmentOptionStore`:
+   * defaults to in-memory `Map`; production hosts MUST supply a
+   * persistent `Store` or lose the recovery queue on every restart —
+   * the on-chain voucher is irreversibly REDEEMED in that window and
+   * the buyer's delivery payload becomes unrecoverable.
    */
-  fulfillmentRecoveryStore?: Map<string, FulfillmentRecoveryEntry>;
+  fulfillmentRecoveryStore?: Store<FulfillmentRecoveryEntry>;
   /**
    * Fulfillment channels the server accepts at redeem time when the
    * client re-submits delivery data. Structurally a subset of
@@ -116,6 +142,33 @@ export interface X402bServerConfig {
    * `FULFILLMENT_CHANNELS_NOT_CONFIGURED`.
    */
   fulfillmentChannels?: readonly RedeemFulfillmentChannel[];
+  /**
+   * Optional structured logger. Threaded through the handlers + the
+   * facilitator HTTP client; events emitted include recovery-store
+   * writes, channel-`onCommit` failures, facilitator retry attempts,
+   * and boot diagnostics. Defaults to a no-op so the SDK is silent
+   * unless the host opts in.
+   */
+  logger?: Logger;
+  /**
+   * Operational mode. Default `"development"` accepts everything the
+   * type system allows. `"production"` adds a boot-time `superRefine`
+   * that requires:
+   *
+   * - `exchangeReader` (post-settle state verification is non-optional)
+   * - one of `coreSdkRead` / `subgraphUrl` (withdraw / available-funds
+   *   require a read client)
+   * - `exchangeFulfillmentOptionStore` (otherwise the Flow A redeem-time
+   *   option gate silently relaxes after a restart)
+   * - `fulfillmentRecoveryStore` (otherwise post-settle channel-onCommit
+   *   failures lose their replay handle)
+   *
+   * Without `mode: "production"`, those fields default at runtime; a
+   * misconfigured deploy boots clean and only explodes on the first
+   * request. `mode: "production"` makes the misconfiguration a synchronous
+   * `ZodError` at `createX402bServer` time instead.
+   */
+  mode?: "development" | "production";
 }
 
 /**
@@ -196,14 +249,40 @@ export const x402bServerConfigSchema = z
     facilitator: z
       .object({
         url: httpUrlSchema,
+        timeoutMs: z.number().int().positive().optional(),
+        retry: z
+          .object({
+            attempts: z.number().int().positive(),
+            backoffMs: z.number().int().nonnegative(),
+          })
+          .strict()
+          .optional(),
+        idempotencyKey: z.function().args().returns(z.string()).optional(),
       })
       .strict(),
     channelRegistry: channelRegistryZodSchema,
     exchangeReader: exchangeReaderShallowSchema.optional(),
     subgraphUrl: httpUrlSchema.optional(),
     coreSdkRead: coreSdkReadShallowSchema.optional(),
-    exchangeFulfillmentOptionStore: z.instanceof(Map).optional(),
-    fulfillmentRecoveryStore: z.instanceof(Map).optional(),
+    exchangeFulfillmentOptionStore: z
+      .custom<Store<readonly string[]>>(isStore, {
+        message: "must implement the async Store<V> interface (get/set/delete/entries)",
+      })
+      .optional(),
+    fulfillmentRecoveryStore: z
+      .custom<Store<FulfillmentRecoveryEntry>>(isStore, {
+        message: "must implement the async Store<V> interface (get/set/delete/entries)",
+      })
+      .optional(),
+    logger: z
+      .object({
+        debug: z.function(),
+        info: z.function(),
+        warn: z.function(),
+        error: z.function(),
+      })
+      .passthrough()
+      .optional(),
     fulfillmentChannels: z
       .array(fulfillmentChannelShallowSchema)
       .superRefine((channels, ctx) => {
@@ -223,6 +302,7 @@ export const x402bServerConfigSchema = z
         }
       })
       .optional(),
+    mode: z.enum(["development", "production"]).optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {
@@ -237,6 +317,44 @@ export const x402bServerConfigSchema = z
         path: ["chainId"],
         message: `chainId (${cfg.chainId}) must match network (${cfg.network})`,
       });
+    }
+
+    // Production mode tightens the optional fields that defaulted at
+    // runtime in development. Each missing prerequisite becomes a
+    // synchronous ZodError at `createX402bServer` rather than a runtime
+    // throw on the first request.
+    if (cfg.mode === "production") {
+      if (cfg.exchangeReader === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["exchangeReader"],
+          message: "required when mode is 'production' (post-settle state verification)",
+        });
+      }
+      if (cfg.coreSdkRead === undefined && cfg.subgraphUrl === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["subgraphUrl"],
+          message:
+            "one of `coreSdkRead` or `subgraphUrl` is required when mode is 'production' (read client for withdraw / available-funds)",
+        });
+      }
+      if (cfg.exchangeFulfillmentOptionStore === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["exchangeFulfillmentOptionStore"],
+          message:
+            "required when mode is 'production'; without a persistent store the Flow A redeem-time option gate silently relaxes after a restart",
+        });
+      }
+      if (cfg.fulfillmentRecoveryStore === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["fulfillmentRecoveryStore"],
+          message:
+            "required when mode is 'production'; without a persistent store, post-settle channel-onCommit failures lose their replay handle",
+        });
+      }
     }
   });
 
