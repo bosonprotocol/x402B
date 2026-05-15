@@ -85,27 +85,15 @@ export interface X402bServerConfig {
    */
   coreSdkRead?: CoreSdkReadAdapter;
   /**
-   * Server-side store of the buyer wallet that originally committed
-   * each exchange (keyed by `exchangeId`). Populated on Flow A commit
-   * acceptance and read at redeem time to detect voucher transfers —
-   * a redeemer whose wallet differs from the recorded committer MUST
-   * supply fresh `fulfillment` data; same-wallet redeemers MAY.
-   *
-   * Optional in the config: when omitted, `createX402bServer` wires up
-   * an in-memory `Map`. Hosts that need cross-process / persistent
-   * tracking supply their own `Map`-shaped backing store.
-   */
-  exchangeBuyerStore?: Map<string, Address>;
-  /**
    * Server-side store of the fulfillment option ids advertised for
    * each Flow A exchange (keyed by `exchangeId`). Populated from the
    * original `PaymentRequirements` after commit verification and read
-   * at redeem time so re-submitted fulfillment data cannot switch to a
-   * channel the offer never advertised.
+   * at redeem time so the buyer's redeem-time fulfillment choice
+   * cannot switch to a channel the offer never advertised.
    *
    * Optional in the config: when omitted, `createX402bServer` wires up
-   * an in-memory `Map`. Hosts that provide `exchangeBuyerStore` for
-   * cross-process tracking should normally provide this store too.
+   * an in-memory `Map`. Hosts running multiple instances should plug
+   * in their own cross-process `Map`-shaped backing store.
    */
   exchangeFulfillmentOptionStore?: Map<string, readonly string[]>;
   /**
@@ -213,7 +201,6 @@ export const x402bServerConfigSchema = z
     exchangeReader: exchangeReaderShallowSchema.optional(),
     subgraphUrl: httpUrlSchema.optional(),
     coreSdkRead: coreSdkReadShallowSchema.optional(),
-    exchangeBuyerStore: z.instanceof(Map).optional(),
     exchangeFulfillmentOptionStore: z.instanceof(Map).optional(),
     redeemFulfillmentUpdateStore: z.instanceof(Map).optional(),
     fulfillmentChannels: z

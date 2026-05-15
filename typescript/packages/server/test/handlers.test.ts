@@ -489,7 +489,7 @@ describe("handlers.disputeResolve — withdraw carved into next[]", () => {
   });
 });
 
-describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
+describe("handlers.redeem — fulfillment update", () => {
   function makeRedeemSignedPayload(from: string): Hex {
     const metaTx: BosonMetaTx = {
       from,
@@ -549,7 +549,6 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
   async function buildRedeemServer(opts: {
     facilitator?: (path: string) => unknown;
     reader: ExchangeReader;
-    buyerStore: Map<string, `0x${string}`>;
     optionStore?: Map<string, readonly string[]>;
     pendingStore?: Map<string, RedeemFulfillmentUpdate>;
     channels?: readonly RedeemFulfillmentChannel[];
@@ -569,7 +568,6 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
         facilitator: { url: facilitatorUrl },
         channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
         exchangeReader: opts.reader,
-        exchangeBuyerStore: opts.buyerStore,
         ...(opts.optionStore !== undefined
           ? { exchangeFulfillmentOptionStore: opts.optionStore }
           : {}),
@@ -585,48 +583,8 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     }
   }
 
-  it("Flow A commit writes committer wallet into exchangeBuyerStore", async () => {
-    const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>();
-    const reader = makeReader({
-      state: ExchangeState.COMMITTED,
-      seller: fx.requirements.offer.creator,
-      exchangeToken: TOKEN,
-      price: fx.requirements.amount,
-    });
-    const seller = privateKeyToAccount(TEST_SELLER_PK);
-    const stub = makeStubFacilitatorFetch((path) =>
-      path === "/settle"
-        ? { ok: true, exchangeId: "42", txHash: "0xabc" }
-        : { ok: false, code: "INTERNAL_ERROR", reason: "unexpected" },
-    );
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = stub.fetch as unknown as typeof globalThis.fetch;
-    try {
-      const server = createX402bServer({
-        network: NETWORK,
-        chainId: CHAIN_ID,
-        escrow: ESCROW,
-        signer: seller,
-        facilitator: { url: facilitatorUrl },
-        channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
-        exchangeReader: reader,
-        exchangeBuyerStore: buyerStore,
-      });
-      const result = await server.handlers.commit({
-        paymentHeader: makeBuyerHeader(fx.payload),
-        requirements: fx.requirements,
-      });
-      expect(result.ok).toBe(true);
-      expect(buyerStore.get("42")).toBe(fx.buyer.address);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
   it("Flow A commit writes advertised fulfillment option ids for redeem-time policy", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>();
     const optionStore = new Map<string, readonly string[]>();
     const reader = makeReader({
       state: ExchangeState.COMMITTED,
@@ -665,7 +623,6 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
         facilitator: { url: facilitatorUrl },
         channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
         exchangeReader: reader,
-        exchangeBuyerStore: buyerStore,
         exchangeFulfillmentOptionStore: optionStore,
       });
       const result = await server.handlers.commit({
@@ -768,13 +725,11 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     }
   });
 
-  it("same-wallet redeemer without fulfillment → 200, no channel calls", async () => {
+  it("redeemer without fulfillment → 200, no channel calls", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const channel = makeSpyChannel();
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
-      buyerStore,
       channels: [channel],
     });
     try {
@@ -790,14 +745,12 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     }
   });
 
-  it("same-wallet redeemer with valid fulfillment → 200, channel.onCommit called", async () => {
+  it("redeemer with valid fulfillment → 200, channel.onCommit called", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
     const channel = makeSpyChannel();
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
-      buyerStore,
       optionStore,
       channels: [channel],
     });
@@ -814,68 +767,13 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     }
   });
 
-  it("different-wallet redeemer without fulfillment → 400 FULFILLMENT_REQUIRED_ON_WALLET_CHANGE", async () => {
-    const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
-    const channel = makeSpyChannel();
-    const { server, stub, restore } = await buildRedeemServer({
-      reader: makeRedeemReader(fx),
-      buyerStore,
-      channels: [channel],
-    });
-    try {
-      const result = await server.handlers.redeem({
-        exchangeId: "42",
-        signedPayload: makeRedeemSignedPayload("0x9999999999999999999999999999999999999999"),
-      });
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.status).toBe(400);
-        expect(result.body.code).toBe("FULFILLMENT_REQUIRED_ON_WALLET_CHANGE");
-      }
-      // Must short-circuit before contacting the facilitator.
-      expect(stub.calls).toHaveLength(0);
-      expect(channel.commits).toHaveLength(0);
-    } finally {
-      restore();
-    }
-  });
-
-  it("different-wallet redeemer with valid fulfillment → 200, channel.onCommit called", async () => {
-    const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
-    const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
-    const channel = makeSpyChannel();
-    const { server, restore } = await buildRedeemServer({
-      reader: makeRedeemReader(fx),
-      buyerStore,
-      optionStore,
-      channels: [channel],
-    });
-    try {
-      const result = await server.handlers.redeem({
-        exchangeId: "42",
-        signedPayload: makeRedeemSignedPayload("0x9999999999999999999999999999999999999999"),
-        fulfillment: { option: "email", data: { email: "new-owner@example.com" } },
-      });
-      expect(result.ok).toBe(true);
-      expect(channel.commits).toEqual([
-        { exchangeId: "42", data: { email: "new-owner@example.com" } },
-      ]);
-    } finally {
-      restore();
-    }
-  });
-
   it("fulfillment option not advertised for the exchange → 400 FULFILLMENT_OPTION_NOT_ADVERTISED", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
     const email = makeSpyChannel("email");
     const webhook = makeSpyChannel("webhook");
     const { server, stub, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
-      buyerStore,
       optionStore,
       channels: [email, webhook],
     });
@@ -898,41 +796,12 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     }
   });
 
-  it("fulfillment with committer record but no option policy → 500 FULFILLMENT_OPTIONS_NOT_TRACKED", async () => {
-    const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
-    const channel = makeSpyChannel("email");
-    const { server, stub, restore } = await buildRedeemServer({
-      reader: makeRedeemReader(fx),
-      buyerStore,
-      channels: [channel],
-    });
-    try {
-      const result = await server.handlers.redeem({
-        exchangeId: "42",
-        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
-        fulfillment: { option: "email", data: { email: "new@example.com" } },
-      });
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.status).toBe(500);
-        expect(result.body.code).toBe("FULFILLMENT_OPTIONS_NOT_TRACKED");
-      }
-      expect(stub.calls).toHaveLength(0);
-      expect(channel.validations).toHaveLength(0);
-    } finally {
-      restore();
-    }
-  });
-
   it("fulfillment with unknown option → 400 FULFILLMENT_OPTION_UNKNOWN", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const optionStore = new Map<string, readonly string[]>([["42", ["ipfs-pointer"]]]);
     const channel = makeSpyChannel("email");
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
-      buyerStore,
       optionStore,
       channels: [channel],
     });
@@ -953,13 +822,11 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
 
   it("fulfillment that fails channel.validate → 400 FULFILLMENT_DATA_INVALID", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
     const channel = makeSpyChannel();
     channel.failNext = true;
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
-      buyerStore,
       optionStore,
       channels: [channel],
     });
@@ -981,7 +848,6 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
 
   it("fulfillment whose channel.validate throws → 400 FULFILLMENT_DATA_INVALID (not 500)", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
     const throwingChannel: RedeemFulfillmentChannel = {
       id: "email",
@@ -994,7 +860,6 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     };
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
-      buyerStore,
       optionStore,
       channels: [throwingChannel],
     });
@@ -1017,11 +882,9 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
 
   it("fulfillment without fulfillmentChannels configured → 400 FULFILLMENT_CHANNELS_NOT_CONFIGURED", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
-      buyerStore,
       optionStore,
     });
     try {
@@ -1039,40 +902,22 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     }
   });
 
-  it("redeem against an exchange with no committer record → wallet check skipped", async () => {
+  it("successful redeem with fulfillment clears the option-policy entry", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>(); // empty — legacy
-    const { server, restore } = await buildRedeemServer({
-      reader: makeRedeemReader(fx),
-      buyerStore,
-    });
-    try {
-      const result = await server.handlers.redeem({
-        exchangeId: "42",
-        signedPayload: makeRedeemSignedPayload("0x9999999999999999999999999999999999999999"),
-      });
-      expect(result.ok).toBe(true);
-    } finally {
-      restore();
-    }
-  });
-
-  it("successful redeem clears the committer entry from exchangeBuyerStore", async () => {
-    const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
+    const channel = makeSpyChannel();
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
-      buyerStore,
       optionStore,
+      channels: [channel],
     });
     try {
       const result = await server.handlers.redeem({
         exchangeId: "42",
         signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "email", data: { email: "x@example.com" } },
       });
       expect(result.ok).toBe(true);
-      expect(buyerStore.has("42")).toBe(false);
       expect(optionStore.has("42")).toBe(false);
     } finally {
       restore();
@@ -1081,14 +926,12 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
 
   it("onCommit failure after confirmed redeem returns 200 with a pending recovery update", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
     const pendingStore = new Map<string, RedeemFulfillmentUpdate>();
     const channel = makeSpyChannel();
     channel.throwOnCommit = true;
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
-      buyerStore,
       optionStore,
       pendingStore,
       channels: [channel],
@@ -1110,16 +953,14 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
         redeemer: fx.buyer.address,
         error: "store unavailable",
       });
-      expect(buyerStore.has("42")).toBe(false);
       expect(optionStore.has("42")).toBe(false);
     } finally {
       restore();
     }
   });
 
-  it("failed redeem (state-verify mismatch) leaves the committer entry AND channel store untouched", async () => {
+  it("failed redeem (state-verify mismatch) leaves the option-policy entry AND channel store untouched", async () => {
     const fx = await makePaymentFixture();
-    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
     const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
     const channel = makeSpyChannel();
     // Sequence: pre-action read finds COMMITTED, post-action read
@@ -1140,7 +981,6 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     ]);
     const { server, restore } = await buildRedeemServer({
       reader: stuckReader,
-      buyerStore,
       optionStore,
       channels: [channel],
     });
@@ -1152,7 +992,7 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
       });
       expect(result.ok).toBe(false);
       expect(channel.commits).toHaveLength(0);
-      expect(buyerStore.get("42")).toBe(fx.buyer.address);
+      expect(optionStore.get("42")).toEqual(["email"]);
     } finally {
       restore();
     }

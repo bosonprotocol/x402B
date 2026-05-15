@@ -7,7 +7,6 @@
 import { CoreSDK } from "@bosonprotocol/core-sdk";
 import type { UnsignedFullOffer } from "@bosonprotocol/x402-core/eip712";
 import type {
-  Address,
   BosonOfferRef,
   EscrowPaymentRequirements,
 } from "@bosonprotocol/x402-core/schemes/escrow";
@@ -113,12 +112,10 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   // Default to a fresh in-memory store when the host doesn't supply
   // one. Single shared reference for the lifetime of this server — so
   // commit-time writes and redeem-time reads observe the same Map.
-  const exchangeBuyerStore: Map<string, Address> = validated.exchangeBuyerStore ?? new Map();
   const exchangeFulfillmentOptionStore: Map<string, readonly string[]> =
     validated.exchangeFulfillmentOptionStore ?? new Map();
   const redeemFulfillmentUpdateStore: Map<string, RedeemFulfillmentUpdate> =
     validated.redeemFulfillmentUpdateStore ?? new Map();
-  validated.exchangeBuyerStore = exchangeBuyerStore;
   validated.exchangeFulfillmentOptionStore = exchangeFulfillmentOptionStore;
   validated.redeemFulfillmentUpdateStore = redeemFulfillmentUpdateStore;
 
@@ -191,7 +188,6 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("commit"),
-          exchangeBuyerStore,
           exchangeFulfillmentOptionStore,
         }),
       commitAndRedeem: async (input) =>
@@ -199,7 +195,6 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("commitAndRedeem"),
-          exchangeBuyerStore,
           exchangeFulfillmentOptionStore,
         }),
       redeem: async (input) =>
@@ -207,7 +202,6 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
           config: validated,
           facilitator,
           exchangeReader: await requireReader("redeem"),
-          exchangeBuyerStore,
           exchangeFulfillmentOptionStore,
           redeemFulfillmentUpdateStore,
         }),

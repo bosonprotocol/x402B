@@ -81,10 +81,12 @@ endpoint advertised in the 200 response's `nextActions`:
 ```
 
 The server's redeem handler invokes `channel.onCommit(exchangeId, data)`
-on receipt. See [Wallet rebinding at redeem](#wallet-rebinding-at-redeem)
-below for how the server validates that the redeeming wallet's choice of
-option still matches the offer's advertised set when the voucher has
-been transferred between commit and redeem.
+on receipt. The voucher NFT is transferable, so the wallet that signs
+`boson-redeem` may differ from the wallet that committed — whichever
+wallet redeems is the one whose delivery data the server persists. The
+server still constrains the redeemer's `option` choice to the original
+offer's advertised set so the seller never has to honour a channel they
+didn't sign up for.
 
 ## `FulfillmentChannel` interface (TypeScript)
 
@@ -177,21 +179,15 @@ Seller adapters MUST refuse plain `http://` URLs — TLS is mandatory for the tr
 2. The server-side instance of the channel MUST be configured (at boot, not per-request).
 3. After redeem confirmation, server calls `channel.onCommit(exchangeId, data)` to persist the buyer's delivery target. A failing channel write surfaces as a `FULFILLMENT_UPDATE_DEFERRED` warning on the 200 response.
 
-## Wallet rebinding at redeem
+## Voucher transfer between commit and redeem
 
-In the two-step flow A (`boson-createOfferAndCommit` followed later by `boson-redeem`) the redeeming wallet is not guaranteed to be the same wallet that committed — the voucher NFT is transferable. Because buyer-supplied delivery data only flows at redeem time, the server tracks the committer wallet at commit time and applies the following rule at redeem:
+In the two-step Flow A (`boson-createOfferAndCommit` followed later by `boson-redeem`) the voucher NFT is transferable, so the wallet that signs `boson-redeem` may differ from the wallet that committed. Because buyer-supplied delivery data flows *only* at redeem time, this is benign: whichever wallet signs the redeem is the wallet whose delivery target the server persists. There's no committer-vs-redeemer rebinding gate — the redeemer just supplies whatever `fulfillment` the seller's advertised set permits.
 
-| Stored committer | Redeemer wallet | Buyer `fulfillment` field |
-|---|---|---|
-| `A` | `A` | OPTIONAL — same buyer, no delivery target supplied means use whatever default the channel allows |
-| `A` | `B` (different) | **REQUIRED** — server rejects with `FULFILLMENT_REQUIRED_ON_WALLET_CHANGE` if absent |
-| absent (legacy / atomic) | any | no-op |
+When a redeem request carries `fulfillment`, `option` MUST be one of the options advertised in the original 402 for that exchange (the server enforces this against its persisted option-policy entry). The server runs `channel.validate(data)` and then `channel.onCommit(exchangeId, data)` — channels treat `onCommit` as an upsert. The redeem-time wire shape is `{ option: string, data: <schema-of-option> | null }`.
 
-When a redeem request carries `fulfillment`, `option` MUST be one of the options advertised in the original 402 for that exchange. The server runs `channel.validate(data)` and then `channel.onCommit(exchangeId, data)` — channels treat `onCommit` as an upsert. The redeem-time wire shape is `{ option: string, data: <schema-of-option> | null }`.
+Because the on-chain redeem is irreversible, servers record a pending fulfillment update before the post-redeem channel upsert and clear it only after `onCommit` succeeds. If that upsert fails, the redeem response still reports the successful transaction and includes a warning such as `FULFILLMENT_UPDATE_DEFERRED`, leaving the pending update for host-side replay/reconciliation.
 
-Because the on-chain redeem is irreversible, servers should record a pending fulfillment update before the post-redeem channel upsert and clear it only after `onCommit` succeeds. If that upsert fails, the redeem response should still report the successful transaction and include a warning such as `FULFILLMENT_UPDATE_DEFERRED`, leaving the pending update for host-side replay/reconciliation.
-
-Flow B (`boson-createOfferCommitAndRedeem`, atomic) is unaffected — the exchange reaches `REDEEMED` in a single transaction; there is no later redeem step, and no buyer-supplied delivery data is carried on the commit-time payload. Flow B is only appropriate for channels embedded in the offer (e.g. `inline`) or off-band.
+Flow B (`boson-createOfferCommitAndRedeem`, atomic) is symmetric: the buyer's delivery data rides with the commit-time payload (see [Atomic Flow B](#atomic-flow-b--boson-createoffercommitandredeem)) and the commit handler invokes `channel.onCommit` after the on-chain redeem settles. A failing `onCommit` surfaces as a `FULFILLMENT_COMMIT_DEFERRED` warning on the 200 response.
 
 ## Client-side helper
 

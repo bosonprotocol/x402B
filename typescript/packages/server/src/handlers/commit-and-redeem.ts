@@ -6,7 +6,7 @@
 // envelope.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
-import type { Address, EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 
 import { emitNextActions } from "./next-actions.js";
@@ -34,16 +34,9 @@ export interface CommitHandlerContext {
   facilitator: FacilitatorClient;
   exchangeReader: ExchangeReader;
   /**
-   * Committer-wallet store. Flow A writes the buyer address keyed by
-   * the new `exchangeId` so the redeem handler can detect
-   * voucher-transfer mid-flight. Flow B (atomic commit+redeem) skips
-   * the write — the redeem step has already happened on-chain.
-   */
-  exchangeBuyerStore: Map<string, Address>;
-  /**
    * Per-exchange fulfillment option policy. Flow A writes the ids
-   * advertised by the original requirements so redeem-time updates are
-   * constrained to the offer's own channel set.
+   * advertised by the original requirements so the redeem-time choice
+   * is constrained to the offer's own channel set.
    */
   exchangeFulfillmentOptionStore: Map<string, readonly string[]>;
 }
@@ -193,14 +186,11 @@ async function handleCommitImpl(
     );
   }
 
-  // Flow A only: persist the committer wallet so the redeem handler
-  // can detect a voucher transfer between commit and redeem. Flow B
-  // is already in REDEEMED — there is no later redeem step to gate.
+  // Flow A only: persist the *advertised* option ids from the original
+  // 402 so the redeem handler can constrain the buyer's redeem-time
+  // fulfillment choice to the offer's own channel set. Flow B is
+  // already in REDEEMED — there is no later redeem step to gate.
   if (expected.expectedState === ExchangeState.COMMITTED) {
-    ctx.exchangeBuyerStore.set(settleResult.exchangeId, decoded.payload.payload.buyer);
-    // Tracks the *advertised* option ids from the original 402, not the
-    // buyer's chosen option — the redeem handler uses this to constrain
-    // any redeem-time fulfillment update to the offer's advertised set.
     ctx.exchangeFulfillmentOptionStore.set(
       settleResult.exchangeId,
       input.requirements.fulfillment?.options.map((option) => option.id) ?? [],

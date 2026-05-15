@@ -133,7 +133,7 @@ Stable string identifiers, one per legal transition that either party (buyer or 
 
 The action-id list and the two transition tables live in `@bosonprotocol/x402-core/state-machine` as a single source of truth. `@bosonprotocol/x402-actions` derives `next[]` from those tables at runtime; servers never hand-code transitions. Clients that don't recognise an action's prefix MUST skip it rather than try to dispatch.
 
-**`boson-redeem` and the voucher-transfer case.** Because the Boson voucher is a transferable NFT, the wallet that signs `boson-redeem` is not necessarily the wallet that committed. Servers that accept the two-step flow MUST treat the redeem step as a fulfillment-data rebinding point: see [§Wallet rebinding at redeem in `03-fulfillment-channels.md`](./boson-impl-03-fulfillment-channels.md#wallet-rebinding-at-redeem) for the wallet-vs-fulfillment matrix.
+**`boson-redeem` and the voucher-transfer case.** The Boson voucher is a transferable NFT, so the wallet that signs `boson-redeem` is not necessarily the wallet that committed. The two-step flow handles this trivially: buyer-supplied delivery data flows *only* at redeem time, so whichever wallet redeems supplies its own `fulfillment` — see [§Voucher transfer between commit and redeem in `03-fulfillment-channels.md`](./boson-impl-03-fulfillment-channels.md#voucher-transfer-between-commit-and-redeem).
 
 **Out of scope for `nextActions`:**
 
