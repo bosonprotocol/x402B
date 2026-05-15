@@ -5,7 +5,6 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=optional --no-audit --no-fund
 
-COPY tsconfig.json ./
 COPY src ./src
 
 ENV PORT=4000
