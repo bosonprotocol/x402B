@@ -181,7 +181,7 @@ describe("createFacilitatorClient", () => {
     });
   });
 
-  it("throws FacilitatorHttpError(BAD_HTTP_STATUS) on 5xx with a non-JSON body", async () => {
+  it("throws FacilitatorHttpError(BAD_RESPONSE_BODY) on 5xx with a non-JSON body", async () => {
     // Non-2xx + body that doesn't parse as a well-formed facilitator
     // result is a transport-layer fault — surface it as
     // FacilitatorHttpError so the caller maps it to FACILITATOR_UNREACHABLE.
@@ -198,6 +198,21 @@ describe("createFacilitatorClient", () => {
     }
   });
 
+  it("throws FacilitatorHttpError(BAD_HTTP_STATUS) on 5xx with a well-formed domain body", async () => {
+    const stub = makeStubFetch(() => ({
+      status: 500,
+      body: { ok: false, code: "INTERNAL_ERROR", reason: "boom" },
+    }));
+    const client = createFacilitatorClient({ url: BASE_URL, fetch: stub.fetch });
+
+    await expect(client.settle(settleInput)).rejects.toMatchObject({
+      name: "FacilitatorHttpError",
+      code: "BAD_HTTP_STATUS",
+      status: 500,
+      facilitatorCode: "INTERNAL_ERROR",
+    });
+  });
+
   it("throws FacilitatorHttpError(BAD_HTTP_STATUS) on non-2xx with parseable but off-shape body", async () => {
     // The body is valid JSON but doesn't satisfy the
     // `{ok:false, code, reason}` shape; classify as transport failure.
@@ -211,7 +226,7 @@ describe("createFacilitatorClient", () => {
     });
   });
 
-  it("returns the domain `{ok:false}` body on a non-2xx HTTP (facilitator-express 400)", async () => {
+  it("returns the domain `{ok:false}` body on HTTP 400 (facilitator-express)", async () => {
     // `facilitator-express` emits domain failures (e.g. bad meta-tx
     // signature) over HTTP 400 with the well-formed result body. The
     // client must surface that as a domain result, not throw —
@@ -236,7 +251,7 @@ describe("createFacilitatorClient", () => {
     });
   });
 
-  it("returns the domain `{ok:false}` body for /settle on a non-2xx HTTP", async () => {
+  it("returns the domain `{ok:false}` body for /settle on HTTP 400", async () => {
     const stub = makeStubFetch(() => ({
       status: 400,
       body: { ok: false, code: "SIMULATION_REVERT", reason: "estimateGas threw" },
@@ -252,7 +267,7 @@ describe("createFacilitatorClient", () => {
     });
   });
 
-  it("returns the domain `{ok:false}` body for /perform-action on a non-2xx HTTP", async () => {
+  it("returns the domain `{ok:false}` body for /perform-action on HTTP 400", async () => {
     const stub = makeStubFetch(() => ({
       status: 400,
       body: { ok: false, code: "ONCHAIN_REVERT", reason: "fund balance too low" },

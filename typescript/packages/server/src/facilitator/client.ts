@@ -8,7 +8,7 @@
 // are returned verbatim — both shapes are answers the caller branches
 // on. The facilitator-express adapter emits domain failures over HTTP
 // 400 (so curl users still see a 4xx), but the wire body is still a
-// well-formed result; we recognise that shape on non-2xx responses and
+// well-formed result; we recognise that shape on HTTP 400 responses and
 // hand it back rather than throwing. HTTP-transport failures (network
 // down, non-JSON body, schema-mismatched body) throw
 // `FacilitatorHttpError` so the composition layer can distinguish
@@ -55,7 +55,7 @@ export interface FacilitatorClient {
  * Construct a typed HTTP client for the facilitator. The returned
  * methods stringify the input as JSON and POST to the matching path
  * on the configured URL. Bodies matching the well-formed result shape
- * (whether HTTP 2xx success or HTTP 4xx domain rejection) are returned
+ * (whether HTTP 2xx success or HTTP 400 domain rejection) are returned
  * verbatim; transport failures (network, non-JSON body,
  * schema-mismatched body) raise `FacilitatorHttpError`.
  */
@@ -116,9 +116,10 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
       // shape and surface it as the typed result — every endpoint's
       // `Res` union includes the same `{ok:false, code, reason}`
       // variant, so the cast through `validate` (which also accepts
-      // that shape) preserves type-safety. Anything else on a non-2xx
-      // is a genuine transport failure.
-      if (isFailureBranch(parsed) && validate(parsed)) {
+      // that shape) preserves type-safety. Any other non-2xx status is
+      // a genuine transport failure even if its body happens to look
+      // like a facilitator result.
+      if (res.status === 400 && isFailureBranch(parsed) && validate(parsed)) {
         return parsed;
       }
       const facilitatorCode = extractFacilitatorCode(parsed);
