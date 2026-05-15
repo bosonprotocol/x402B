@@ -145,8 +145,7 @@ function buildRedeemInput(
   if (!isRedeemFulfillment(body.fulfillment)) {
     res.status(400).json({
       code: "INVALID_REQUEST_BODY",
-      reason:
-        "expected fulfillment to be { option: string, data: object | null } when present",
+      reason: "expected fulfillment to be { option: string, data: object | null } when present",
     });
     return undefined;
   }

@@ -213,10 +213,7 @@ export async function handleRedeem(
         { exchangeId: input.exchangeId },
       );
     }
-    if (
-      advertisedOptions !== undefined &&
-      !advertisedOptions.includes(input.fulfillment.option)
-    ) {
+    if (advertisedOptions !== undefined && !advertisedOptions.includes(input.fulfillment.option)) {
       return handlerErr(
         400,
         "FULFILLMENT_OPTION_NOT_ADVERTISED",
