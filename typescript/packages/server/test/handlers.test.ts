@@ -27,19 +27,23 @@ import {
   TOKEN,
 } from "./fixtures.js";
 
-function makeStubFacilitatorFetch(handler: (path: string) => unknown): {
+function makeStubFacilitatorFetch(
+  handler: (path: string) => unknown,
+  opts: { status?: number } = {},
+): {
   fetch: FetchLike;
   calls: Array<{ url: string; body: unknown }>;
 } {
   const calls: Array<{ url: string; body: unknown }> = [];
+  const status = opts.status ?? 200;
   const fetch: FetchLike = async (url, init) => {
     const path = url.replace(/^https?:\/\/[^/]+/, "");
     const parsedBody = init?.body !== undefined ? JSON.parse(init.body) : undefined;
     calls.push({ url, body: parsedBody });
     const response = handler(path);
     return {
-      ok: true,
-      status: 200,
+      ok: status >= 200 && status < 300,
+      status,
       text: async () => JSON.stringify(response),
     };
   };
@@ -70,11 +74,15 @@ const facilitatorUrl = "https://facilitator.example";
 async function buildServerWithStubs(
   opts: {
     facilitator?: (path: string) => unknown;
+    facilitatorStatus?: number;
     reader?: ExchangeReader;
   } = {},
 ) {
   const seller = privateKeyToAccount(TEST_SELLER_PK);
-  const fetchStub = makeStubFacilitatorFetch(opts.facilitator ?? (() => ({ ok: true })));
+  const fetchStub = makeStubFacilitatorFetch(
+    opts.facilitator ?? (() => ({ ok: true })),
+    opts.facilitatorStatus !== undefined ? { status: opts.facilitatorStatus } : {},
+  );
   // Slip the fetch override into the global so the facilitator client
   // picks it up at construction time.
   const originalFetch = globalThis.fetch;
@@ -221,6 +229,59 @@ describe("handlers.commit / commitAndRedeem", () => {
     if (!result.ok) {
       expect(result.status).toBe(502);
       expect(result.body.code).toBe("FACILITATOR_REJECTED");
+    }
+  });
+
+  it("502 FACILITATOR_REJECTED (not _UNREACHABLE) when facilitator returns HTTP 400 + domain failure", async () => {
+    // facilitator-express returns domain rejections (e.g. bad meta-tx
+    // signature) over HTTP 400 with a well-formed `{ok:false}` body.
+    // The client must surface that as a domain result so the commit
+    // handler reaches the `FACILITATOR_REJECTED` branch — not the
+    // `FACILITATOR_UNREACHABLE` "transport down" branch.
+    const fx = await makePaymentFixture();
+    const { server } = await buildServerWithStubs({
+      facilitator: () => ({
+        ok: false,
+        code: "BAD_META_TX_SIGNATURE",
+        reason: "recovered signer != metaTx.from",
+      }),
+      facilitatorStatus: 400,
+      reader: makeReader(null),
+    });
+
+    const result = await server.handlers.commit({
+      paymentHeader: makeBuyerHeader(fx.payload),
+      requirements: fx.requirements,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(502);
+      expect(result.body.code).toBe("FACILITATOR_REJECTED");
+      expect(result.body.details).toMatchObject({ facilitatorCode: "BAD_META_TX_SIGNATURE" });
+    }
+  });
+
+  it("502 FACILITATOR_UNREACHABLE when facilitator returns HTTP 400 with off-shape body", async () => {
+    // Non-2xx with a parseable body that *isn't* the well-formed
+    // `{ok:false, code, reason}` shape is a transport-level fault, not
+    // a domain rejection — map to FACILITATOR_UNREACHABLE.
+    const fx = await makePaymentFixture();
+    const { server } = await buildServerWithStubs({
+      facilitator: () => ({ random: "shape" }),
+      facilitatorStatus: 400,
+      reader: makeReader(null),
+    });
+
+    const result = await server.handlers.commit({
+      paymentHeader: makeBuyerHeader(fx.payload),
+      requirements: fx.requirements,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(502);
+      expect(result.body.code).toBe("FACILITATOR_UNREACHABLE");
     }
   });
 

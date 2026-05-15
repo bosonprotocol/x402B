@@ -4,12 +4,15 @@
 // `/perform-action?action=<action>`); this module wraps `fetch` with the typed
 // request/response shapes exported by `@bosonprotocol/x402-facilitator`.
 //
-// Successful responses (`{ ok: true, ... }` or `{ ok: false, code, reason }`)
-// are returned verbatim — both shapes are domain results the caller
-// branches on. HTTP-transport failures (network down, 5xx with an
-// unparseable body, non-JSON 200, etc.) throw `FacilitatorHttpError`
-// so the composition layer can distinguish "facilitator said no" from
-// "we couldn't reach the facilitator".
+// Domain results (`{ ok: true, ... }` or `{ ok: false, code, reason }`)
+// are returned verbatim — both shapes are answers the caller branches
+// on. The facilitator-express adapter emits domain failures over HTTP
+// 400 (so curl users still see a 4xx), but the wire body is still a
+// well-formed result; we recognise that shape on non-2xx responses and
+// hand it back rather than throwing. HTTP-transport failures (network
+// down, non-JSON body, schema-mismatched body) throw
+// `FacilitatorHttpError` so the composition layer can distinguish
+// "facilitator said no" from "we couldn't reach the facilitator".
 
 import type {
   FacilitatorErrorCode,
@@ -51,8 +54,10 @@ export interface FacilitatorClient {
 /**
  * Construct a typed HTTP client for the facilitator. The returned
  * methods stringify the input as JSON and POST to the matching path
- * on the configured URL. Non-2xx responses raise `FacilitatorHttpError`;
- * 2xx responses are JSON-parsed and returned verbatim.
+ * on the configured URL. Bodies matching the well-formed result shape
+ * (whether HTTP 2xx success or HTTP 4xx domain rejection) are returned
+ * verbatim; transport failures (network, non-JSON body,
+ * schema-mismatched body) raise `FacilitatorHttpError`.
  */
 export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): FacilitatorClient {
   const fetchImpl = opts.fetch ?? (globalThis.fetch as FetchLike | undefined);
@@ -106,6 +111,16 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
     }
 
     if (!res.ok) {
+      // The facilitator-express adapter returns domain failures as
+      // HTTP 400 with the `{ok:false, code, reason}` body. Detect that
+      // shape and surface it as the typed result — every endpoint's
+      // `Res` union includes the same `{ok:false, code, reason}`
+      // variant, so the cast through `validate` (which also accepts
+      // that shape) preserves type-safety. Anything else on a non-2xx
+      // is a genuine transport failure.
+      if (isFailureBranch(parsed) && validate(parsed)) {
+        return parsed;
+      }
       const facilitatorCode = extractFacilitatorCode(parsed);
       throw new FacilitatorHttpError(
         `facilitator HTTP ${res.status} (${path}): ${reasonString(parsed) ?? text}`,
@@ -155,9 +170,15 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object";
 }
 
-/** Failure branch is identical across all three endpoints. */
-function isFailureBranch(v: Record<string, unknown>): boolean {
-  return v.ok === false && typeof v.code === "string" && typeof v.reason === "string";
+/**
+ * Failure branch is identical across all three endpoints. Accepts
+ * `unknown` so the non-2xx path can pre-check the parsed body without
+ * narrowing first.
+ */
+function isFailureBranch(v: unknown): v is { ok: false; code: string; reason: string } {
+  return (
+    isObject(v) && v.ok === false && typeof v.code === "string" && typeof v.reason === "string"
+  );
 }
 
 function isVerifyResult(parsed: unknown): parsed is FacilitatorVerifyResult {
