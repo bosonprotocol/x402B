@@ -239,7 +239,17 @@ export async function handleRedeem(
         { option: input.fulfillment.option, registered: channels.map((c) => c.id) },
       );
     }
-    const validation = channel.validate(input.fulfillment.data);
+    // Host-supplied `validate` callbacks are arbitrary code — treat a
+    // thrown error the same as `{ ok: false }` so a buggy / strict
+    // adapter surfaces as a 400 the buyer can correct, not a 500.
+    let validation: ReturnType<RedeemFulfillmentChannel["validate"]>;
+    try {
+      validation = channel.validate(input.fulfillment.data);
+    } catch (e) {
+      return handlerErr(400, "FULFILLMENT_DATA_INVALID", errorMessage(e), {
+        option: input.fulfillment.option,
+      });
+    }
     if (!validation.ok) {
       return handlerErr(400, "FULFILLMENT_DATA_INVALID", validation.reason, {
         option: input.fulfillment.option,

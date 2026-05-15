@@ -801,6 +801,42 @@ describe("handlers.redeem — wallet-rebinding + fulfillment update", () => {
     }
   });
 
+  it("fulfillment whose channel.validate throws → 400 FULFILLMENT_DATA_INVALID (not 500)", async () => {
+    const fx = await makePaymentFixture();
+    const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);
+    const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
+    const throwingChannel: RedeemFulfillmentChannel = {
+      id: "email",
+      validate() {
+        throw new Error("adapter blew up");
+      },
+      async onCommit() {
+        // never reached — validate throws first
+      },
+    };
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      buyerStore,
+      optionStore,
+      channels: [throwingChannel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "email", data: { email: "x@example.com" } },
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(400);
+        expect(result.body.code).toBe("FULFILLMENT_DATA_INVALID");
+        expect(result.body.reason).toContain("adapter blew up");
+      }
+    } finally {
+      restore();
+    }
+  });
+
   it("fulfillment without fulfillmentChannels configured → 400 FULFILLMENT_CHANNELS_NOT_CONFIGURED", async () => {
     const fx = await makePaymentFixture();
     const buyerStore = new Map<string, `0x${string}`>([["42", fx.buyer.address]]);

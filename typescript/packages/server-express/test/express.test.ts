@@ -323,6 +323,24 @@ describe("mountX402b — convenience routes", () => {
     });
   });
 
+  it("POST /x402b/redeem rejects malformed fulfillment payload with 400", async () => {
+    const redeem = vi.fn();
+    const server = { handlers: { redeem } } as unknown as X402bServer;
+    const app = express();
+    app.use(express.json());
+    app.use(mountX402b(server, { resolveRequirements: () => ({}) as never }));
+
+    const res = await supertest(app).post("/x402b/redeem").send({
+      exchangeId: "42",
+      signedPayload: "0xc0ffee",
+      fulfillment: "not-an-object",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_REQUEST_BODY");
+    expect(redeem).not.toHaveBeenCalled();
+  });
+
   it("POST /x402b/complete rejects malformed body with 400", async () => {
     const server = await buildServer(makeStubFetch(() => ({ ok: true, txHash: "0x" })));
     const app = express();
