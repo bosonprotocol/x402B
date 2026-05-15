@@ -141,9 +141,10 @@ export function walletClientToWeb3LibAdapter(params: {
       }
       return {
         hash,
-        wait: async (_confirmations?: number) => {
+        wait: async (confirmations?: number) => {
           const receipt = await publicClient.waitForTransactionReceipt({
             hash,
+            confirmations,
             timeout: receiptTimeoutMs,
           });
           return mapReceipt(receipt);
