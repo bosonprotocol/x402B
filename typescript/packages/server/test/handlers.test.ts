@@ -452,6 +452,11 @@ describe("handlers.disputeResolve — withdraw carved into next[]", () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.body.nextActions.exchangeState).toBe(ExchangeState.DISPUTED);
+        // `disputeState` is part of the DISPUTED-branch envelope shape;
+        // assert it is present AND set, so the test fails loudly if the
+        // field is ever dropped (a previous `if ("disputeState" in ...)`
+        // guard would have silently passed in that case).
+        expect("disputeState" in result.body.nextActions).toBe(true);
         if ("disputeState" in result.body.nextActions) {
           expect(result.body.nextActions.disputeState).toBe("RESOLVED");
         }
