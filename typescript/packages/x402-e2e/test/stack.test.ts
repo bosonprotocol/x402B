@@ -22,6 +22,10 @@ const HEALTH_TARGETS: readonly { name: string; url: string }[] = [
   { name: "boson-subgraph", url: "http://localhost:8030" },
   { name: "boson-mcp-server", url: LOCAL_31337_0.urls.bosonMcp },
   { name: "meta-tx-gateway", url: LOCAL_31337_0.urls.metaTxGateway },
+  // IPFS Kubo API — POST-only, so GET answers 4xx when the container is
+  // up. Probing it directly catches a stopped/unreachable IPFS instead
+  // of relying on the subgraph's startup dependency to surface it.
+  { name: "ipfs", url: "http://localhost:5001/api/v0/version" },
   { name: "x402b-facilitator-http", url: "http://localhost:8889/health" },
   { name: "x402b-resource-server", url: "http://localhost:4001/health" },
   { name: "x402b-webhook-sink", url: "http://localhost:4002/health" },
