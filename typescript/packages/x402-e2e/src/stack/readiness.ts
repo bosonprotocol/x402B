@@ -49,10 +49,13 @@ async function pollUntilReady(
   const deadline = Date.now() + opts.timeoutMs;
   opts.log(`[stack] waiting for ${label}…`);
   // first check is immediate; subsequent attempts wait `intervalMs`.
-  while (Date.now() < deadline) {
+  while (true) {
     if (await probe(service, path)) {
       opts.log(`[stack] ${label} ✅`);
       return;
+    }
+    if (Date.now() >= deadline) {
+      break;
     }
     await sleep(opts.intervalMs);
   }
