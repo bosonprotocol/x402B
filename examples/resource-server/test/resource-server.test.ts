@@ -148,18 +148,26 @@ describe("resource-server example app", () => {
     }
   });
 
-  it("POST /x402B/commit without X-PAYMENT emits the same 402 challenge as /resource", async () => {
+  it("POST /x402B/commit without X-PAYMENT emits the same 402 challenge as GET /resource", async () => {
     const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
-    const res = await supertest(app).post("/x402B/commit").send();
-    expect(res.status).toBe(402);
-    expect(res.body.x402Version).toBe(2);
-    expect(res.body.accepts).toHaveLength(1);
+    const resourceRes = await supertest(app).get("/resource");
+    const commitRes = await supertest(app).post("/x402B/commit").send();
+    expect(resourceRes.status).toBe(402);
+    expect(commitRes.status).toBe(402);
+    // The cached `resolveRequirements` in `createResourceServerApp` is
+    // shared by `expressMiddleware` (GET /resource) and the commit
+    // route, so the two challenge bodies must match byte-for-byte —
+    // including `accepts[0].actions.next`.
+    expect(commitRes.body).toEqual(resourceRes.body);
   });
 
   it("POST /x402b/commit (lowercase alias) routes to the same handler", async () => {
     const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
-    const res = await supertest(app).post("/x402b/commit").send();
-    expect(res.status).toBe(402);
+    const upperRes = await supertest(app).post("/x402B/commit").send();
+    const lowerRes = await supertest(app).post("/x402b/commit").send();
+    expect(upperRes.status).toBe(402);
+    expect(lowerRes.status).toBe(402);
+    expect(lowerRes.body).toEqual(upperRes.body);
   });
 
   it("GET /config echoes the resolved PaymentRequirements for debugging", async () => {
