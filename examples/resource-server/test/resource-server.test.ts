@@ -3,8 +3,8 @@
 // `@bosonprotocol/x402-server-express`'s own suite — here we only verify
 // that the example assembles cleanly, exposes the expected probes, and
 // that `GET /resource` emits a canonical x402 challenge whose
-// `PaymentRequirements` advertises every `POST /x402B/*` route the
-// `mountX402b` adapter installs.
+// `PaymentRequirements.actions.next` advertises the expected legal
+// pre-commit actions.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
 import { metaTransactionTypedData } from "@bosonprotocol/x402-core/eip712";
