@@ -5,6 +5,14 @@
   "license": "Apache-2.0",
   "description": "Reference Express host for @bosonprotocol/x402-server-express. Boots a working x402B resource server from environment variables; doubles as the runtime image for the x402B e2e suite.",
   "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "start": "tsx src/index.ts",
