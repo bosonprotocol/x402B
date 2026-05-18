@@ -34,10 +34,10 @@ const HEALTH_TARGETS: readonly { name: string; url: string }[] = [
 async function ping(url: string): Promise<{ ok: boolean; status: number }> {
   // POST-only services (the RPC node + the gateway) answer GET with a
   // 4xx — that's good enough for "the container is up and listening".
-  // Anything other than ECONNREFUSED counts as healthy.
+  // Treat only non-5xx as healthy reachability.
   try {
     const res = await fetch(url, { method: "GET" });
-    return { ok: true, status: res.status };
+    return { ok: res.status < 500, status: res.status };
   } catch {
     return { ok: false, status: 0 };
   }
