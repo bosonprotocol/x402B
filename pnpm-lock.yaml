@@ -97,6 +97,9 @@ importers:
         specifier: ^2.39.3
         version: 2.48.11(typescript@5.9.3)(zod@3.25.76)
     devDependencies:
+      '@bosonprotocol/x402-evm':
+        specifier: workspace:^
+        version: link:../../typescript/packages/evm
       '@types/express':
         specifier: ^4.17.21
         version: 4.17.25

@@ -9,6 +9,7 @@
 //    no overrides, and listens. The placeholder reader makes the
 //    402 challenge path work without a subgraph configured.
 
+import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
   createX402bServer,
   type ExchangeReader,
@@ -68,8 +69,21 @@ export function createResourceServerApp(
 
   const server = createX402bServer(buildServerConfig(env, seller, exchangeReader));
 
-  const resolveRequirements = async (_req: Request) =>
-    server.buildPaymentRequirements({
+  // The Express adapters call `resolveRequirements` twice per buyer
+  // commit flow (once for the 402 challenge, once when the buyer
+  // retries with `X-PAYMENT`). The validator deep-equals
+  // `payload.offerRef.fullOffer` against `requirements.offer.fullOffer`
+  // and strict-equals the `sellerSig`, so the settle call must see the
+  // same signed offer the challenge emitted. Cache it and refresh
+  // lazily a few minutes before the offer's on-chain validity ends so
+  // an in-flight buyer commit can't race the expiry boundary.
+  const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+  let cached: { promise: Promise<EscrowPaymentRequirements>; expiresAt: number } | undefined;
+
+  const resolveRequirements = async (_req: Request) => {
+    if (cached !== undefined && now() < cached.expiresAt) return cached.promise;
+
+    const promise = server.buildPaymentRequirements({
       offer: { unsigned: buildUnsignedOffer({ env, sellerAddress: seller.address, now: now() }) },
       asset: env.assetAddress,
       amount: env.amount,
@@ -80,6 +94,21 @@ export function createResourceServerApp(
       recipientId: env.sellerId,
       maxTimeoutSeconds: env.maxTimeoutSeconds,
     });
+
+    // Assign before awaiting so concurrent challenge/settle callers
+    // join the same in-flight build; `expiresAt` is provisional until
+    // the build resolves.
+    const entry = { promise, expiresAt: Number.MAX_SAFE_INTEGER };
+    cached = entry;
+    try {
+      const requirements = await promise;
+      entry.expiresAt = Number(requirements.offer.fullOffer.validUntilDateInMS) - REFRESH_MARGIN_MS;
+    } catch (e) {
+      if (cached === entry) cached = undefined;
+      throw e;
+    }
+    return promise;
+  };
 
   const app = express();
   app.use(express.json({ limit: "1mb" }));

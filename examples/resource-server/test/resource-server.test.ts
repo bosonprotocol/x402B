@@ -6,7 +6,12 @@
 // `PaymentRequirements` advertises every `POST /x402B/*` route the
 // `mountX402b` adapter installs.
 
+import { ExchangeState } from "@bosonprotocol/x402-actions";
+import { metaTransactionTypedData } from "@bosonprotocol/x402-core/eip712";
+import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm";
+import type { ExchangeReader, FetchLike } from "@bosonprotocol/x402-server";
 import supertest from "supertest";
+import { parseSignature } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +19,7 @@ import { createResourceServerApp } from "../src/app.js";
 import type { ResourceServerEnv } from "../src/config.js";
 
 const SELLER_PK = `0x${"22".repeat(32)}` as const;
+const BUYER_PK = `0x${"33".repeat(32)}` as const;
 const ESCROW = "0xdddddddddddddddddddddddddddddddddddddddd" as const;
 const TOKEN = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" as const;
 
@@ -99,5 +105,114 @@ describe("resource-server example app", () => {
   it("the seller signer recovers to the expected address from the offer signature", () => {
     const { seller } = createResourceServerApp(buildEnv());
     expect(seller.address).toBe(privateKeyToAccount(SELLER_PK).address);
+  });
+
+  // Regression: the express adapters call `resolveRequirements` once
+  // for the 402 challenge and again when the buyer retries with
+  // `X-PAYMENT`. If the second call rebuilds the offer with a fresh
+  // `Date.now()`, the validator's Rule 3 deep-equality on
+  // `payload.offerRef.fullOffer` vs `requirements.offer.fullOffer`
+  // fails (`FULL_OFFER_MISMATCH`) and the settle returns 4xx even
+  // when the buyer behaved correctly. The cache in
+  // `createResourceServerApp` must hold the same signed offer across
+  // the two calls.
+  it("POST /x402B/commit accepts the X-PAYMENT signed against the 402 challenge body", async () => {
+    // `now` advances on every call so that *without* the cache the
+    // settle-time `buildUnsignedOffer` would see a different timestamp
+    // than the challenge-time one and the validator would hit Rule 3.
+    // Anchor at the real clock so `buildCreateOfferAndCommitCalldata`'s
+    // core-sdk yup schema (which checks `validUntilDateInMS` against the
+    // process's wall-clock `Date.now`) accepts the offer.
+    let tick = Date.now();
+    const now = () => tick++;
+
+    const reader: ExchangeReader = {
+      read: async () => ({
+        state: ExchangeState.COMMITTED,
+        seller: privateKeyToAccount(SELLER_PK).address,
+        exchangeToken: TOKEN,
+        price: "1000000",
+      }),
+    };
+
+    const stubFetch: FetchLike = async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ok: true, exchangeId: "42", txHash: "0xabc" }),
+    });
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = stubFetch as unknown as typeof globalThis.fetch;
+    try {
+      const { app } = createResourceServerApp(buildEnv(), {
+        exchangeReader: reader,
+        now,
+      });
+
+      const challenge = await supertest(app).get("/resource");
+      expect(challenge.status).toBe(402);
+      const requirements = challenge.body.accepts[0];
+
+      const buyer = privateKeyToAccount(BUYER_PK);
+      const calldata = await buildCreateOfferAndCommitCalldata({
+        fullOffer: {
+          ...requirements.offer.fullOffer,
+          signature: requirements.offer.sellerSig,
+        } as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
+      });
+      const td = await metaTransactionTypedData({
+        chainId: 31337,
+        verifyingContract: requirements.escrowAddress,
+        message: {
+          nonce: 1n,
+          from: buyer.address,
+          contractAddress: requirements.escrowAddress,
+          functionName: calldata.functionName,
+          functionSignature: calldata.functionSignature,
+        },
+      });
+      const sig = await buyer.signTypedData({
+        domain: td.domain,
+        types: td.types,
+        primaryType: td.primaryType,
+        message: td.message,
+      });
+      const parsed = parseSignature(sig);
+      const v = parsed.v !== undefined ? Number(parsed.v) : parsed.yParity === 0 ? 27 : 28;
+
+      const payload = {
+        x402Version: 2,
+        scheme: "escrow" as const,
+        network: requirements.network,
+        payload: {
+          action: "boson-createOfferAndCommit" as const,
+          tokenAuthStrategy: "none" as const,
+          offerRef: {
+            fullOffer: requirements.offer.fullOffer,
+            sellerSig: requirements.offer.sellerSig,
+          },
+          buyer: buyer.address,
+          metaTx: {
+            from: buyer.address,
+            nonce: "1",
+            functionName: calldata.functionName,
+            functionSignature: calldata.functionSignature,
+            sig: { v, r: parsed.r, s: parsed.s },
+          },
+        },
+      };
+      const headerValue = Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
+
+      const settle = await supertest(app)
+        .post("/x402B/commit")
+        .set("X-PAYMENT", headerValue)
+        .send();
+
+      expect(settle.status).toBe(200);
+      expect(settle.body.exchangeId).toBe("42");
+      expect(settle.body.txHash).toBe("0xabc");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
