@@ -73,9 +73,9 @@ function asInt(value: string, name: string, { min, max }: { min: number; max?: n
 }
 
 function asDecimalUint(value: string, name: string): string {
-  if (!/^[0-9]+$/.test(value)) {
+  if (!/^(?:0|[1-9][0-9]*)$/.test(value)) {
     throw new Error(
-      `[resource-server] ${name} must be a decimal unsigned integer (got ${JSON.stringify(value)})`,
+      `[resource-server] ${name} must be a decimal unsigned integer in canonical form (0 or a non-zero number without leading zeros) (got ${JSON.stringify(value)})`,
     );
   }
   return value;
