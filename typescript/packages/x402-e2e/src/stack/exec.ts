@@ -27,7 +27,7 @@ export function run(
   opts: RunOptions = {},
 ): Promise<RunResult> {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(command, [...args], {
+    const child = spawn(command, args, {
       cwd: opts.cwd,
       stdio: [
         "ignore",
