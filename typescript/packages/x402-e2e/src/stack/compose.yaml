@@ -22,7 +22,7 @@ services:
       - "8545:8545"
 
   boson-mcp-server:
-    image: ghcr.io/bosonprotocol/agentic-commerce/mcp-server:pr-89 # TODO: switch to :main once upstream PR merges
+    image: ghcr.io/bosonprotocol/agentic-commerce/mcp-server:main
     command: npm run start:boson:http
     ports:
       - "3000:3000"
