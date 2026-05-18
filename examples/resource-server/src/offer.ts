@@ -134,5 +134,5 @@ export function buildUnsignedOffer({ env, sellerAddress, now }: BuildOfferArgs):
       royaltyInfo: { recipients: [], bps: [] },
       mutualizerAddress: ZERO_ADDRESS,
     },
-  } as UnsignedFullOffer;
+  } satisfies UnsignedFullOffer;
 }
