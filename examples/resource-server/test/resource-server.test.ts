@@ -16,6 +16,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 
 import { createResourceServerApp } from "../src/app.js";
+import { buildExampleChannelRegistry } from "../src/channel-registry.js";
 import type { ResourceServerEnv } from "../src/config.js";
 
 const SELLER_PK = `0x${"22".repeat(32)}` as const;
@@ -78,6 +79,46 @@ describe("resource-server example app", () => {
     expect(commit).toBeDefined();
     expect(commit.channels).toContain("server");
     expect(commit.endpoints?.server).toBe("http://resource.example/x402B/commit");
+  });
+
+  // The 402 challenge `next` only surfaces the two PRE_COMMIT actions, so
+  // the assertion above can't catch a typo in any of the other seven
+  // mapped routes (redeem / complete / dispute/* / withdraw-funds). Pin
+  // the full action→URL map produced by `buildExampleChannelRegistry`
+  // so a stale path in `ROUTE_FOR_ACTION` fails this package's tests
+  // rather than turning into a buyer-facing 404 mid-flow.
+  it("buildExampleChannelRegistry maps every advertised action to its mountX402b path", () => {
+    const registry = buildExampleChannelRegistry(buildEnv());
+    expect(registry.endpoints).toEqual({
+      "boson-createOfferAndCommit": "http://resource.example/x402B/commit",
+      "boson-createOfferCommitAndRedeem": "http://resource.example/x402B/commit-and-redeem",
+      "boson-redeem": "http://resource.example/x402B/redeem",
+      "boson-completeExchange": "http://resource.example/x402B/complete",
+      "boson-raiseDispute": "http://resource.example/x402B/dispute/raise",
+      "boson-resolveDispute": "http://resource.example/x402B/dispute/resolve",
+      "boson-retractDispute": "http://resource.example/x402B/dispute/retract",
+      "boson-escalateDispute": "http://resource.example/x402B/dispute/escalate",
+      "boson-withdrawFunds": "http://resource.example/x402B/withdraw-funds",
+    });
+  });
+
+  // Closes the loop on the pin above: even if the registry and
+  // `mountX402b` agreed on the *same* typo, the URL would still not
+  // resolve to a real route. POST to every advertised path and assert
+  // non-404. Route-internal failures (402 for missing X-PAYMENT, 400
+  // INVALID_REQUEST_BODY for missing payload) all prove the path
+  // resolved — only Express's default 404 indicates a dead endpoint.
+  it("every channel-registry endpoint resolves to a mounted POST route", async () => {
+    const env = buildEnv();
+    const { app } = createResourceServerApp(env);
+    const registry = buildExampleChannelRegistry(env);
+    const entries = Object.entries(registry.endpoints ?? {}) as [string, string][];
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [action, url] of entries) {
+      const path = new URL(url).pathname;
+      const res = await supertest(app).post(path).send();
+      expect(res.status, `${action} → POST ${path} returned 404`).not.toBe(404);
+    }
   });
 
   it("POST /x402B/commit without X-PAYMENT emits the same 402 challenge as /resource", async () => {
