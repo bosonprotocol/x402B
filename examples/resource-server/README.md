@@ -53,6 +53,12 @@ this host adds no protocol logic of its own.
 
 ## Run locally
 
+The binary entry point (`src/index.ts`) **refuses to start out of the
+box** — see [Wire up `ExchangeReader` before running the
+binary](#wire-up-exchangereader-before-running-the-binary) below. Once
+you've forked the entry point to construct a real reader, the same env
+contract applies:
+
 ```sh
 pnpm build  # build the workspace deps once
 
@@ -93,25 +99,31 @@ docker run --rm -p 4001:4001 \
   x402b-resource-server
 ```
 
-## Wire up `ExchangeReader` before exercising write handlers
+## Wire up `ExchangeReader` before running the binary
 
-The example ships a **placeholder `ExchangeReader`** that returns `null`
-and logs a warning. The 402 challenge path doesn't touch it, so the
-binary boots and serves `GET /resource` without further configuration.
-The write handlers (`commit`, `redeem`, `complete`, `dispute/*`)
-verify the post-settle on-chain state through the reader, and **will
-fail with `EXCHANGE_NOT_FOUND`** until you replace the stub.
+The convenience handlers in `@bosonprotocol/x402-server`
+(`commit`, `redeem`, `complete`, `dispute/*`) forward the buyer's
+signed payload to the facilitator's `/settle` **before** they verify
+post-settle state through the configured `ExchangeReader`. A reader
+that always returns `null` would let a valid `X-PAYMENT` settle
+on-chain and then fail with `STATE_VERIFY_EXCHANGE_NOT_FOUND` — the
+buyer is irreversibly charged but receives no resource.
 
-Two options:
+To keep the demo from shipping that footgun, the binary entry point
+([`src/index.ts`](./src/index.ts)) throws at startup, and
+`createResourceServerApp(env, { exchangeReader })` requires the option
+at the type level. Two ways to run the host:
 
 - **Programmatic injection** — for tests / embedded scenarios, import
   `createResourceServerApp` directly and pass
   `{ exchangeReader: yourReader }` in the second argument. The
   x402B e2e suite uses this path.
-- **Fork this example** — swap
-  [`src/exchange-reader.ts`](./src/exchange-reader.ts) for a real
-  subgraph-backed (`coreSDK.getExchangeById`) or RPC-backed
-  (`publicClient.readContract`) reader.
+- **Fork this example** — replace the throw in
+  [`src/index.ts`](./src/index.ts) with a real subgraph-backed
+  (`coreSDK.getExchangeById`) or RPC-backed
+  (`publicClient.readContract`) reader, then call
+  `createResourceServerApp(env, { exchangeReader })` and `app.listen`.
+  The file's trailing comment shows the assembly skeleton.
 
 ## Embed in your own Express app
 

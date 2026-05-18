@@ -1,13 +1,23 @@
 // `createResourceServerApp` — assembles the example Express host.
 //
+// A real `ExchangeReader` is **required**: the convenience handlers in
+// `@bosonprotocol/x402-server` (commit, redeem, complete, dispute/*)
+// forward the buyer's signed payload to the facilitator's `/settle`
+// *before* they read post-settle state through the reader. A reader
+// that always returns `null` would let a valid `X-PAYMENT` settle
+// on-chain and then return `STATE_VERIFY_EXCHANGE_NOT_FOUND` — the
+// buyer is irreversibly charged but receives no resource. So we refuse
+// to build the app without one rather than ship an "easy demo" that
+// silently strands buyers' funds.
+//
 // Two surfaces:
 //
 // 1. **Programmatic** — the e2e suite imports this function directly
 //    and injects a real `exchangeReader` (and any other test-time
-//    overrides) via `overrides`. The placeholder reader is bypassed.
-// 2. **Binary** — `src/index.ts` reads env, calls this function with
-//    no overrides, and listens. The placeholder reader makes the
-//    402 challenge path work without a subgraph configured.
+//    overrides) via `options`.
+// 2. **Binary** — `src/index.ts` reads env, constructs a reader, calls
+//    this function, and listens. The binary refuses to start if no
+//    reader can be built from the env (see README).
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
@@ -22,16 +32,15 @@ import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 
 import { buildExampleChannelRegistry } from "./channel-registry.js";
 import type { ResourceServerEnv } from "./config.js";
-import { createPlaceholderExchangeReader } from "./exchange-reader.js";
 import { buildUnsignedOffer } from "./offer.js";
 
 export interface ResourceServerAppOptions {
   /**
-   * Replace the placeholder `ExchangeReader` with a real one. Required
-   * in any context that exercises the write handlers
-   * (`commit` / `redeem` / `complete` / `dispute/*`).
+   * Post-settle state reader. Required — without it, a valid
+   * `X-PAYMENT` retry would settle on-chain before any verification
+   * runs, charging the buyer with no resource delivered.
    */
-  exchangeReader?: ExchangeReader;
+  exchangeReader: ExchangeReader;
   /** Replace `Date.now()` for deterministic offer-validity windows in tests. */
   now?: () => number;
 }
@@ -61,10 +70,10 @@ function buildServerConfig(
 
 export function createResourceServerApp(
   env: ResourceServerEnv,
-  options: ResourceServerAppOptions = {},
+  options: ResourceServerAppOptions,
 ): ResourceServerAppBundle {
   const seller = privateKeyToAccount(env.sellerPk);
-  const exchangeReader = options.exchangeReader ?? createPlaceholderExchangeReader();
+  const exchangeReader = options.exchangeReader;
   const now = options.now ?? Date.now;
 
   const server = createX402bServer(buildServerConfig(env, seller, exchangeReader));

@@ -43,16 +43,22 @@ function buildEnv(overrides: Partial<ResourceServerEnv> = {}): ResourceServerEnv
   };
 }
 
+// Read-only smoke tests don't exercise the settle path, so a reader
+// that always returns `null` is fine — the request never reaches
+// `verifyExchange`. Tests that do drive a commit through to settle
+// (the regression below) pass their own reader instead.
+const NULL_READER: ExchangeReader = { read: async () => null };
+
 describe("resource-server example app", () => {
   it("GET /health returns ok", async () => {
-    const { app } = createResourceServerApp(buildEnv());
+    const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     const res = await supertest(app).get("/health");
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
   });
 
   it("GET /resource without X-PAYMENT emits a 402 with PaymentRequirements", async () => {
-    const { app } = createResourceServerApp(buildEnv());
+    const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     const res = await supertest(app).get("/resource");
 
     expect(res.status).toBe(402);
@@ -69,7 +75,7 @@ describe("resource-server example app", () => {
   });
 
   it("the 402 challenge advertises the server-channel commit endpoint under RESOURCE_SERVER_URL", async () => {
-    const { app } = createResourceServerApp(buildEnv());
+    const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     const res = await supertest(app).get("/resource");
 
     const next = res.body.accepts[0].actions.next;
@@ -110,7 +116,7 @@ describe("resource-server example app", () => {
   // resolved — only Express's default 404 indicates a dead endpoint.
   it("every channel-registry endpoint resolves to a mounted POST route", async () => {
     const env = buildEnv();
-    const { app } = createResourceServerApp(env);
+    const { app } = createResourceServerApp(env, { exchangeReader: NULL_READER });
     const registry = buildExampleChannelRegistry(env);
     const entries = Object.entries(registry.endpoints ?? {}) as [string, string][];
     expect(entries.length).toBeGreaterThan(0);
@@ -122,7 +128,7 @@ describe("resource-server example app", () => {
   });
 
   it("POST /x402B/commit without X-PAYMENT emits the same 402 challenge as /resource", async () => {
-    const { app } = createResourceServerApp(buildEnv());
+    const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     const res = await supertest(app).post("/x402B/commit").send();
     expect(res.status).toBe(402);
     expect(res.body.x402Version).toBe(2);
@@ -130,13 +136,13 @@ describe("resource-server example app", () => {
   });
 
   it("POST /x402b/commit (lowercase alias) routes to the same handler", async () => {
-    const { app } = createResourceServerApp(buildEnv());
+    const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     const res = await supertest(app).post("/x402b/commit").send();
     expect(res.status).toBe(402);
   });
 
   it("GET /config echoes the resolved PaymentRequirements for debugging", async () => {
-    const { app } = createResourceServerApp(buildEnv());
+    const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     const res = await supertest(app).get("/config");
     expect(res.status).toBe(200);
     expect(res.body.scheme).toBe("escrow");
@@ -144,7 +150,7 @@ describe("resource-server example app", () => {
   });
 
   it("the seller signer address matches the configured private key", () => {
-    const { seller } = createResourceServerApp(buildEnv());
+    const { seller } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     expect(seller.address).toBe(privateKeyToAccount(SELLER_PK).address);
   });
 
