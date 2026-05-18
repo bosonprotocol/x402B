@@ -31,6 +31,8 @@ services:
       - THE_GRAPH_IPFS_URL=http://host.docker.internal:5001
       - LOCALHOST_SUBSTITUTE=host.docker.internal
       - PROTOCOL=BOSON
+      - AGENT_REGISTRY_REPO=bosonprotocol/dACP-agents-registry
+      - AGENT_REGISTRY_DIRECTORY=agents/local
     extra_hosts:
       - host.docker.internal:host-gateway
 

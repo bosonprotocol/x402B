@@ -7,16 +7,18 @@ published. Wraps the canonical Boson local stack
 services (`facilitator-http`, `resource-server`, `webhook-sink`) into
 a single programmatic lifecycle.
 
-> PR 4 of 6 ships the **stack scaffolding** — compose file, lifecycle
-> scripts, deploy-done readiness probe, and a gated smoke test.
-> The buyer/seller/resolver harness lands in PR 5; scenario tests in PR 6.
+> PR 4 shipped the **stack scaffolding** — compose file, lifecycle
+> scripts, deploy-done readiness probe, gated smoke. PR 5 (this PR)
+> adds the **actor + asserter harness** plus the subgraph-backed
+> `ExchangeReader` the resource-server container now uses. Scenario
+> tests land in PR 6.
 
 ## Layout
 
 ```text
 src/
   bin/
-    resource-server.ts            ← entrypoint for x402b-resource-server (wraps the example)
+    resource-server.ts            ← entrypoint for x402b-resource-server (wraps the example + subgraph reader)
     resource-server.Dockerfile    ← Dockerfile invoked by compose.yaml
   config/
     accounts.ts                   ← verbatim test PKs from boson-protocol-contracts/accounts.js
@@ -27,10 +29,23 @@ src/
     start.ts / stop.ts            ← programmatic docker compose up / down
     readiness.ts                  ← polls boson-protocol-node + boson-subgraph deploy.done markers
     paths.ts / exec.ts            ← internals
+  harness/                          ← PR 5
+    clients.ts                    ← shared viem PublicClient/WalletClient builders
+    exchange-reader.ts            ← subgraph-backed ExchangeReader (CoreSDK.getExchangeById)
+    buyer-actor.ts                ← x402-client + wrapFetchWithPayment wrapper
+    seller-actor.ts               ← FullOffer signer
+    resolver-actor.ts             ← dispute-resolver operator persona
+    onchain-asserter.ts           ← retry-aware snapshot assertions
+    x-payment-response-asserter.ts ← decodes X-PAYMENT-RESPONSE header
+    seed.ts                       ← suite-level idempotent seed (createSeller)
 scripts/
   stack-up.ts / stack-down.ts     ← CLI wrappers (see `pnpm stack:up` / `:down`)
 test/
   stack.test.ts                   ← gated smoke (E2E_DOCKER=1)
+  harness/                        ← PR 5 unit tests (no Docker)
+    actors.test.ts
+    asserters.test.ts
+    seed.test.ts
 ```
 
 ## Bring the stack up
@@ -94,16 +109,63 @@ Without `E2E_DOCKER=1`, the suite skips itself so the repo-wide
   only after they land upstream, so a developer running the canonical
   stack from another Boson project sees the same env.
 
-## Caveats — PR4 scope
+## Harness (PR 5)
 
-- **`x402b-resource-server` uses a placeholder `ExchangeReader`**
-  ([`src/bin/resource-server.ts`](./src/bin/resource-server.ts)). The
-  `GET /resource` 402 challenge path works; `POST /x402B/{commit,redeem,
-  dispute/*}` will fail with `STATE_VERIFY_EXCHANGE_NOT_FOUND` until
-  PR5 wires a subgraph-backed reader.
-- **No seed step yet.** The boson-protocol-node container already ships
-  with a deployed dispute resolver (`id: 1`) and three test ERC-20s,
-  so for the smoke path no seed is needed. PR5 adds the
-  `createSeller` flow (via core-sdk → meta-tx-gateway) the buyer flows
-  depend on.
-- **No buyer / seller actors yet.** Lands in PR5.
+The harness exposes actor + asserter primitives that scenario tests
+compose. Every piece has a unit test under `test/harness/` that runs
+without Docker.
+
+```ts
+import {
+  ROLE_ACCOUNTS,
+  createBuyerActor,
+  createSellerActor,
+  createSubgraphExchangeReader,
+  createOnchainAsserter,
+  readXPaymentResponse,
+  seedSuite,
+} from "@bosonprotocol/x402-e2e";
+import { privateKeyToAccount } from "viem/accounts";
+
+// One-time per suite:
+const seller = createSellerActor({
+  account: privateKeyToAccount(ROLE_ACCOUNTS.seller.privateKey),
+});
+const buyer = createBuyerActor({
+  account: privateKeyToAccount(ROLE_ACCOUNTS.buyer.privateKey),
+});
+const reader = createSubgraphExchangeReader();
+const asserter = createOnchainAsserter(reader);
+
+// `seedSuite` is idempotent — first run registers the seller,
+// subsequent runs return the existing entity id.
+const suiteState = await seedSuite({
+  sellerAddress: seller.address,
+  createSeller: async (assistant) => {
+    // PR 6 scenarios plug the core-sdk createSeller call here.
+  },
+});
+
+// In a scenario test:
+const res = await buyer.fetch("http://localhost:4001/resource");
+const decoded = readXPaymentResponse(res.headers);
+await asserter.expect(decoded!.exchangeId!, {
+  state: ExchangeState.COMMITTED,
+  seller: seller.address,
+  exchangeToken: LOCAL_31337_0.contracts.testErc20,
+  price: "1000000",
+});
+```
+
+### Notes
+
+- **`x402b-resource-server` now uses the subgraph-backed reader.**
+  The compose service boots with the same `ExchangeReader` scenario
+  tests use, so write handlers (`commit`, `redeem`, `dispute/*`) work
+  end-to-end against the local stack.
+- **`seedSuite` is "check + optionally create".** The default
+  `createSeller` callback throws — scenario PRs plug in the actual
+  core-sdk call. A stack with the seller pre-provisioned passes
+  through. See [`src/harness/seed.ts`](./src/harness/seed.ts) header
+  for rationale.
+- **No scenario tests yet** — those land in PR 6 alongside CI wiring.
