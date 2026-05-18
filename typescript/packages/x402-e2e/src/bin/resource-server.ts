@@ -27,8 +27,15 @@ const { app, seller } = createResourceServerApp(env, {
   exchangeReader: placeholderExchangeReader,
 });
 
-app.listen(env.port, () => {
+const server = app.listen(env.port, () => {
   console.log(
     `[x402-e2e/resource-server] listening on :${env.port} (chain ${env.chainId}, seller ${seller.address}, asset ${env.assetAddress})`,
   );
+});
+
+server.on("error", (err: Error) => {
+  console.error(
+    `[x402-e2e/resource-server] failed to bind on :${env.port} (chain ${env.chainId}, seller ${seller.address}, asset ${env.assetAddress}): ${err.message}`,
+  );
+  process.exit(1);
 });
