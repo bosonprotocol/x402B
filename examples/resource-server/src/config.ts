@@ -28,7 +28,7 @@ export interface ResourceServerEnv {
   assetAddress: Address;
   /** Atomic-units price advertised in the 402 challenge. */
   amount: string;
-  /** `PaymentRequirements.maxTimeoutSeconds`. Capped at one hour by default. */
+  /** `PaymentRequirements.maxTimeoutSeconds`. Defaults to 3600 seconds and is capped at 24 hours. */
   maxTimeoutSeconds: number;
   /** Optional subgraph URL — wired into `X402bServerConfig.subgraphUrl` for the funds handlers. */
   subgraphUrl?: string;
