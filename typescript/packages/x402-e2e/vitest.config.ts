@@ -4,8 +4,9 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
     environment: "node",
-    // Docker boot + contract + subgraph readiness can take 2–5 min on a cold pull.
+    // Individual tests should finish quickly, but stack startup can take much longer
+    // on cold/slow Docker runs due to image pull/build and multiple readiness probes.
     testTimeout: 5 * 60_000,
-    hookTimeout: 5 * 60_000,
+    hookTimeout: 12 * 60_000,
   },
 });
