@@ -82,7 +82,13 @@ function asDecimalUint(value: string, name: string): string {
 }
 
 function asHttpUrl(value: string, name: string): string {
-  if (!/^https?:\/\//.test(value)) {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`[resource-server] ${name} must be an http(s) URL`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(`[resource-server] ${name} must be an http(s) URL`);
   }
   return value;
