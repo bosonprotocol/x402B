@@ -1,0 +1,27 @@
+{
+  "name": "@bosonprotocol/x402-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Containerised end-to-end test suite for x402B. Wraps the canonical Boson stack (boson-protocol-node, boson-subgraph, ipfs, postgres, meta-tx-gateway, boson-mcp-server) and the x402B example services (resource-server, facilitator-http, webhook-sink) behind a programmatic lifecycle + scenario harness.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src test scripts --max-warnings 0",
+    "stack:up": "tsx scripts/stack-up.ts",
+    "stack:down": "tsx scripts/stack-down.ts",
+    "clean": "rm -rf .turbo"
+  },
+  "dependencies": {
+    "@bosonprotocol/x402-example-resource-server": "workspace:^",
+    "@bosonprotocol/x402-server": "workspace:^",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "typescript": "^5.7.2",
+    "viem": "^2.39.3",
+    "vitest": "^2.1.8"
+  }
+}

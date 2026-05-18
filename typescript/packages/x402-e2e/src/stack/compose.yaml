@@ -1,0 +1,162 @@
+# Containerised stack for the x402B e2e suite.
+#
+# Base: bosonprotocol/agentic-commerce@boson-e2e-local-env:docs/boson/example/docker-compose.yaml.
+# Deltas from the canonical file:
+#  - drops `opensea-api-mock` (not exercised by x402B).
+#  - adds three x402B services (`x402b-facilitator-http`,
+#    `x402b-resource-server`, `x402b-webhook-sink`) built from the
+#    monorepo, all using `host.docker.internal:host-gateway` so they
+#    reach the canonical services through the same network alias the
+#    canonical services already use.
+#
+# Every env var on the canonical services is verbatim — keep that way
+# so credentials, FORWARDER_ADDRESS, API_KEYS, etc. stay consistent
+# across all Boson e2e environments. Updates to those should land here
+# only after they land in the canonical compose.
+
+services:
+  boson-protocol-node:
+    image: ghcr.io/bosonprotocol/core-components/boson-protocol-node:main
+    ports:
+      - "8545:8545"
+
+  boson-mcp-server:
+    image: ghcr.io/bosonprotocol/agentic-commerce/mcp-server:pr-89 # TODO: switch to :main once upstream PR merges
+    command: npm run start:boson:http
+    ports:
+      - "3000:3000"
+    environment:
+      - IPFS_METADATA_URL=http://host.docker.internal:5001
+      - THE_GRAPH_IPFS_URL=http://host.docker.internal:5001
+      - LOCALHOST_SUBSTITUTE=host.docker.internal
+      - PROTOCOL=BOSON
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  boson-subgraph:
+    image: ghcr.io/bosonprotocol/core-components/boson-subgraph:main
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8020:8020"
+      - "8030:8030"
+      - "8040:8040"
+    depends_on:
+      - ipfs
+      - postgres
+      - boson-protocol-node
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    environment:
+      postgres_host: postgres
+      postgres_user: graph-node
+      postgres_pass: let-me-in
+      postgres_db: graph-node
+      ipfs: "ipfs:5001"
+      ethereum: "localhost:http://host.docker.internal:8545"
+      GRAPH_LOG: debug
+      GRAPH_ALLOW_NON_DETERMINISTIC_IPFS: "true"
+
+  postgres:
+    image: postgres:14
+    ports:
+      - "5432:5432"
+    command: ["postgres", "-cshared_preload_libraries=pg_stat_statements", "-cmax_connections=200"]
+    environment:
+      POSTGRES_USER: graph-node
+      POSTGRES_PASSWORD: let-me-in
+      POSTGRES_DB: graph-node
+      PGDATA: "/var/lib/postgresql/data"
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+
+  ipfs:
+    image: ipfs/go-ipfs:master-2022-05-25-e8f1ce0
+    ports:
+      - "5001:5001"
+      - "8080:8080"
+    volumes:
+      - ./ipfs-config.sh:/container-init.d/ipfs-config.sh
+
+  meta-tx-gateway:
+    image: ghcr.io/bosonprotocol/meta-tx-gateway:main
+    user: "node:node"
+    ports:
+      - "8888:8888"
+    environment:
+      - ENV_NAME=local
+      - CONFIG_ID=local-31337-0
+      # ACCOUNT_9 from boson-protocol-contracts/contracts/accounts.js.
+      - PRIVATE_KEY=0x316b234f5fea007dcc40404188b588fb90cb9bb1e33fc163e212eab2f8565293
+      - RPC_NODE=http://host.docker.internal:8545
+      - FORWARDER_ADDRESS=0x4c5859f0F772848b2D91F1D83E2Fe57935348029
+      - API_KEYS=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      - 'API_IDS={"BOSON": ["xxxxxxxx-xxxx-xxxx-xxxx-111111111111"], "FERMION": ["xxxxxxxx-xxxx-xxxx-xxxx-222222222222"], "ERC20": ["xxxxxxxx-xxxx-xxxx-xxxx-333333333333"], "FORWARDER": ["xxxxxxxx-xxxx-xxxx-xxxx-444444444444"]}'
+      - BOSON_VOUCHER_INTERFACE_ID=0x6a474d2c
+    depends_on:
+      - boson-protocol-node
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    command: ["sh", "-c", "sleep 3 && npm run start"]
+
+  # ── x402B services ──────────────────────────────────────────────────
+
+  x402b-facilitator-http:
+    build:
+      # Repo root so the workspace lockfile + facilitator package source
+      # are visible to the multi-stage build.
+      context: ../../../../..
+      dockerfile: examples/facilitator-http/Dockerfile
+    ports:
+      - "8889:8889"
+    environment:
+      # ACCOUNT_8 — distinct from the gateway's ACCOUNT_9 so concurrent
+      # relayer submissions don't share a nonce.
+      - RELAYER_PK=0x8e7f74d2eac64f4610b0ff0dea351b9f0fa61f31b0d3cc188b1dc8d5f71e7622
+      - FACILITATOR_URL=http://host.docker.internal:8889
+      - RPC_NODE=http://host.docker.internal:8545
+      - CHAIN_ID=31337
+      - ESCROW_ADDRESS=0xa513E6E4b8f2a923D98304ec87F64353C4D5C853
+      - PORT=8889
+    depends_on:
+      - boson-protocol-node
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  x402b-resource-server:
+    build:
+      context: ../../../../..
+      dockerfile: typescript/packages/x402-e2e/src/bin/resource-server.Dockerfile
+    ports:
+      - "4001:4001"
+    environment:
+      # ACCOUNT_2 — distinct from facilitator (ACCOUNT_8) and gateway
+      # (ACCOUNT_9). The Boson seller entity behind SELLER_ID is created
+      # at suite seed time (PR5); SELLER_ID=1 is a placeholder until
+      # then — the /resource 402 path doesn't dereference it on chain.
+      - SELLER_PK=0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+      - SELLER_ID=1
+      - DISPUTE_RESOLVER_ID=1
+      - RESOURCE_SERVER_URL=http://host.docker.internal:4001
+      - RPC_NODE=http://host.docker.internal:8545
+      - CHAIN_ID=31337
+      - ESCROW_ADDRESS=0xa513E6E4b8f2a923D98304ec87F64353C4D5C853
+      - FACILITATOR_URL=http://host.docker.internal:8889
+      - ASSET_ADDRESS=0x70e0bA845a1A0F2DA3359C97E0285013525FFC49
+      - AMOUNT=1000000
+      - SUBGRAPH_URL=http://host.docker.internal:8000/subgraphs/name/boson/corecomponents
+      - PORT=4001
+    depends_on:
+      - boson-protocol-node
+      - boson-subgraph
+      - x402b-facilitator-http
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  x402b-webhook-sink:
+    build:
+      context: ../../../../..
+      dockerfile: examples/webhook-sink/Dockerfile
+    ports:
+      - "4002:4000"
+    environment:
+      - PORT=4000
