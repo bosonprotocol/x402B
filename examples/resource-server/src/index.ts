@@ -12,8 +12,7 @@ import { readEnv } from "./config.js";
 // See the "Wire up `ExchangeReader` before running the binary" section
 // in `examples/resource-server/README.md`.
 const isMain =
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMain) {
   throw new Error(
