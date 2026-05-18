@@ -102,7 +102,7 @@ describe("resource-server example app", () => {
     expect(res.body.network).toBe("eip155:31337");
   });
 
-  it("the seller signer recovers to the expected address from the offer signature", () => {
+  it("the seller signer address matches the configured private key", () => {
     const { seller } = createResourceServerApp(buildEnv());
     expect(seller.address).toBe(privateKeyToAccount(SELLER_PK).address);
   });
