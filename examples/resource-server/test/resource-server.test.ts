@@ -13,7 +13,7 @@ import type { ExchangeReader, FetchLike } from "@bosonprotocol/x402-server";
 import supertest from "supertest";
 import { parseSignature } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createResourceServerApp } from "../src/app.js";
 import { buildExampleChannelRegistry } from "../src/channel-registry.js";
@@ -50,6 +50,10 @@ function buildEnv(overrides: Partial<ResourceServerEnv> = {}): ResourceServerEnv
 const NULL_READER: ExchangeReader = { read: async () => null };
 
 describe("resource-server example app", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("GET /health returns ok", async () => {
     const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     const res = await supertest(app).get("/health");
@@ -205,78 +209,71 @@ describe("resource-server example app", () => {
       text: async () => JSON.stringify({ ok: true, exchangeId: "42", txHash: "0xabc" }),
     });
 
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = stubFetch as unknown as typeof globalThis.fetch;
-    try {
-      const { app } = createResourceServerApp(buildEnv(), {
-        exchangeReader: reader,
-        now,
-      });
+    vi.stubGlobal("fetch", stubFetch);
 
-      const challenge = await supertest(app).get("/resource");
-      expect(challenge.status).toBe(402);
-      const requirements = challenge.body.accepts[0];
+    const { app } = createResourceServerApp(buildEnv(), {
+      exchangeReader: reader,
+      now,
+    });
 
-      const buyer = privateKeyToAccount(BUYER_PK);
-      const calldata = await buildCreateOfferAndCommitCalldata({
-        fullOffer: {
-          ...requirements.offer.fullOffer,
-          signature: requirements.offer.sellerSig,
-        } as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
-      });
-      const td = await metaTransactionTypedData({
-        chainId: 31337,
-        verifyingContract: requirements.escrowAddress,
-        message: {
-          nonce: 1n,
+    const challenge = await supertest(app).get("/resource");
+    expect(challenge.status).toBe(402);
+    const requirements = challenge.body.accepts[0];
+
+    const buyer = privateKeyToAccount(BUYER_PK);
+    const calldata = await buildCreateOfferAndCommitCalldata({
+      fullOffer: {
+        ...requirements.offer.fullOffer,
+        signature: requirements.offer.sellerSig,
+      } as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
+    });
+    const td = await metaTransactionTypedData({
+      chainId: 31337,
+      verifyingContract: requirements.escrowAddress,
+      message: {
+        nonce: 1n,
+        from: buyer.address,
+        contractAddress: requirements.escrowAddress,
+        functionName: calldata.functionName,
+        functionSignature: calldata.functionSignature,
+      },
+    });
+    const sig = await buyer.signTypedData({
+      domain: td.domain,
+      types: td.types,
+      primaryType: td.primaryType,
+      message: td.message,
+    });
+    const parsed = parseSignature(sig);
+    const v = parsed.v !== undefined ? Number(parsed.v) : parsed.yParity === 0 ? 27 : 28;
+
+    const payload = {
+      x402Version: 2,
+      scheme: "escrow" as const,
+      network: requirements.network,
+      payload: {
+        action: "boson-createOfferAndCommit" as const,
+        tokenAuthStrategy: "none" as const,
+        offerRef: {
+          fullOffer: requirements.offer.fullOffer,
+          sellerSig: requirements.offer.sellerSig,
+        },
+        buyer: buyer.address,
+        metaTx: {
           from: buyer.address,
-          contractAddress: requirements.escrowAddress,
+          nonce: "1",
           functionName: calldata.functionName,
           functionSignature: calldata.functionSignature,
+          sig: { v, r: parsed.r, s: parsed.s },
         },
-      });
-      const sig = await buyer.signTypedData({
-        domain: td.domain,
-        types: td.types,
-        primaryType: td.primaryType,
-        message: td.message,
-      });
-      const parsed = parseSignature(sig);
-      const v = parsed.v !== undefined ? Number(parsed.v) : parsed.yParity === 0 ? 27 : 28;
+      },
+    };
+    const headerValue = Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
 
-      const payload = {
-        x402Version: 2,
-        scheme: "escrow" as const,
-        network: requirements.network,
-        payload: {
-          action: "boson-createOfferAndCommit" as const,
-          tokenAuthStrategy: "none" as const,
-          offerRef: {
-            fullOffer: requirements.offer.fullOffer,
-            sellerSig: requirements.offer.sellerSig,
-          },
-          buyer: buyer.address,
-          metaTx: {
-            from: buyer.address,
-            nonce: "1",
-            functionName: calldata.functionName,
-            functionSignature: calldata.functionSignature,
-            sig: { v, r: parsed.r, s: parsed.s },
-          },
-        },
-      };
-      const headerValue = Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
+    const settle = await supertest(app).post("/x402B/commit").set("X-PAYMENT", headerValue).send();
 
-      const settle = await supertest(app)
-        .post("/x402B/commit")
-        .set("X-PAYMENT", headerValue)
-        .send();
-
-      expect(settle.status).toBe(200);
-      expect(settle.body.exchangeId).toBe("42");
-      expect(settle.body.txHash).toBe("0xabc");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    expect(settle.status).toBe(200);
+    expect(settle.body.exchangeId).toBe("42");
+    expect(settle.body.txHash).toBe("0xabc");
   });
 });
