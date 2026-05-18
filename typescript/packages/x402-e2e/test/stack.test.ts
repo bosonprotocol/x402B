@@ -31,16 +31,33 @@ const HEALTH_TARGETS: readonly { name: string; url: string }[] = [
   { name: "x402b-webhook-sink", url: "http://localhost:4002/health" },
 ];
 
-async function ping(url: string): Promise<{ ok: boolean; status: number }> {
+interface PingResult {
+  ok: boolean;
+  status: number;
+  error?: string;
+}
+
+async function ping(url: string): Promise<PingResult> {
   // POST-only services (the RPC node + the gateway) answer GET with a
   // 4xx — that's good enough for "the container is up and listening".
   // Treat only non-5xx as healthy reachability.
   try {
     const res = await fetch(url, { method: "GET" });
     return { ok: res.status < 500, status: res.status };
-  } catch {
-    return { ok: false, status: 0 };
+  } catch (err) {
+    return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+const PING_MAX_ATTEMPTS = Number(process.env.E2E_PING_MAX_ATTEMPTS ?? 10);
+const PING_RETRY_DELAY_MS = Number(process.env.E2E_PING_RETRY_DELAY_MS ?? 1000);
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function describePing(r: PingResult): string {
+  return r.error ? `error=${r.error}` : `status=${r.status}`;
 }
 
 describe.skipIf(!ENABLED)("x402-e2e stack smoke", () => {
@@ -54,8 +71,16 @@ describe.skipIf(!ENABLED)("x402-e2e stack smoke", () => {
 
   for (const target of HEALTH_TARGETS) {
     it(`${target.name} is reachable`, async () => {
-      const result = await ping(target.url);
-      expect(result.ok, `expected ${target.url} to be reachable; got ECONNREFUSED`).toBe(true);
+      let last: PingResult = { ok: false, status: 0, error: "no attempt made" };
+      for (let attempt = 1; attempt <= PING_MAX_ATTEMPTS; attempt++) {
+        last = await ping(target.url);
+        if (last.ok) break;
+        if (attempt < PING_MAX_ATTEMPTS) await sleep(PING_RETRY_DELAY_MS);
+      }
+      expect(
+        last.ok,
+        `expected ${target.url} to be reachable after ${PING_MAX_ATTEMPTS} attempts; last ${describePing(last)}`,
+      ).toBe(true);
     });
   }
 });
