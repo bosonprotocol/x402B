@@ -12,6 +12,15 @@
 // and `boson-revokeVoucher` are intentionally absent: `mountX402b` does
 // not expose routes for them yet, so they only travel on the
 // `facilitator` / `onchain` channels.
+//
+// `boson-withdrawFunds` is a special case: the server's handler needs
+// a `CoreSdkReadAdapter` (resolved from `subgraphUrl` in the example)
+// to look up entity ids and on-chain funds. With no `SUBGRAPH_URL`
+// configured, mounting the route is fine but the handler throws on
+// invocation — advertising the URL would put a dead endpoint into a
+// resolved dispute's `nextActions`. So the action only joins
+// `endpoints` when `env.subgraphUrl` is set; otherwise it travels via
+// `facilitator` / `onchain` only.
 
 import type { ChannelRegistry } from "@bosonprotocol/x402-actions";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
@@ -28,6 +37,10 @@ const ROUTE_FOR_ACTION: Partial<Record<ActionId, string>> = {
   "boson-resolveDispute": "/x402B/dispute/resolve",
   "boson-retractDispute": "/x402B/dispute/retract",
   "boson-escalateDispute": "/x402B/dispute/escalate",
+};
+
+/** Actions whose server-channel mapping requires `subgraphUrl` (or an equivalent `coreSdkRead`). */
+const ROUTE_FOR_ACTION_REQUIRING_SUBGRAPH: Partial<Record<ActionId, string>> = {
   "boson-withdrawFunds": "/x402B/withdraw-funds",
 };
 
@@ -36,6 +49,14 @@ export function buildExampleChannelRegistry(env: ResourceServerEnv): ChannelRegi
   const endpoints: Partial<Record<ActionId, string>> = {};
   for (const [action, path] of Object.entries(ROUTE_FOR_ACTION) as [ActionId, string][]) {
     endpoints[action] = `${base}${path}`;
+  }
+  if (env.subgraphUrl !== undefined) {
+    for (const [action, path] of Object.entries(ROUTE_FOR_ACTION_REQUIRING_SUBGRAPH) as [
+      ActionId,
+      string,
+    ][]) {
+      endpoints[action] = `${base}${path}`;
+    }
   }
   return {
     channels: ["server", "facilitator", "onchain"],

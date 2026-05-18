@@ -94,7 +94,9 @@ describe("resource-server example app", () => {
   // so a stale path in `ROUTE_FOR_ACTION` fails this package's tests
   // rather than turning into a buyer-facing 404 mid-flow.
   it("buildExampleChannelRegistry maps every advertised action to its mountX402b path", () => {
-    const registry = buildExampleChannelRegistry(buildEnv());
+    const registry = buildExampleChannelRegistry(
+      buildEnv({ subgraphUrl: "http://subgraph.example" }),
+    );
     expect(registry.endpoints).toEqual({
       "boson-createOfferAndCommit": "http://resource.example/x402B/commit",
       "boson-createOfferCommitAndRedeem": "http://resource.example/x402B/commit-and-redeem",
@@ -106,6 +108,21 @@ describe("resource-server example app", () => {
       "boson-escalateDispute": "http://resource.example/x402B/dispute/escalate",
       "boson-withdrawFunds": "http://resource.example/x402B/withdraw-funds",
     });
+  });
+
+  // `boson-withdrawFunds` needs `coreSdkRead` (resolved from
+  // `subgraphUrl` in this example) at handler-invocation time. Without
+  // `SUBGRAPH_URL` the route is still mounted but the handler throws —
+  // advertising the URL via the channel registry would put a dead
+  // endpoint into a resolved dispute's `nextActions`. Pin the omission
+  // so a future "always include it" regression fails here.
+  it("omits boson-withdrawFunds from endpoints when subgraphUrl is not configured", () => {
+    const registry = buildExampleChannelRegistry(buildEnv());
+    expect(registry.endpoints).not.toHaveProperty("boson-withdrawFunds");
+    // The other server-channel actions are still mapped — only
+    // withdrawFunds depends on the subgraph.
+    expect(registry.endpoints).toHaveProperty("boson-createOfferAndCommit");
+    expect(registry.endpoints).toHaveProperty("boson-resolveDispute");
   });
 
   // Closes the loop on the pin above: even if the registry and
