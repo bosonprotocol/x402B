@@ -2,7 +2,7 @@
 // `server`, `facilitator`, and `onchain` channels, stamps every
 // `POST /x402B/*` route under `RESOURCE_SERVER_URL` as the
 // `server`-channel endpoint for the corresponding action id, and pins
-// the registry to the configured Boson Diamond.
+// the registry to the configured Boson escrow.
 //
 // The registry is consumed by `@bosonprotocol/x402-server`'s
 // `deriveNextActions` — actions absent from `endpoints` will not
