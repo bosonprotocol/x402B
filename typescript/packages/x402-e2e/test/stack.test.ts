@@ -17,18 +17,18 @@ import { startStack, stopStack } from "../src/stack/index.js";
 
 const ENABLED = process.env.E2E_DOCKER === "1";
 
-const HEALTH_TARGETS: readonly { name: string; url: string }[] = [
-  { name: "boson-protocol-node", url: `${LOCAL_31337_0.urls.jsonRpc}` },
-  { name: "boson-subgraph", url: "http://localhost:8030" },
-  { name: "boson-mcp-server", url: LOCAL_31337_0.urls.bosonMcp },
-  { name: "meta-tx-gateway", url: LOCAL_31337_0.urls.metaTxGateway },
-  // IPFS Kubo API — POST-only, so GET answers 4xx when the container is
-  // up. Probing it directly catches a stopped/unreachable IPFS instead
-  // of relying on the subgraph's startup dependency to surface it.
-  { name: "ipfs", url: "http://localhost:5001/api/v0/version" },
-  { name: "x402b-facilitator-http", url: "http://localhost:8889/health" },
-  { name: "x402b-resource-server", url: "http://localhost:4001/health" },
-  { name: "x402b-webhook-sink", url: "http://localhost:4002/health" },
+// `expect2xx: true` — true /health routes must answer 2xx.
+// `expect2xx: false` — POST-only / JSON-RPC / IPFS endpoints answer GET
+// with a 4xx when the container is up; non-5xx is good enough.
+const HEALTH_TARGETS: readonly { name: string; url: string; expect2xx: boolean }[] = [
+  { name: "boson-protocol-node", url: `${LOCAL_31337_0.urls.jsonRpc}`, expect2xx: false },
+  { name: "boson-subgraph", url: "http://localhost:8030", expect2xx: false },
+  { name: "boson-mcp-server", url: LOCAL_31337_0.urls.bosonMcp, expect2xx: false },
+  { name: "meta-tx-gateway", url: LOCAL_31337_0.urls.metaTxGateway, expect2xx: false },
+  { name: "ipfs", url: "http://localhost:5001/api/v0/version", expect2xx: false },
+  { name: "x402b-facilitator-http", url: "http://localhost:8889/health", expect2xx: true },
+  { name: "x402b-resource-server", url: "http://localhost:4001/health", expect2xx: true },
+  { name: "x402b-webhook-sink", url: "http://localhost:4002/health", expect2xx: true },
 ];
 
 interface PingResult {
@@ -37,13 +37,11 @@ interface PingResult {
   error?: string;
 }
 
-async function ping(url: string): Promise<PingResult> {
-  // POST-only services (the RPC node + the gateway) answer GET with a
-  // 4xx — that's good enough for "the container is up and listening".
-  // Treat only non-5xx as healthy reachability.
+async function ping(url: string, expect2xx: boolean): Promise<PingResult> {
   try {
     const res = await fetch(url, { method: "GET" });
-    return { ok: res.status < 500, status: res.status };
+    const ok = expect2xx ? res.status >= 200 && res.status < 300 : res.status < 500;
+    return { ok, status: res.status };
   } catch (err) {
     return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
   }
@@ -73,7 +71,7 @@ describe.skipIf(!ENABLED)("x402-e2e stack smoke", () => {
     it(`${target.name} is reachable`, async () => {
       let last: PingResult = { ok: false, status: 0, error: "no attempt made" };
       for (let attempt = 1; attempt <= PING_MAX_ATTEMPTS; attempt++) {
-        last = await ping(target.url);
+        last = await ping(target.url, target.expect2xx);
         if (last.ok) break;
         if (attempt < PING_MAX_ATTEMPTS) await sleep(PING_RETRY_DELAY_MS);
       }
