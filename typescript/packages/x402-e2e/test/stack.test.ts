@@ -47,8 +47,16 @@ async function ping(url: string, expect2xx: boolean): Promise<PingResult> {
   }
 }
 
-const PING_MAX_ATTEMPTS = Number(process.env.E2E_PING_MAX_ATTEMPTS ?? 10);
-const PING_RETRY_DELAY_MS = Number(process.env.E2E_PING_RETRY_DELAY_MS ?? 1000);
+function envInt(name: string, fallback: number, min: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return n < min ? min : n;
+}
+
+const PING_MAX_ATTEMPTS = envInt("E2E_PING_MAX_ATTEMPTS", 10, 1);
+const PING_RETRY_DELAY_MS = envInt("E2E_PING_RETRY_DELAY_MS", 1000, 100);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
