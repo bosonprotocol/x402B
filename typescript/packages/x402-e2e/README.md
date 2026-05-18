@@ -13,7 +13,7 @@ a single programmatic lifecycle.
 
 ## Layout
 
-```
+```text
 src/
   bin/
     resource-server.ts            ← entrypoint for x402b-resource-server (wraps the example)

@@ -14,7 +14,7 @@ Stateless w.r.t. funds; never custodies tokens. Stateful only for in-flight tx t
 
 ## Endpoints
 
-```
+```text
 POST /verify
   body: { scheme: "escrow", network, payload, requirements }
   -> { ok: true } | { ok: false, code, reason }
