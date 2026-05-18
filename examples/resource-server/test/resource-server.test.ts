@@ -136,7 +136,7 @@ describe("resource-server example app", () => {
   // INVALID_REQUEST_BODY for missing payload) all prove the path
   // resolved — only Express's default 404 indicates a dead endpoint.
   it("every channel-registry endpoint resolves to a mounted POST route", async () => {
-    const env = buildEnv();
+    const env = buildEnv({ subgraphUrl: "http://subgraph.example" });
     const { app } = createResourceServerApp(env, { exchangeReader: NULL_READER });
     const registry = buildExampleChannelRegistry(env);
     const entries = Object.entries(registry.endpoints ?? {}) as [string, string][];
