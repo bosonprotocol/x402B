@@ -5,9 +5,10 @@
 #  - drops `opensea-api-mock` (not exercised by x402B).
 #  - adds three x402B services (`x402b-facilitator-http`,
 #    `x402b-resource-server`, `x402b-webhook-sink`) built from the
-#    monorepo, all using `host.docker.internal:host-gateway` so they
-#    reach the canonical services through the same network alias the
-#    canonical services already use.
+#    monorepo; the x402B services that need host access use
+#    `host.docker.internal:host-gateway` so they reach the canonical
+#    services through the same network alias the canonical services
+#    already use.
 #
 # Every env var on the canonical services is verbatim — keep that way
 # so credentials, FORWARDER_ADDRESS, API_KEYS, etc. stay consistent
