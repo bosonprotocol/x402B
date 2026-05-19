@@ -2,9 +2,14 @@
 // helpers scenario tests call directly. The thin wrapper layer keeps
 // the test files terse:
 //
-//   await asserter.expectState(exchangeId, ExchangeState.COMMITTED);
+//   await asserter.expect(exchangeId, {
+//     state: ExchangeState.COMMITTED,
+//     seller,
+//     exchangeToken,
+//     price,
+//   });
 //
-// rather than threading the reader through every `expect(...)`. Re-uses
+// rather than threading the reader through every assertion. Re-uses
 // `verifyExchangeSnapshot` from `@bosonprotocol/x402-server` so the
 // comparison rules match the server's own post-settle verification.
 
