@@ -9,10 +9,10 @@
 //     (transparent 402 retry)
 //
 // Each scenario test instantiates one BuyerActor per buyer persona. The
-// actor surface is deliberately small — `buy(url)` covers the happy
-// path; `sign(action, exchangeId)` covers post-commit transitions; the
-// underlying `X402bClient` is exposed on `.client` for the edge cases
-// the harness doesn't yet bake in (e.g. custom fulfillment selection).
+// actor surface is deliberately small — `fetch(...)` covers the happy
+// path; the underlying `X402bClient` is exposed on `.client` for the
+// edge cases the harness doesn't yet bake in (e.g. custom fulfillment
+// selection or post-commit action signing).
 
 import { createX402bClient, type Signer, type X402bClient } from "@bosonprotocol/x402-client";
 import { wrapFetchWithPayment } from "@bosonprotocol/x402-client-fetch";
