@@ -229,9 +229,15 @@ describe("resource-server example app", () => {
     const requirements = challenge.body.accepts[0];
 
     const buyer = privateKeyToAccount(BUYER_PK);
+    // Mirror the real x402-client behaviour: build calldata with
+    // `committer: buyer.address`. `committer` is an outer arg of the
+    // on-chain `createOfferAndCommit(...)`, not in the seller's
+    // EIP-712-signed FullOffer, so the buyer's client splices it in.
+    // Server-side rule 7 mirrors the same splice — see x402B#73.
     const calldata = await buildCreateOfferAndCommitCalldata({
       fullOffer: {
         ...requirements.offer.fullOffer,
+        committer: buyer.address,
         signature: requirements.offer.sellerSig,
       } as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
     });
