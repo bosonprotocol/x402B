@@ -10,6 +10,7 @@ import { ROLE_ACCOUNTS } from "../../src/config/accounts.js";
 import { createBuyerActor } from "../../src/harness/buyer-actor.js";
 import { createResolverActor } from "../../src/harness/resolver-actor.js";
 import { createSellerActor } from "../../src/harness/seller-actor.js";
+import { LOCAL_31337_0 } from "../../src/index.js";
 
 describe("BuyerActor", () => {
   it("exposes the wallet address + a wrapped fetch", () => {
@@ -37,7 +38,7 @@ describe("ResolverActor", () => {
   it("defaults entityId to the upstream stack's pre-deployed DR (id=1)", () => {
     const account = privateKeyToAccount(ROLE_ACCOUNTS.resolver.privateKey);
     const actor = createResolverActor({ account });
-    expect(actor.entityId).toBe("1");
+    expect(actor.entityId).toBe(LOCAL_31337_0.defaultDisputeResolverId);
     expect(actor.address.toLowerCase()).toBe(account.address.toLowerCase());
   });
 
