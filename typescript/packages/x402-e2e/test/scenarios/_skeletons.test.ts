@@ -8,7 +8,7 @@
 
 import { describe, it } from "vitest";
 
-const ENABLED = process.env.E2E_DOCKER === "1";
+import { ENABLED } from "./_flags.js";
 
 describe.skipIf(!ENABLED)("@p0 post-commit lifecycle — PR 7", () => {
   it.todo("B1 — redeem after deferred commit → ExchangeState.REDEEMED");

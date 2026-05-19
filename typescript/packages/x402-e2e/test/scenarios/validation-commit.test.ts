@@ -11,7 +11,7 @@
 
 import { describe, it } from "vitest";
 
-const ENABLED = process.env.E2E_DOCKER === "1";
+import { ENABLED } from "./_flags.js";
 
 describe.skipIf(!ENABLED)("@p0 commit-time validations", () => {
   it.todo("C1 — tampered `functionSignature` → 400 OFFER_MISMATCH");

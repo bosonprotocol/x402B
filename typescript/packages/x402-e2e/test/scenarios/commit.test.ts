@@ -28,9 +28,8 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 
 import { ensureBuyerCanPay } from "./_buyer-setup.js";
+import { ENABLED } from "./_flags.js";
 import { createScenarioContext, type ScenarioContext } from "./_setup.js";
-
-const ENABLED = process.env.E2E_DOCKER === "1";
 
 describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
   let ctx: ScenarioContext;
