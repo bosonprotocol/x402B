@@ -259,8 +259,22 @@ async function checkFunctionSignatureAndCalldataEquality(
     );
   }
 
+  // `committer` is an outer argument of `createOfferAndCommit(...)`,
+  // not a field in the seller's FullOffer EIP-712 typed-data (see
+  // `signFullOffer` in `@bosonprotocol/core-sdk`'s
+  // `exchanges/handler.js`). The seller's signature is valid for any
+  // committer value, so the buyer's client splices `committer = buyer`
+  // into the meta-tx calldata before signing (see
+  // `@bosonprotocol/x402-client`'s `pre-commit.ts:94`). Rule 3 already
+  // enforces that `offerRef.fullOffer` matches
+  // `requirements.offer.fullOffer` byte-for-byte, so the offerRef
+  // carries whatever seed value the application chose at challenge
+  // time. Here we mirror the buyer-side splice when rebuilding the
+  // expected calldata — without it every valid payment trips rule 7
+  // on the committer slot. Regression: x402B#73.
   const fullOfferWithSig = {
     ...payload.payload.offerRef.fullOffer,
+    committer: payload.payload.buyer,
     signature: payload.payload.offerRef.sellerSig,
   } as unknown as BuilderFullOffer;
 

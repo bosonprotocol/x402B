@@ -173,6 +173,53 @@ describe("validatePaymentPayload — rule failures", () => {
     expect(result).toMatchObject({ ok: false, rule: 7, code: "CALLDATA_MISMATCH" });
   });
 
+  // Regression for x402B#73: `committer` is an outer arg of the
+  // on-chain `createOfferAndCommit(...)`, not a field in the
+  // FullOffer EIP-712 the seller signs. The buyer's client splices
+  // its address in before signing the meta-tx, while the server's
+  // `offerRef.fullOffer.committer` keeps its placeholder (typically
+  // `0x0`). Rule 7 must mirror the splice when rebuilding calldata
+  // for the byte comparison; otherwise every valid payment trips on
+  // the committer slot.
+  it("rule 7 — passes when offerRef.committer differs from metaTx-encoded committer (buyer splice)", async () => {
+    const fx = await makePaymentFixture();
+    // The fixture builds calldata with `committer: buyer.address` to
+    // mirror the real client. Force `offerRef.fullOffer.committer`
+    // back to the zero-address placeholder a server would emit at
+    // challenge time.
+    const placeholderCommitter = `0x${"00".repeat(20)}` as const;
+    const withZeroOfferRefCommitter = {
+      ...fx.payload,
+      payload: {
+        ...fx.payload.payload,
+        offerRef: {
+          ...fx.payload.payload.offerRef,
+          fullOffer: {
+            ...fx.payload.payload.offerRef.fullOffer,
+            committer: placeholderCommitter,
+          },
+        },
+      },
+    };
+    const requirementsWithZeroCommitter = {
+      ...fx.requirements,
+      offer: {
+        ...fx.requirements.offer,
+        fullOffer: {
+          ...fx.requirements.offer.fullOffer,
+          committer: placeholderCommitter,
+        },
+      },
+    };
+
+    const result = await validatePaymentPayload({
+      payload: withZeroOfferRefCommitter,
+      requirements: requirementsWithZeroCommitter,
+      chainId: CHAIN_ID,
+    });
+    expect(result.ok).toBe(true);
+  });
+
   it("rule 8 — rejects when buyer.address ≠ metaTx.from", async () => {
     const fx = await makePaymentFixture();
     const tampered = {
