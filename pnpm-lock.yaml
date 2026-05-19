@@ -474,6 +474,24 @@ importers:
 
   typescript/packages/x402-e2e:
     dependencies:
+      '@bosonprotocol/core-sdk':
+        specifier: 1.48.0-alpha.3
+        version: 1.48.0-alpha.3
+      '@bosonprotocol/x402-actions':
+        specifier: workspace:^
+        version: link:../actions
+      '@bosonprotocol/x402-client':
+        specifier: workspace:^
+        version: link:../client
+      '@bosonprotocol/x402-client-fetch':
+        specifier: workspace:^
+        version: link:../client-fetch
+      '@bosonprotocol/x402-core':
+        specifier: workspace:^
+        version: link:../core
+      '@bosonprotocol/x402-evm':
+        specifier: workspace:^
+        version: link:../evm
       '@bosonprotocol/x402-example-resource-server':
         specifier: workspace:^
         version: link:../../../examples/resource-server
@@ -483,6 +501,9 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.22.0
+      viem:
+        specifier: ^2.39.3
+        version: 2.48.11(typescript@5.9.3)(zod@3.25.76)
     devDependencies:
       '@types/node':
         specifier: ^20.17.10
@@ -490,9 +511,6 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
-      viem:
-        specifier: ^2.39.3
-        version: 2.48.11(typescript@5.9.3)(zod@3.25.76)
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.40)

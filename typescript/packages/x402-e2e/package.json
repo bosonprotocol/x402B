@@ -14,14 +14,20 @@
     "clean": "rm -rf .turbo"
   },
   "dependencies": {
+    "@bosonprotocol/core-sdk": "1.48.0-alpha.3",
+    "@bosonprotocol/x402-actions": "workspace:^",
+    "@bosonprotocol/x402-client": "workspace:^",
+    "@bosonprotocol/x402-client-fetch": "workspace:^",
+    "@bosonprotocol/x402-core": "workspace:^",
+    "@bosonprotocol/x402-evm": "workspace:^",
     "@bosonprotocol/x402-example-resource-server": "workspace:^",
     "@bosonprotocol/x402-server": "workspace:^",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "viem": "^2.39.3"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",
     "typescript": "^5.7.2",
-    "viem": "^2.39.3",
     "vitest": "^2.1.8"
   }
 }
