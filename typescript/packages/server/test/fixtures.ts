@@ -115,7 +115,18 @@ export async function makePaymentFixture(
     chainId: CHAIN_ID,
   });
 
-  const fullOfferWithSig = { ...offerRef.fullOffer, signature: offerRef.sellerSig };
+  // Mirror the real x402-client behaviour: build calldata with
+  // `committer: buyer.address`. `committer` is an outer arg of the
+  // on-chain `createOfferAndCommit(...)`, not a field in the seller's
+  // EIP-712 FullOffer signature — the buyer's client splices in the
+  // buyer address before signing the meta-tx. Rule 7 mirrors the same
+  // splice when rebuilding the expected calldata, so this fixture
+  // reflects what real payloads carry on the wire.
+  const fullOfferWithSig = {
+    ...offerRef.fullOffer,
+    committer: buyer.address,
+    signature: offerRef.sellerSig,
+  };
   // Build the calldata that matches the requested `action`. Tests that
   // intentionally cross the wires (e.g. Flow A action with Flow B
   // calldata) override `payload.metaTx` directly after the fixture
