@@ -1,5 +1,6 @@
-// Vitest `globalSetup` for the e2e scenario suite. Runs once before
-// every test file, gated behind `E2E_DOCKER=1` so default
+// Vitest `globalSetup` for the e2e scenario suite. Runs once per test
+// run (before any worker executes a test file) and tears down once
+// after the run completes — gated behind `E2E_DOCKER=1` so default
 // `pnpm test` invocations stay fast.
 //
 // Responsibilities:

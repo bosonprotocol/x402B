@@ -15,7 +15,7 @@
 // stays available for manual smoke testing.
 
 import { createResourceServerApp, readEnv } from "@bosonprotocol/x402-example-resource-server";
-import { type AddressInfo } from "node:net";
+import { createServer, type AddressInfo } from "node:net";
 import { type Hex } from "viem";
 import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 
@@ -81,6 +81,28 @@ function requireSuiteEnv(key: string): string {
   return v;
 }
 
+/**
+ * Reserve a free TCP port on 127.0.0.1 by binding a throwaway server to port 0,
+ * reading the OS-assigned port, then releasing it. The resource server bakes
+ * `publicUrl` into ChannelRegistry endpoints at construction time, so we need
+ * the real port *before* calling `createResourceServerApp`. The brief gap
+ * between close and re-listen has a theoretical TOCTOU race, but it's
+ * acceptable for the in-process test scaffolding.
+ */
+async function allocateFreePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((resolve, reject) => {
+    probe.once("listening", resolve);
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1");
+  });
+  const port = (probe.address() as AddressInfo).port;
+  await new Promise<void>((resolve, reject) => {
+    probe.close((err) => (err ? reject(err) : resolve()));
+  });
+  return port;
+}
+
 export async function createScenarioContext(
   args: ScenarioContextArgs = {},
 ): Promise<ScenarioContext> {
@@ -100,11 +122,14 @@ export async function createScenarioContext(
   const exchangeReader = createSubgraphExchangeReader();
   const asserter = createOnchainAsserter(exchangeReader);
 
-  // Bind to port 0 so the OS picks a free port; tests use the
-  // returned URL directly. The address() call below is synchronous
-  // once the server emits `listening`.
+  // Reserve a real port up front: `createResourceServerApp` builds the
+  // ChannelRegistry (and stamps `publicUrl` into every server-channel
+  // endpoint URL) at construction time, so a `:0` placeholder would
+  // bake an unreachable port into `nextActions`.
+  const port = await allocateFreePort();
+  const resourceServerUrl = `http://127.0.0.1:${port}`;
   const env: ResourceServerEnv = {
-    publicUrl: "http://127.0.0.1:0",
+    publicUrl: resourceServerUrl,
     rpcNode: LOCAL_31337_0.urls.jsonRpc,
     chainId: LOCAL_31337_0.chainId,
     network: LOCAL_31337_0.network,
@@ -117,17 +142,15 @@ export async function createScenarioContext(
     amount: args.amount ?? "1000000",
     maxTimeoutSeconds: args.maxTimeoutSeconds ?? 3600,
     subgraphUrl: LOCAL_31337_0.urls.subgraph,
-    port: 0,
+    port,
   };
 
   const { app } = createResourceServerApp(env, { exchangeReader });
-  const httpServer = app.listen(0);
+  const httpServer = app.listen(port);
   await new Promise<void>((resolve, reject) => {
     httpServer.once("listening", resolve);
     httpServer.once("error", reject);
   });
-  const address = httpServer.address() as AddressInfo;
-  const resourceServerUrl = `http://127.0.0.1:${address.port}`;
 
   const seller = createSellerActor({ account: sellerAccount });
   const buyer = createBuyerActor({ account: buyerAccount, publicClient });
