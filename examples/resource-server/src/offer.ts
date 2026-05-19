@@ -14,6 +14,7 @@ import type { UnsignedFullOffer } from "@bosonprotocol/x402-core/eip712";
 import type { Address } from "viem";
 
 import type { ResourceServerEnv } from "./config.js";
+import type { ProtocolConfig } from "./protocol-config.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
@@ -23,6 +24,15 @@ export interface BuildOfferArgs {
   sellerAddress: Address;
   /** Wall-clock time to anchor offer validity windows. Injectable for tests. */
   now?: number;
+  /**
+   * On-chain `ConfigHandlerFacet` slice — when supplied, the builder
+   * tightens `feeLimit` and floors `disputePeriodDurationInMS` against
+   * the actual on-chain values instead of using the conservative
+   * defaults. Forks should fetch this via `fetchProtocolConfig` at
+   * boot and pass it in. The unit-test friendly safe defaults stay
+   * in place when omitted.
+   */
+  protocolConfig?: ProtocolConfig;
 }
 
 /**
@@ -89,11 +99,40 @@ export interface BuildOfferArgs {
  *   when the absolute form is used.
  * - `buyerCancelPenalty <= price`.
  */
-export function buildUnsignedOffer({ env, sellerAddress, now }: BuildOfferArgs): UnsignedFullOffer {
+export function buildUnsignedOffer({
+  env,
+  sellerAddress,
+  now,
+  protocolConfig,
+}: BuildOfferArgs): UnsignedFullOffer {
   const t = now ?? Date.now();
   const oneHour = 60 * 60 * 1000;
   const oneDay = 24 * oneHour;
   const oneWeek = 7 * oneDay;
+
+  // `disputePeriodDurationInMS`: prefer the demo's 1-week target but
+  // floor it against the protocol's `getMinDisputePeriod()` when the
+  // caller supplied a `protocolConfig`. Without the on-chain value
+  // we keep 1 week as the safe upper bound; the local
+  // `boson-protocol-node` enforces the minimum via
+  // `InvalidDisputePeriod`, so any value below it would revert.
+  const desiredDisputePeriodMs = oneWeek;
+  const disputePeriodDurationInMS =
+    protocolConfig === undefined
+      ? desiredDisputePeriodMs
+      : Math.max(desiredDisputePeriodMs, protocolConfig.minDisputePeriodMs);
+
+  // `feeLimit` is an absolute uint256 in payment-asset units. The
+  // worst case the protocol can charge is `price * maxFeeBps /
+  // 10000`; setting `feeLimit` to exactly that absorbs the full
+  // on-chain fee without leaving the seller exposed to a future
+  // `getMaxTotalOfferFeePercentage` bump. When the on-chain cap
+  // isn't known, fall back to the previous demo behaviour of
+  // accepting up to the entire price (worst case: zero net revenue).
+  const feeLimit =
+    protocolConfig === undefined
+      ? env.amount
+      : ((BigInt(env.amount) * BigInt(protocolConfig.maxOfferFeeBps)) / 10000n).toString();
 
   return {
     price: env.amount,
@@ -105,14 +144,7 @@ export function buildUnsignedOffer({ env, sellerAddress, now }: BuildOfferArgs):
     validUntilDateInMS: String(t + oneHour),
     voucherRedeemableFromDateInMS: String(t),
     voucherRedeemableUntilDateInMS: String(t + oneHour),
-    // 1 week clears the protocol's `minDisputePeriod` floor on every
-    // shipped Boson deployment seen so far. The local
-    // `boson-protocol-node` enforces it via `InvalidDisputePeriod`;
-    // a previous `oneDay` value tripped that revert. PR 7 (e2e
-    // robustness work) will read the actual floor from
-    // `ConfigHandlerFacet.getMinDisputePeriod()` and pick
-    // `max(envValue, minDisputePeriod)`.
-    disputePeriodDurationInMS: String(oneWeek),
+    disputePeriodDurationInMS: String(disputePeriodDurationInMS),
     voucherValidDurationInMS: "0",
     resolutionPeriodDurationInMS: String(oneWeek),
     exchangeToken: env.assetAddress,
@@ -120,14 +152,7 @@ export function buildUnsignedOffer({ env, sellerAddress, now }: BuildOfferArgs):
     metadataUri: "ipfs://x402b-example",
     metadataHash: "x402b-example",
     collectionIndex: "0",
-    // Max protocol + agent fee the seller will accept on this offer.
-    // `"0"` reverts every commit with `TotalFeeExceedsLimit` because
-    // the protocol fee is non-zero on every shipped Boson deployment
-    // seen so far. Setting the cap to the full price means the
-    // seller absorbs whatever the protocol charges (worst case:
-    // their entire revenue) — fine for the demo. Production sellers
-    // should pin a tighter cap based on their margin model.
-    feeLimit: env.amount,
+    feeLimit,
     offerCreator: sellerAddress,
     committer: ZERO_ADDRESS,
     condition: {

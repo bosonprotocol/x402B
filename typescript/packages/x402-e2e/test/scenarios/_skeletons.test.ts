@@ -10,17 +10,14 @@ import { describe, it } from "vitest";
 
 import { ENABLED } from "./_flags.js";
 
-describe.skipIf(!ENABLED)("@p0 post-commit lifecycle — PR 7", () => {
-  it.todo("B1 — redeem after deferred commit → ExchangeState.REDEEMED");
-  it.todo("B2 — completeExchange after redeem → ExchangeState.COMPLETED, escrow released");
-  it.todo("B3 — raiseDispute after redeem → DisputeState.RESOLVING");
-  it.todo("B4 — mutual resolveDispute (buyer % split, dual-sig) → DisputeState.RESOLVED");
-});
+// B1–B4, B6, B7 moved to `post-commit.test.ts` as runnable scenarios.
+// The remaining @p1 / @p2 items stay parked here as `it.todo` until
+// they're picked up — B5 needs dispute-resolver-deposit handling,
+// B8 needs SellerActor meta-tx signing, and B9 needs ResolverActor
+// wallet signing.
 
-describe.skipIf(!ENABLED)("@p1 post-commit lifecycle — PR 7", () => {
+describe.skipIf(!ENABLED)("@p1 post-commit lifecycle — follow-up", () => {
   it.todo("B5 — escalateDispute with deposit → DisputeState.ESCALATED");
-  it.todo("B6 — retractDispute by buyer → DisputeState.RETRACTED");
-  it.todo("B7 — cancelVoucher before redeem → ExchangeState.CANCELLED, escrow refunded - penalty");
 });
 
 describe.skipIf(!ENABLED)("@p2 post-commit lifecycle — PR 7", () => {

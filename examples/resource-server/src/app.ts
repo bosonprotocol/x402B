@@ -33,6 +33,7 @@ import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 import { buildExampleChannelRegistry } from "./channel-registry.js";
 import type { ResourceServerEnv } from "./config.js";
 import { buildUnsignedOffer } from "./offer.js";
+import type { ProtocolConfig } from "./protocol-config.js";
 
 export interface ResourceServerAppOptions {
   /**
@@ -43,6 +44,13 @@ export interface ResourceServerAppOptions {
   exchangeReader: ExchangeReader;
   /** Replace `Date.now()` for deterministic offer-validity windows in tests. */
   now?: () => number;
+  /**
+   * Optional on-chain `ConfigHandlerFacet` slice for tightening
+   * `feeLimit` and flooring `disputePeriodDurationInMS`. Production
+   * forks should fetch this once at boot via `fetchProtocolConfig`.
+   * Omitted in unit tests that don't have a live chain.
+   */
+  protocolConfig?: ProtocolConfig;
 }
 
 export interface ResourceServerAppBundle {
@@ -75,6 +83,7 @@ export function createResourceServerApp(
   const seller = privateKeyToAccount(env.sellerPk);
   const exchangeReader = options.exchangeReader;
   const now = options.now ?? Date.now;
+  const protocolConfig = options.protocolConfig;
 
   const server = createX402bServer(buildServerConfig(env, seller, exchangeReader));
 
@@ -93,7 +102,14 @@ export function createResourceServerApp(
     if (cached !== undefined && now() < cached.expiresAt) return cached.promise;
 
     const promise = server.buildPaymentRequirements({
-      offer: { unsigned: buildUnsignedOffer({ env, sellerAddress: seller.address, now: now() }) },
+      offer: {
+        unsigned: buildUnsignedOffer({
+          env,
+          sellerAddress: seller.address,
+          now: now(),
+          ...(protocolConfig !== undefined ? { protocolConfig } : {}),
+        }),
+      },
       asset: env.assetAddress,
       amount: env.amount,
       // Settle path is end-to-end runnable only for `none` today; the

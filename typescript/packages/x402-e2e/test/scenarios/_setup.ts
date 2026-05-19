@@ -14,7 +14,11 @@
 // `ASSET_ADDRESS`, etc. with the seeded state. The compose service
 // stays available for manual smoke testing.
 
-import { createResourceServerApp, readEnv } from "@bosonprotocol/x402-example-resource-server";
+import {
+  createResourceServerApp,
+  fetchProtocolConfig,
+  readEnv,
+} from "@bosonprotocol/x402-example-resource-server";
 import { createServer, type AddressInfo } from "node:net";
 import { type Hex } from "viem";
 import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
@@ -64,6 +68,12 @@ export interface ScenarioContextArgs {
 export interface ScenarioContext {
   /** Public URL of the in-process resource server (`http://127.0.0.1:<port>`). */
   resourceServerUrl: string;
+  /** Facilitator HTTP service (compose-service URL). Used by scenarios that bypass the resource server. */
+  facilitatorUrl: string;
+  /** CAIP-2 network id (`eip155:31337` for the local stack). */
+  network: `eip155:${number}`;
+  /** Escrow address baked into requirements + EIP-712 domain. */
+  escrowAddress: `0x${string}`;
   seller: SellerActor;
   buyer: BuyerActor;
   resolver: ResolverActor;
@@ -126,10 +136,13 @@ export async function createScenarioContext(
   // to ingest a freshly-mined block; `@bosonprotocol/x402-server`'s
   // default `verifyExchange` retry budget (3 × 50 ms) gives up well
   // before that, surfacing as `STATE_VERIFY_EXCHANGE_NOT_FOUND` on
-  // every commit. `withPollUntilFound` extends the reader's wait
-  // budget without touching the server's defaults (production
-  // consumers want the fast path).
-  const exchangeReader = withPollUntilFound(createSubgraphExchangeReader());
+  // every commit. Plumbing `publicClient` into the reader gives it
+  // the chain head it needs to call `waitForGraphNodeIndexing(block)`
+  // on a miss — the canonical "indexer caught up" wait. The
+  // `withPollUntilFound` outer wrapper backs the indexer-wait path
+  // with a bounded retry so a transient subgraph hiccup doesn't
+  // collapse straight into `STATE_VERIFY_EXCHANGE_NOT_FOUND`.
+  const exchangeReader = withPollUntilFound(createSubgraphExchangeReader({ publicClient }));
   const asserter = createOnchainAsserter(exchangeReader);
 
   // Reserve a real port up front: `createResourceServerApp` builds the
@@ -155,7 +168,15 @@ export async function createScenarioContext(
     port,
   };
 
-  const { app } = createResourceServerApp(env, { exchangeReader });
+  // Tighten the in-process offer's `feeLimit` cap + `disputePeriodDurationInMS`
+  // floor against the live `ConfigHandlerFacet` values. The compose-service
+  // entrypoint does the same fetch in `src/bin/resource-server.ts`.
+  const protocolConfig = await fetchProtocolConfig({
+    publicClient,
+    escrowAddress: env.escrowAddress,
+  });
+
+  const { app } = createResourceServerApp(env, { exchangeReader, protocolConfig });
   const httpServer = app.listen(port);
   await new Promise<void>((resolve, reject) => {
     httpServer.once("listening", resolve);
@@ -168,6 +189,9 @@ export async function createScenarioContext(
 
   return {
     resourceServerUrl,
+    facilitatorUrl: env.facilitatorUrl,
+    network: env.network,
+    escrowAddress: env.escrowAddress,
     seller,
     buyer,
     resolver,

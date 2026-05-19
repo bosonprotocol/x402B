@@ -12,13 +12,16 @@
 //
 // Subgraph indexer lag is the dominant failure mode immediately after
 // a settle: `coreSdk.getExchangeById(id)` returns `null` until the
-// indexer ingests the block. The server's `verifyExchange` already
-// retries on `null` with a bounded wait — this reader just forwards
-// `null` so that retry path kicks in.
+// indexer ingests the block. When a `PublicClient` is supplied the
+// reader asks core-sdk to wait for the indexer to catch up to the
+// current chain head before forwarding `null` — that is the canonical
+// "indexer is behind" recovery path; the older polling wrapper
+// (`withPollUntilFound`) remains for callers that don't have an
+// `PublicClient` to hand.
 
 import { CoreSDK } from "@bosonprotocol/core-sdk";
 import type { ExchangeReader, ExchangeSnapshot } from "@bosonprotocol/x402-server";
-import type { Address } from "viem";
+import type { Address, PublicClient } from "viem";
 
 import { LOCAL_31337_0 } from "../config/local-31337-0.js";
 
@@ -46,6 +49,15 @@ export interface SubgraphExchangeReaderArgs {
   escrowAddress?: Address;
   /** Chain id. Defaults to `LOCAL_31337_0.chainId`. */
   chainId?: number;
+  /**
+   * Optional read-only chain client. When supplied, the reader queries
+   * the chain head on a `null` subgraph result and waits for the
+   * indexer to catch up before returning. Without it the reader
+   * forwards `null` immediately (the server's own retry budget then
+   * decides how long to wait, which is short — see
+   * `withPollUntilFound`).
+   */
+  publicClient?: PublicClient;
 }
 
 /** Shape returned by `coreSdk.getExchangeById`. Narrowed to the fields the snapshot needs. */
@@ -102,10 +114,22 @@ export function withPollUntilFound(
   };
 }
 
+/** CoreSDK exposes `waitForGraphNodeIndexing` via the subgraph mixin; narrow to that surface. */
+interface CoreSdkWithIndexerWait {
+  waitForGraphNodeIndexing(blockNumber?: number): Promise<void>;
+  getExchangeById(id: string): Promise<unknown>;
+}
+
 /**
  * Build an `ExchangeReader` that resolves snapshots through the local
  * Boson subgraph. The CoreSDK is constructed with a throwing web3Lib
  * stub so any accidental write attempt surfaces immediately.
+ *
+ * When `args.publicClient` is set, a `null` from the subgraph is
+ * treated as "indexer is behind" — the reader fetches the current
+ * chain head and calls `coreSdk.waitForGraphNodeIndexing(blockNumber)`
+ * before trying once more. The second `null` is forwarded so the
+ * server's own retry path can take over.
  */
 export function createSubgraphExchangeReader(
   args: SubgraphExchangeReaderArgs = {},
@@ -113,32 +137,51 @@ export function createSubgraphExchangeReader(
   const subgraphUrl = args.subgraphUrl ?? LOCAL_31337_0.urls.subgraph;
   const escrowAddress = args.escrowAddress ?? LOCAL_31337_0.contracts.protocolDiamond;
   const chainId = args.chainId ?? LOCAL_31337_0.chainId;
+  const publicClient = args.publicClient;
 
   const sdk = new CoreSDK({
     web3Lib: createReadOnlyWeb3LibStub() as never,
     subgraphUrl,
     protocolDiamond: escrowAddress,
     chainId,
-  });
+  }) as unknown as CoreSdkWithIndexerWait;
+
+  const fetchSnapshot = async (exchangeId: string): Promise<ExchangeSnapshot | null> => {
+    const raw = (await sdk.getExchangeById(exchangeId)) as CoreSdkExchangeEntity | null;
+    if (raw === null) return null;
+    const snapshot: ExchangeSnapshot = {
+      state: raw.state,
+      seller: raw.offer.seller.assistant as Address,
+      exchangeToken: raw.offer.exchangeToken.address as Address,
+      price: raw.offer.price,
+    };
+    if (raw.disputed === true && raw.dispute?.state !== undefined) {
+      snapshot.disputeState = raw.dispute.state;
+    }
+    return snapshot;
+  };
 
   return {
     read: async (exchangeId: string): Promise<ExchangeSnapshot | null> => {
-      // `getExchangeById` returns `null` when the subgraph hasn't yet
-      // indexed the commit transaction. Forward the null so the server's
-      // bounded retry path can resolve once the indexer catches up.
-      const raw = (await sdk.getExchangeById(exchangeId)) as CoreSdkExchangeEntity | null;
-      if (raw === null) return null;
+      const first = await fetchSnapshot(exchangeId);
+      if (first !== null) return first;
+      if (publicClient === undefined) return null;
 
-      const snapshot: ExchangeSnapshot = {
-        state: raw.state,
-        seller: raw.offer.seller.assistant as Address,
-        exchangeToken: raw.offer.exchangeToken.address as Address,
-        price: raw.offer.price,
-      };
-      if (raw.disputed === true && raw.dispute?.state !== undefined) {
-        snapshot.disputeState = raw.dispute.state;
+      // Indexer lag recovery: get the current chain head and ask
+      // core-sdk to wait until the subgraph has ingested at least that
+      // block. Any tx already mined has block <= head, so once the
+      // indexer reaches `head`, our exchange (if it exists on chain)
+      // is guaranteed visible. Cap the wait with `Promise.race` so a
+      // stuck indexer doesn't pin a scenario indefinitely.
+      try {
+        const head = await publicClient.getBlockNumber();
+        await sdk.waitForGraphNodeIndexing(Number(head));
+      } catch {
+        // Network hiccup against the indexer or the RPC — fall through
+        // to a final read so the caller's retry budget (or
+        // `withPollUntilFound`) can decide what to do.
       }
-      return snapshot;
+      return fetchSnapshot(exchangeId);
     },
   };
 }

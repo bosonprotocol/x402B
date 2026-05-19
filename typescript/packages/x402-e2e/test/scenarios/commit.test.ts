@@ -22,6 +22,7 @@ import { ROLE_ACCOUNTS } from "../../src/config/accounts.js";
 import {
   buildPublicClient,
   buildWalletClient,
+  createBuyerActor,
   readXPaymentResponse,
 } from "../../src/harness/index.js";
 import { privateKeyToAccount } from "viem/accounts";
@@ -87,8 +88,43 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
   // Atomic commit-and-redeem (`boson-createOfferCommitAndRedeem`).
   // Same wire path as A1 but the client selects `commit-and-redeem`
   // via `Policy.redeemMode: "commit-and-redeem"` so the buyer ends
-  // up at `REDEEMED` in a single tx. Unblocked by Boson PR #1105.
-  it.todo("A2 — atomic commit-and-redeem with `none` strategy");
+  // up at `REDEEMED` in a single tx.
+  it("A2 — atomic commit-and-redeem with `none` strategy", async () => {
+    // A2 needs its own buyer with a non-default `Policy.redeemMode` so
+    // the client picks `boson-createOfferCommitAndRedeem` instead of
+    // the deferred flow A1 used. Reuse the shared buyer's funded
+    // wallet (the allowance from `beforeAll` is still in place).
+    const buyerAccount = privateKeyToAccount(ROLE_ACCOUNTS.buyer.privateKey);
+    const atomicBuyer = createBuyerActor({
+      account: buyerAccount,
+      publicClient: ctx.buyer.publicClient,
+      policy: { redeemMode: "commit-and-redeem" },
+    });
+
+    const res = await atomicBuyer.fetch(`${ctx.resourceServerUrl}/resource`);
+    expect(res.status, await res.clone().text()).toBe(200);
+
+    const body = (await res.json()) as {
+      ok?: boolean;
+      x402b?: { exchangeId?: string; txHash?: `0x${string}` };
+    };
+    expect(body.ok).toBe(true);
+    expect(typeof body.x402b?.exchangeId).toBe("string");
+
+    const decoded = readXPaymentResponse(res.headers);
+    expect(decoded?.exchangeId).toBe(body.x402b?.exchangeId);
+    expect(decoded?.txHash).toMatch(/^0x[0-9a-fA-F]+$/);
+
+    // Atomic flow → exchange should land directly in REDEEMED, not
+    // COMMITTED. Same seller / exchangeToken / price as A1.
+    const exchangeId = body.x402b!.exchangeId!;
+    await ctx.asserter.expect(exchangeId, {
+      state: ExchangeState.REDEEMED,
+      seller: ctx.seller.address,
+      exchangeToken: LOCAL_31337_0.contracts.testErc20,
+      price: "1000000",
+    });
+  });
 
   // Token-auth strategies. The resource server already advertises
   // `["none","erc3009","permit","permit2"]`; PR6 follow-up implements
