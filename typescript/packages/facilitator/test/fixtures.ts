@@ -46,6 +46,16 @@ export const AMOUNT = "1000000";
  * what `requirements.offer.fullOffer` advertises — duplicating this
  * literal across test files would silently drift the moment the Boson
  * `FullOffer` struct changes.
+ *
+ * `committer` is kept at the zero-address placeholder here, mirroring
+ * what real challenge-time `requirements.offer.fullOffer` carries
+ * before the buyer is known. The buyer-side calldata splice
+ * (`pre-commit.ts:94`) sets `committer = buyer` on the calldata it
+ * signs; `validateMetaTxCalldataMatchesRequirements` mirrors the same
+ * splice when rebuilding the expected calldata (see
+ * `verify/structural.ts`). Anchoring the canonical fixture this way
+ * means existing tests cover the divergence as a regression for
+ * x402B#73.
  */
 export const fullOffer = {
   price: AMOUNT,
@@ -67,7 +77,10 @@ export const fullOffer = {
   collectionIndex: "0",
   feeLimit: "0",
   offerCreator: SELLER,
-  committer: buyer.address,
+  // Zero-address placeholder mirrors the server's challenge-time
+  // requirements.offer.fullOffer; the calldata builder below splices
+  // in `committer: buyer.address` to match the real client behaviour.
+  committer: "0x0000000000000000000000000000000000000000",
   condition: {
     method: 0,
     tokenType: 0,
@@ -96,8 +109,17 @@ export const fullOffer = {
  * advertises.
  */
 export async function buildValidPayload(): Promise<EscrowPaymentPayload> {
+  // Mirror `@bosonprotocol/x402-client`'s `pre-commit.ts:94` splice:
+  // the canonical `fullOffer` carries `committer: 0x0` (the server's
+  // challenge-time placeholder), but the buyer signs calldata with
+  // `committer: buyer.address`. `validateMetaTxCalldataMatchesRequirements`
+  // mirrors the same splice when rebuilding the expected calldata —
+  // regression for x402B#73.
   const calldata = await buildCreateOfferAndCommitCalldata({
-    fullOffer: fullOffer as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
+    fullOffer: {
+      ...fullOffer,
+      committer: buyer.address,
+    } as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
   });
   const typedData = await metaTransactionTypedData({
     chainId: CHAIN_ID,

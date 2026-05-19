@@ -192,6 +192,37 @@ describe("verify()", () => {
     expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
   });
 
+  // Regression for x402B#73: the canonical fixture's `fullOffer`
+  // carries `committer: 0x0` (the challenge-time placeholder) while
+  // the meta-tx calldata splices in `committer: buyer.address`.
+  // Before the fix in `verify/structural.ts`,
+  // `validateMetaTxCalldataMatchesRequirements` rebuilt the expected
+  // calldata from `offerRef.fullOffer` verbatim and tripped on the
+  // committer slot, rejecting every valid payment. With the fix in
+  // place, the splice is mirrored and the happy path passes — which
+  // the `buildConfig()` smoke at the top of this describe already
+  // exercises, so this test pins the *opposite* direction: if the
+  // payload claims a `buyer` that doesn't match the calldata-encoded
+  // committer, the check must still reject.
+  it("rejects when payload.buyer doesn't match the calldata-encoded committer", async () => {
+    const payload = await buildValidPayload();
+    // The fixture's calldata has `committer: buyer.address` from
+    // `buildValidPayload`; clobbering `payload.buyer` to a different
+    // EOA makes the splice mismatch.
+    const wrongBuyer: Address = "0xabcdef1234567890abcdef1234567890abcdef12";
+    payload.payload.buyer = wrongBuyer;
+    payload.payload.metaTx.from = wrongBuyer;
+    const requirements = buildValidRequirements();
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(
+      /functionSignature does not encode/i,
+    );
+  });
+
   it("rejects when meta-tx calldata does not encode the required offer", async () => {
     const payload = await buildValidPayload();
     payload.payload.metaTx.functionSignature = "0xdeadbeef";
@@ -205,11 +236,24 @@ describe("verify()", () => {
 
   it("rejects when meta-tx signature was produced by a different signer", async () => {
     const payload = await buildValidPayload();
-    // Pretend a different EOA is the claimed buyer — recovery will then
-    // mismatch the payload.buyer.
+    // Pretend a different EOA is the claimed buyer — recovery will
+    // then mismatch `payload.buyer`. The calldata-match step (which
+    // mirrors the buyer-side committer splice — x402B#73) runs before
+    // signature recovery, so we also rebuild the meta-tx calldata
+    // with `committer = wrongBuyer` so this test isolates the
+    // BAD_META_TX_SIGNATURE failure. The sig itself stays the one
+    // `buildValidPayload` produced for the real `buyer` account — so
+    // recovery yields `buyer`, not `wrongBuyer`, and step 8 fires.
     const wrongBuyer: Address = "0xabcdef1234567890abcdef1234567890abcdef12";
+    const { buildCreateOfferAndCommitCalldata } = await import("@bosonprotocol/x402-evm/actions");
+    const reframedCalldata = await buildCreateOfferAndCommitCalldata({
+      fullOffer: { ...fullOffer, committer: wrongBuyer } as Parameters<
+        typeof buildCreateOfferAndCommitCalldata
+      >[0]["fullOffer"],
+    });
     payload.payload.buyer = wrongBuyer;
     payload.payload.metaTx.from = wrongBuyer;
+    payload.payload.metaTx.functionSignature = reframedCalldata.functionSignature;
     const requirements = buildValidRequirements();
     const result = await verify(
       { scheme: "escrow", network: NETWORK, payload, requirements },

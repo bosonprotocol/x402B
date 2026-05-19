@@ -142,9 +142,24 @@ export async function validateMetaTxCalldataMatchesRequirements(input: {
   requirements: EscrowPaymentRequirements;
 }): Promise<StepResult> {
   const inner = input.payload.payload;
-  const fullOffer = withSellerSignature(
+  // Mirror the buyer-side splice: `committer` is an outer argument of
+  // `createOfferAndCommit(...)`, not in the seller's FullOffer EIP-712
+  // typed-data (see `signFullOffer` in `@bosonprotocol/core-sdk`'s
+  // `exchanges/handler.js`). The buyer's client sets
+  // `committer = buyer` before signing the meta-tx (see
+  // `@bosonprotocol/x402-client`'s `pre-commit.ts:94`), while
+  // `requirements.offer.fullOffer.committer` carries whatever the
+  // application seeded at challenge time (typically the zero
+  // address). The seller's signature is valid for any committer
+  // value, so we rebuild the expected calldata with the buyer's
+  // address — otherwise every valid payment trips this check on the
+  // committer slot. Regression: x402B#73. Server-side parallel lives
+  // in `@bosonprotocol/x402-server`'s rule 7
+  // (`validate/payment-payload.ts`).
+  const fullOffer = withSellerSignatureAndCommitter(
     input.requirements.offer.fullOffer,
     input.requirements.offer.sellerSig,
+    inner.buyer,
   ) as CalldataFullOffer;
 
   try {
@@ -249,11 +264,12 @@ export function parseChainId(
   return { ok: true, chainId: Number(m[1]) };
 }
 
-function withSellerSignature(
+function withSellerSignatureAndCommitter(
   fullOffer: Record<string, unknown>,
   sellerSig: string,
+  committer: string,
 ): Record<string, unknown> {
-  return { ...fullOffer, signature: sellerSig };
+  return { ...fullOffer, committer, signature: sellerSig };
 }
 
 function canonicalJson(value: unknown): string {
