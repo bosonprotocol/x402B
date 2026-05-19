@@ -105,7 +105,14 @@ export function buildUnsignedOffer({ env, sellerAddress, now }: BuildOfferArgs):
     validUntilDateInMS: String(t + oneHour),
     voucherRedeemableFromDateInMS: String(t),
     voucherRedeemableUntilDateInMS: String(t + oneHour),
-    disputePeriodDurationInMS: String(oneDay),
+    // 1 week clears the protocol's `minDisputePeriod` floor on every
+    // shipped Boson deployment seen so far. The local
+    // `boson-protocol-node` enforces it via `InvalidDisputePeriod`;
+    // a previous `oneDay` value tripped that revert. PR 7 (e2e
+    // robustness work) will read the actual floor from
+    // `ConfigHandlerFacet.getMinDisputePeriod()` and pick
+    // `max(envValue, minDisputePeriod)`.
+    disputePeriodDurationInMS: String(oneWeek),
     voucherValidDurationInMS: "0",
     resolutionPeriodDurationInMS: String(oneWeek),
     exchangeToken: env.assetAddress,
@@ -113,7 +120,14 @@ export function buildUnsignedOffer({ env, sellerAddress, now }: BuildOfferArgs):
     metadataUri: "ipfs://x402b-example",
     metadataHash: "x402b-example",
     collectionIndex: "0",
-    feeLimit: "0",
+    // Max protocol + agent fee the seller will accept on this offer.
+    // `"0"` reverts every commit with `TotalFeeExceedsLimit` because
+    // the protocol fee is non-zero on every shipped Boson deployment
+    // seen so far. Setting the cap to the full price means the
+    // seller absorbs whatever the protocol charges (worst case:
+    // their entire revenue) — fine for the demo. Production sellers
+    // should pin a tighter cap based on their margin model.
+    feeLimit: env.amount,
     offerCreator: sellerAddress,
     committer: ZERO_ADDRESS,
     condition: {

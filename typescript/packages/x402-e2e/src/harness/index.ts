@@ -4,7 +4,9 @@
 export { buildPublicClient, buildWalletClient, localBosonChain } from "./clients.js";
 export {
   createSubgraphExchangeReader,
+  withPollUntilFound,
   type SubgraphExchangeReaderArgs,
+  type WithPollUntilFoundOptions,
 } from "./exchange-reader.js";
 
 export { createBuyerActor, type BuyerActor, type BuyerActorArgs } from "./buyer-actor.js";
@@ -28,3 +30,4 @@ export {
 } from "./x-payment-response-asserter.js";
 
 export { seedSuite, type SeedArgs, type SeededSeller, type SuiteState } from "./seed.js";
+export { buildCreateSellerCallback, type BuildCreateSellerCallbackArgs } from "./create-seller.js";

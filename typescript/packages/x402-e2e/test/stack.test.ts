@@ -4,16 +4,21 @@
 //
 //   E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test
 //
-// The test boots the full canonical Boson stack + the three x402B
-// services, waits for the deploy.done markers
-// (`boson-protocol-node:/app/deploy.done`,
-//  `boson-subgraph:/home/deploy.done`), hits every service's
-// HTTP-level health probe, then tears the stack down.
+// **Stack lifecycle.** `test/setup/globalSetup.ts` (introduced in
+// PR 6) is the single owner of `startStack()` / `stopStack()` — it
+// runs once before any test file and tears down once after the whole
+// suite. This file used to run its own `beforeAll(startStack)` /
+// `afterAll(stopStack)`, but vitest parallelises test files by
+// default: with the smoke finishing in ~1s and scenario tests
+// running 20s+, the smoke's `afterAll` would tear the stack down
+// mid-scenario, surfacing as `FACILITATOR_UNREACHABLE` /
+// `NETWORK_ERROR` (502) in `commit.test.ts`. Removed accordingly —
+// this file now only probes services globalSetup is responsible for
+// bringing up.
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { LOCAL_31337_0 } from "../src/config/local-31337-0.js";
-import { startStack, stopStack } from "../src/stack/index.js";
 
 const ENABLED = process.env.E2E_DOCKER === "1";
 
@@ -67,14 +72,6 @@ function describePing(r: PingResult): string {
 }
 
 describe.skipIf(!ENABLED)("x402-e2e stack smoke", () => {
-  beforeAll(async () => {
-    await startStack({ waitForReady: true });
-  });
-
-  afterAll(async () => {
-    await stopStack();
-  });
-
   for (const target of HEALTH_TARGETS) {
     it(`${target.name} is reachable`, async () => {
       let last: PingResult = { ok: false, status: 0, error: "no attempt made" };

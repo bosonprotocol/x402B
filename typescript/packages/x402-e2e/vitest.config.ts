@@ -8,5 +8,12 @@ export default defineConfig({
     // on cold/slow Docker runs due to image pull/build and multiple readiness probes.
     testTimeout: 5 * 60_000,
     hookTimeout: 12 * 60_000,
+    // `globalSetup` is gated internally on `E2E_DOCKER=1`; when that flag
+    // is off, the setup is a no-op and the docker-dependent scenarios
+    // skip themselves via `describe.skipIf(...)`. Listing the setup
+    // unconditionally keeps a single source of truth for the scenario
+    // wiring — flipping the gate runs the suite end-to-end without any
+    // config change.
+    globalSetup: ["./test/setup/globalSetup.ts"],
   },
 });

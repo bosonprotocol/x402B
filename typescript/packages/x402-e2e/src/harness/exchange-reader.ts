@@ -60,6 +60,48 @@ interface CoreSdkExchangeEntity {
   };
 }
 
+export interface WithPollUntilFoundOptions {
+  /** Max times the wrapper re-asks the underlying reader. Default: 30. */
+  attempts?: number;
+  /** Delay between attempts in ms. Default: 1000 (1 s). */
+  delayMs?: number;
+}
+
+/**
+ * Wrap an `ExchangeReader` so it polls internally until the snapshot
+ * is non-null, instead of forwarding `null` immediately.
+ *
+ * Why: `@bosonprotocol/x402-server`'s `verifyExchange` defaults to
+ * **3 attempts × 50 ms** before giving up with
+ * `STATE_VERIFY_EXCHANGE_NOT_FOUND` — fine for a fast/cached subgraph,
+ * too short for the local `boson-subgraph` container whose indexer
+ * typically needs 1–5 s to ingest a fresh block. Wrapping the reader
+ * effectively extends that budget without touching the server's
+ * defaults (production consumers want the fast path).
+ *
+ * No behaviour change for non-null reads: `verifyExchangeSnapshot`
+ * does field-level comparison, which the wrapper doesn't interpose
+ * on. Once the subgraph has indexed, the first poll returns the
+ * snapshot and the wrapper exits.
+ */
+export function withPollUntilFound(
+  reader: ExchangeReader,
+  options: WithPollUntilFoundOptions = {},
+): ExchangeReader {
+  const attempts = Math.max(1, Math.floor(options.attempts ?? 30));
+  const delayMs = Math.max(0, Math.floor(options.delayMs ?? 1000));
+  return {
+    read: async (exchangeId: string): Promise<ExchangeSnapshot | null> => {
+      for (let i = 0; i < attempts; i++) {
+        const snapshot = await reader.read(exchangeId);
+        if (snapshot !== null) return snapshot;
+        if (i < attempts - 1) await new Promise<void>((r) => setTimeout(r, delayMs));
+      }
+      return null;
+    },
+  };
+}
+
 /**
  * Build an `ExchangeReader` that resolves snapshots through the local
  * Boson subgraph. The CoreSDK is constructed with a throwing web3Lib
