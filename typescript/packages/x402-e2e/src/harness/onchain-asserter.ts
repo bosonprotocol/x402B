@@ -72,9 +72,17 @@ export function createOnchainAsserter(reader: ExchangeReader): OnchainAsserter {
 
       throw new Error(
         `OnchainAsserter.expect(${exchangeId}) failed after ${attempts} attempts: ${
-          lastResult ? JSON.stringify(lastResult) : "exchange never indexed"
+          lastResult ? safeStringify(lastResult) : "exchange never indexed"
         }`,
       );
     },
   };
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? v.toString() : v));
+  } catch {
+    return String(value);
+  }
 }
