@@ -48,23 +48,29 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   console.log("[x402-e2e/globalSetup] starting stack…");
   await startStack({ waitForReady: true });
 
-  const sellerAccount = privateKeyToAccount(ROLE_ACCOUNTS.seller.privateKey);
-  const publicClient = buildPublicClient();
-  const walletClient = buildWalletClient(sellerAccount);
+  try {
+    const sellerAccount = privateKeyToAccount(ROLE_ACCOUNTS.seller.privateKey);
+    const publicClient = buildPublicClient();
+    const walletClient = buildWalletClient(sellerAccount);
 
-  console.log(`[x402-e2e/globalSetup] seeding seller ${sellerAccount.address}…`);
-  const suite = await seedSuite({
-    sellerAddress: sellerAccount.address,
-    createSeller: buildCreateSellerCallback({ walletClient, publicClient }),
-  });
+    console.log(`[x402-e2e/globalSetup] seeding seller ${sellerAccount.address}…`);
+    const suite = await seedSuite({
+      sellerAddress: sellerAccount.address,
+      createSeller: buildCreateSellerCallback({ walletClient, publicClient }),
+    });
 
-  process.env[SUITE_STATE_ENV.sellerId] = suite.seller.id;
-  process.env[SUITE_STATE_ENV.sellerAddress] = suite.seller.assistant;
-  process.env[SUITE_STATE_ENV.disputeResolverId] = suite.disputeResolverId;
+    process.env[SUITE_STATE_ENV.sellerId] = suite.seller.id;
+    process.env[SUITE_STATE_ENV.sellerAddress] = suite.seller.assistant;
+    process.env[SUITE_STATE_ENV.disputeResolverId] = suite.disputeResolverId;
 
-  console.log(
-    `[x402-e2e/globalSetup] suite ready — sellerId=${suite.seller.id}, disputeResolverId=${suite.disputeResolverId}`,
-  );
+    console.log(
+      `[x402-e2e/globalSetup] suite ready — sellerId=${suite.seller.id}, disputeResolverId=${suite.disputeResolverId}`,
+    );
+  } catch (err) {
+    console.error("[x402-e2e/globalSetup] post-start setup failed, tearing down stack…");
+    await stopStack();
+    throw err;
+  }
 
   return async () => {
     console.log("[x402-e2e/globalSetup] tearing down stack…");
