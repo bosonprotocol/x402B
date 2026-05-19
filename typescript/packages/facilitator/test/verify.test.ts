@@ -192,18 +192,42 @@ describe("verify()", () => {
     expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
   });
 
-  // Regression for x402B#73: the canonical fixture's `fullOffer`
-  // carries `committer: 0x0` (the challenge-time placeholder) while
-  // the meta-tx calldata splices in `committer: buyer.address`.
-  // Before the fix in `verify/structural.ts`,
-  // `validateMetaTxCalldataMatchesRequirements` rebuilt the expected
-  // calldata from `offerRef.fullOffer` verbatim and tripped on the
-  // committer slot, rejecting every valid payment. With the fix in
-  // place, the splice is mirrored and the happy path passes — which
-  // the `buildConfig()` smoke at the top of this describe already
-  // exercises, so this test pins the *opposite* direction: if the
-  // payload claims a `buyer` that doesn't match the calldata-encoded
-  // committer, the check must still reject.
+  // Regression for x402B#73 (positive direction): the canonical
+  // `fullOffer` fixture carries `committer: 0x0` (the placeholder
+  // that real servers stamp into `requirements.offer.fullOffer` at
+  // challenge time), while `buildValidPayload` splices
+  // `committer: buyer.address` into the calldata it signs (mirroring
+  // `@bosonprotocol/x402-client`'s `pre-commit.ts:94`). Before the
+  // `verify/structural.ts` fix this asymmetric shape tripped the
+  // calldata-match check on the committer slot and rejected every
+  // valid payment. Pin the asymmetric fixture shape + happy-path
+  // outcome here so a future fixture "cleanup" that re-aligns the
+  // committers can't silently lose the regression coverage.
+  it("x402B#73 — placeholder offerRef committer + buyer-spliced calldata passes verify()", async () => {
+    const payload = await buildValidPayload();
+    const requirements = buildValidRequirements();
+
+    // Pin the divergent shape: offerRef carries the placeholder…
+    expect(payload.payload.offerRef.fullOffer.committer).toBe(
+      "0x0000000000000000000000000000000000000000",
+    );
+    expect(requirements.offer.fullOffer.committer).toBe(
+      "0x0000000000000000000000000000000000000000",
+    );
+    // …while the meta-tx claims a real buyer.
+    expect(payload.payload.buyer.toLowerCase()).toBe(buyer.address.toLowerCase());
+    expect(payload.payload.metaTx.from.toLowerCase()).toBe(buyer.address.toLowerCase());
+
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  // Regression for x402B#73 (negative direction): the structural
+  // calldata check must still reject when the buyer-side splice and
+  // the calldata-encoded committer disagree.
   it("rejects when payload.buyer doesn't match the calldata-encoded committer", async () => {
     const payload = await buildValidPayload();
     // The fixture's calldata has `committer: buyer.address` from
