@@ -73,7 +73,9 @@ export function readXPaymentResponse(
       : (() => {
           const lower = X_PAYMENT_RESPONSE_HEADER.toLowerCase();
           const map = headers as Record<string, string | string[] | undefined>;
-          const v = map[X_PAYMENT_RESPONSE_HEADER] ?? map[lower];
+          const lowered: Record<string, string | string[] | undefined> = {};
+          for (const key of Object.keys(map)) lowered[key.toLowerCase()] = map[key];
+          const v = lowered[lower];
           return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
         })();
 
