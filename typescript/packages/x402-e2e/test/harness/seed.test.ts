@@ -3,10 +3,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import { ROLE_ACCOUNTS } from "../../src/config/accounts.js";
 import { LOCAL_31337_0 } from "../../src/config/local-31337-0.js";
 import { seedSuite } from "../../src/harness/seed.js";
 
-const SELLER_ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as const;
+const SELLER_ADDRESS = ROLE_ACCOUNTS.seller.address;
 
 // `seedSuite` constructs its own `CoreSDK` and casts it via
 // `asCoreSdkReadAdapter`. Mock the CoreSDK constructor to return a

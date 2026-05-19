@@ -5,14 +5,16 @@ import { ExchangeState } from "@bosonprotocol/x402-actions";
 import type { ExchangeReader, ExchangeSnapshot } from "@bosonprotocol/x402-server";
 import { describe, expect, it } from "vitest";
 
+import { ROLE_ACCOUNTS } from "../../src/config/accounts.js";
+import { LOCAL_31337_0 } from "../../src/config/local-31337-0.js";
 import { createOnchainAsserter } from "../../src/harness/onchain-asserter.js";
 import {
   decodeXPaymentResponse,
   readXPaymentResponse,
 } from "../../src/harness/x-payment-response-asserter.js";
 
-const SELLER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as const;
-const TOKEN = "0x70e0bA845a1A0F2DA3359C97E0285013525FFC49" as const;
+const SELLER = ROLE_ACCOUNTS.seller.address;
+const TOKEN = LOCAL_31337_0.contracts.testErc20;
 
 function readerFromQueue(snapshots: readonly (ExchangeSnapshot | null)[]): ExchangeReader {
   let i = 0;
