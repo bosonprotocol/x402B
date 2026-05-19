@@ -22,6 +22,7 @@ import {
   fullOffer,
   NETWORK,
   relayer,
+  WRONG_BUYER,
 } from "./fixtures.js";
 
 /**
@@ -233,7 +234,7 @@ describe("verify()", () => {
     // The fixture's calldata has `committer: buyer.address` from
     // `buildValidPayload`; clobbering `payload.buyer` to a different
     // EOA makes the splice mismatch.
-    const wrongBuyer: Address = "0xabcdef1234567890abcdef1234567890abcdef12";
+    const wrongBuyer = WRONG_BUYER;
     payload.payload.buyer = wrongBuyer;
     payload.payload.metaTx.from = wrongBuyer;
     const requirements = buildValidRequirements();
@@ -268,7 +269,7 @@ describe("verify()", () => {
     // BAD_META_TX_SIGNATURE failure. The sig itself stays the one
     // `buildValidPayload` produced for the real `buyer` account — so
     // recovery yields `buyer`, not `wrongBuyer`, and step 8 fires.
-    const wrongBuyer: Address = "0xabcdef1234567890abcdef1234567890abcdef12";
+    const wrongBuyer = WRONG_BUYER;
     const { buildCreateOfferAndCommitCalldata } = await import("@bosonprotocol/x402-evm/actions");
     const reframedCalldata = await buildCreateOfferAndCommitCalldata({
       fullOffer: { ...fullOffer, committer: wrongBuyer } as Parameters<

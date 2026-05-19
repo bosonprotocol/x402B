@@ -40,6 +40,13 @@ export const SELLER_SIG: Hex = `0x${"33".repeat(65)}`;
 export const AMOUNT = "1000000";
 
 /**
+ * Distinct EOA used by negative tests that need a buyer address
+ * different from `buyer.address` — kept here so the literal is defined
+ * once and any test that swaps the buyer reuses the same value.
+ */
+export const WRONG_BUYER: Address = "0xabcdef1234567890abcdef1234567890abcdef12";
+
+/**
  * Canonical `fullOffer` literal used to build a real meta-tx calldata
  * via `buildCreateOfferAndCommitCalldata`. Both verify and settle
  * require the on-chain calldata embedded in `payload.metaTx` to match
