@@ -4,7 +4,9 @@
 export { buildPublicClient, buildWalletClient, localBosonChain } from "./clients.js";
 export {
   createSubgraphExchangeReader,
+  withPollUntilFound,
   type SubgraphExchangeReaderArgs,
+  type WithPollUntilFoundOptions,
 } from "./exchange-reader.js";
 
 export { createBuyerActor, type BuyerActor, type BuyerActorArgs } from "./buyer-actor.js";

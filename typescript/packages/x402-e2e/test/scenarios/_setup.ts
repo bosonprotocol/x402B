@@ -31,6 +31,7 @@ import {
   createResolverActor,
   createSellerActor,
   createSubgraphExchangeReader,
+  withPollUntilFound,
   type BuyerActor,
   type OnchainAsserter,
   type ResolverActor,
@@ -121,7 +122,14 @@ export async function createScenarioContext(
   };
 
   const publicClient = buildPublicClient();
-  const exchangeReader = createSubgraphExchangeReader();
+  // The local boson-subgraph container's indexer typically needs 1–5 s
+  // to ingest a freshly-mined block; `@bosonprotocol/x402-server`'s
+  // default `verifyExchange` retry budget (3 × 50 ms) gives up well
+  // before that, surfacing as `STATE_VERIFY_EXCHANGE_NOT_FOUND` on
+  // every commit. `withPollUntilFound` extends the reader's wait
+  // budget without touching the server's defaults (production
+  // consumers want the fast path).
+  const exchangeReader = withPollUntilFound(createSubgraphExchangeReader());
   const asserter = createOnchainAsserter(exchangeReader);
 
   // Reserve a real port up front: `createResourceServerApp` builds the

@@ -11,9 +11,8 @@
 // `wrapFetchWithPayment` signs and retries with X-PAYMENT, settle
 // commits on-chain, and the response carries `X-PAYMENT-RESPONSE`
 // with the new `exchangeId`. A2–A5 cover the other commit-time
-// dimensions (atomic / token-auth strategies) and land as full tests
-// in this PR once A1 is validated against the live stack — for now
-// they're `it.todo` so the suite enumerates them.
+// dimensions (atomic / token-auth strategies); they're `it.todo`
+// in this PR and land in PR 7.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -53,13 +52,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
     await ctx?.teardown();
   });
 
-  // Skipped pending x402B#73. The buyer-side flow drives correctly,
-  // but the server rejects with rule-7 `CALLDATA_MISMATCH`: the buyer
-  // signs the meta-tx with `committer: buyer`, while `assemblePayload`
-  // still ships the server's original `offerRef.fullOffer.committer
-  // = 0x0`. Once that one-line client-side fix lands, drop `.skip`
-  // and the test runs as the @p0 happy path.
-  it.skip("A1 — deferred commit with `none` strategy + inline fulfillment (#73)", async () => {
+  it("A1 — deferred commit with `none` strategy + inline fulfillment", async () => {
     // Drive the full happy path through `wrapFetchWithPayment`. The
     // first call sees a 402, the buyer signs, the retry settles
     // on-chain, and we assert against both the HTTP response and the
