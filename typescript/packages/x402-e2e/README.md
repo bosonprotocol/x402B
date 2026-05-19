@@ -7,11 +7,16 @@ published. Wraps the canonical Boson local stack
 services (`facilitator-http`, `resource-server`, `webhook-sink`) into
 a single programmatic lifecycle.
 
-> PR 4 shipped the **stack scaffolding** — compose file, lifecycle
-> scripts, deploy-done readiness probe, gated smoke. PR 5 (this PR)
-> adds the **actor + asserter harness** plus the subgraph-backed
-> `ExchangeReader` the resource-server container now uses. Scenario
-> tests land in PR 6.
+> PR 4 shipped the **stack scaffolding** (compose, lifecycle, readiness
+> probe, gated smoke). PR 5 added the **actor + asserter harness** and
+> the subgraph-backed `ExchangeReader`. PR 6 (this PR) lands the
+> **scenario suite scaffolding**: vitest `globalSetup` that boots the
+> stack + seeds the seller entity via core-sdk, an in-process
+> resource-server-per-test, and the first runnable scenario (A1 —
+> deferred commit with `none` token-auth). A2–A5 (atomic + token-auth
+> variants) and C1–C5/C8 (commit-time validations) are enumerated as
+> `it.todo` and land in PR 7. PR 8 covers operational failure modes
+> and nightly CI.
 
 ## Layout
 
@@ -38,6 +43,7 @@ src/
     onchain-asserter.ts           ← retry-aware snapshot assertions
     x-payment-response-asserter.ts ← decodes X-PAYMENT-RESPONSE header
     seed.ts                       ← suite-level idempotent seed (createSeller)
+    create-seller.ts              ← PR 6 — wallet-bound createSeller callback (core-sdk)
 scripts/
   stack-up.ts / stack-down.ts     ← CLI wrappers (see `pnpm stack:up` / `:down`)
 test/
@@ -46,6 +52,14 @@ test/
     actors.test.ts
     asserters.test.ts
     seed.test.ts
+  setup/                          ← PR 6
+    globalSetup.ts                ← boots stack + seeds seller; gated on E2E_DOCKER
+  scenarios/                      ← PR 6
+    _setup.ts                     ← per-test scaffolding (in-process resource server, actors, asserter)
+    _buyer-setup.ts               ← mint + approve helpers for the `none` strategy
+    _skeletons.test.ts            ← it.todo declarations for PR 7 / PR 8 scenarios
+    commit.test.ts                ← A1 runnable + A2–A5 todo
+    validation-commit.test.ts     ← C1–C5/C8 todo (lands in PR 7)
 ```
 
 ## Bring the stack up

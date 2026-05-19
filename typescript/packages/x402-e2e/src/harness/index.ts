@@ -28,3 +28,4 @@ export {
 } from "./x-payment-response-asserter.js";
 
 export { seedSuite, type SeedArgs, type SeededSeller, type SuiteState } from "./seed.js";
+export { buildCreateSellerCallback, type BuildCreateSellerCallbackArgs } from "./create-seller.js";
