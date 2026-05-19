@@ -3,7 +3,7 @@
 // `seedSuite` is generic — it accepts any `(assistant) => Promise<void>`
 // callback so each suite can plug in whichever core-sdk shape its
 // version supports. This helper is the concrete wiring against
-// `@bosonprotocol/core-sdk@1.48`'s `AccountsMixin.createSeller` for
+// `@bosonprotocol/core-sdk`'s `AccountsMixin.createSeller` for
 // the local `boson-protocol-node` stack: it builds a `CoreSDK` bound
 // to the seller's viem `WalletClient`, submits the on-chain seller
 // registration, and awaits the receipt before returning so
