@@ -117,6 +117,7 @@ without Docker.
 
 ```ts
 import {
+  LOCAL_31337_0,
   ROLE_ACCOUNTS,
   createBuyerActor,
   createSellerActor,
@@ -125,6 +126,7 @@ import {
   readXPaymentResponse,
   seedSuite,
 } from "@bosonprotocol/x402-e2e";
+import { ExchangeState } from "@bosonprotocol/x402-actions";
 import { privateKeyToAccount } from "viem/accounts";
 
 // One-time per suite:
