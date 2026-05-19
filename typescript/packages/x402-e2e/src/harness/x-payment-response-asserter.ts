@@ -13,8 +13,9 @@ export { X_PAYMENT_RESPONSE_HEADER };
 
 /**
  * Decode the `X-PAYMENT-RESPONSE` header value into the original JSON
- * payload. `null` when the header is absent or malformed (so callers
- * can `expect(decode(...)).toBeDefined()`).
+ * payload. Returns `null` when the header is absent or malformed, so
+ * callers can assert successful decoding with
+ * `expect(decode(...)).not.toBeNull()`.
  */
 export function decodeXPaymentResponse(headerValue: string | null | undefined): unknown {
   if (headerValue === null || headerValue === undefined || headerValue.length === 0) {
