@@ -39,6 +39,8 @@ import {
 
 import { SUITE_STATE_ENV } from "../setup/globalSetup.js";
 
+const LOCALHOST_HTTP = "http://127.0.0.1";
+
 export interface ScenarioContextArgs {
   /**
    * Override the seller private key. Defaults to `ROLE_ACCOUNTS.seller.privateKey`.
@@ -127,14 +129,14 @@ export async function createScenarioContext(
   // endpoint URL) at construction time, so a `:0` placeholder would
   // bake an unreachable port into `nextActions`.
   const port = await allocateFreePort();
-  const resourceServerUrl = `http://127.0.0.1:${port}`;
+  const resourceServerUrl = `${LOCALHOST_HTTP}:${port}`;
   const env: ResourceServerEnv = {
     publicUrl: resourceServerUrl,
     rpcNode: LOCAL_31337_0.urls.jsonRpc,
     chainId: LOCAL_31337_0.chainId,
     network: LOCAL_31337_0.network,
     escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
-    facilitatorUrl: "http://127.0.0.1:8889",
+    facilitatorUrl: `${LOCALHOST_HTTP}:8889`,
     sellerPk,
     sellerId: suite.sellerId,
     disputeResolverId: suite.disputeResolverId,

@@ -67,10 +67,17 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     console.log(
       `[x402-e2e/globalSetup] suite ready — sellerId=${suite.seller.id}, disputeResolverId=${suite.disputeResolverId}`,
     );
-  } catch (err) {
+  } catch (setupErr) {
     console.error("[x402-e2e/globalSetup] post-start setup failed, tearing down stack…");
-    await stopStack();
-    throw err;
+    try {
+      await stopStack();
+    } catch (teardownErr) {
+      console.error(
+        "[x402-e2e/globalSetup] stopStack() failed during teardown after setup error — original setup error will be rethrown:",
+        teardownErr,
+      );
+    }
+    throw setupErr;
   }
 
   return async () => {
