@@ -42,8 +42,8 @@ function createReadOnlyWeb3LibStub(): never[] {
 export interface SubgraphExchangeReaderArgs {
   /** Subgraph GraphQL endpoint. Defaults to `LOCAL_31337_0.urls.subgraph`. */
   subgraphUrl?: string;
-  /** Boson Diamond address. Defaults to `LOCAL_31337_0.contracts.protocolDiamond`. */
-  protocolDiamond?: Address;
+  /** Escrow address (the Boson protocol entry point). Defaults to `LOCAL_31337_0.contracts.protocolDiamond`. */
+  escrowAddress?: Address;
   /** Chain id. Defaults to `LOCAL_31337_0.chainId`. */
   chainId?: number;
 }
@@ -69,13 +69,13 @@ export function createSubgraphExchangeReader(
   args: SubgraphExchangeReaderArgs = {},
 ): ExchangeReader {
   const subgraphUrl = args.subgraphUrl ?? LOCAL_31337_0.urls.subgraph;
-  const protocolDiamond = args.protocolDiamond ?? LOCAL_31337_0.contracts.protocolDiamond;
+  const escrowAddress = args.escrowAddress ?? LOCAL_31337_0.contracts.protocolDiamond;
   const chainId = args.chainId ?? LOCAL_31337_0.chainId;
 
   const sdk = new CoreSDK({
     web3Lib: createReadOnlyWeb3LibStub() as never,
     subgraphUrl,
-    protocolDiamond,
+    protocolDiamond: escrowAddress,
     chainId,
   });
 

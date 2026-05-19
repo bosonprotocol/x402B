@@ -28,7 +28,7 @@ import { LOCAL_31337_0 } from "../config/local-31337-0.js";
 export interface SellerActorArgs {
   /** Seller's signing key. Defaults to `ROLE_ACCOUNTS.seller` in callers. */
   account: LocalAccount;
-  /** Boson Diamond — EIP-712 `verifyingContract` for the FullOffer signature. */
+  /** Escrow address — EIP-712 `verifyingContract` for the FullOffer signature (matches `onchainHints.escrow`). */
   escrow?: Address;
   /** Chain id baked into the EIP-712 salt. Defaults to `LOCAL_31337_0.chainId`. */
   chainId?: number;

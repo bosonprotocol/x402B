@@ -25,7 +25,7 @@ if (env.subgraphUrl === undefined) {
 
 const exchangeReader = createSubgraphExchangeReader({
   subgraphUrl: env.subgraphUrl,
-  protocolDiamond: env.escrowAddress,
+  escrowAddress: env.escrowAddress,
   chainId: env.chainId,
 });
 
