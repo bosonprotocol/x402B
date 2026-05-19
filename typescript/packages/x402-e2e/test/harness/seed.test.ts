@@ -1,7 +1,7 @@
 // Unit tests for the suite-level seed step. Mocks the CoreSDK +
 // subgraph adapter so no Docker / no real subgraph is needed.
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ROLE_ACCOUNTS } from "../../src/config/accounts.js";
 import { LOCAL_31337_0 } from "../../src/config/local-31337-0.js";
@@ -31,6 +31,18 @@ vi.mock("@bosonprotocol/core-sdk", async (importOriginal) => {
 });
 
 describe("seedSuite", () => {
+  // Reset the stub's per-method state (call history + queued
+  // `mockResolvedValueOnce` / `mockResolvedValue`) between tests so
+  // ordering doesn't leak. We intentionally don't use
+  // `vi.resetAllMocks()` — that would also clear the `CoreSDK`
+  // constructor's `mockImplementation(() => coreSdkStub)` and break
+  // every subsequent test.
+  beforeEach(() => {
+    coreSdkStub.getSellersByAddress.mockReset();
+    coreSdkStub.getBuyers.mockReset();
+    coreSdkStub.getFunds.mockReset();
+  });
+
   it("returns the existing seller id when the subgraph already has one", async () => {
     coreSdkStub.getSellersByAddress.mockResolvedValueOnce([{ id: "7" }]);
     const result = await seedSuite({ sellerAddress: SELLER_ADDRESS });
