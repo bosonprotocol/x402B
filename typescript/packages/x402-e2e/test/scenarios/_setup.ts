@@ -16,6 +16,7 @@
 
 import { createResourceServerApp, readEnv } from "@bosonprotocol/x402-example-resource-server";
 import { type AddressInfo } from "node:net";
+import { type Hex } from "viem";
 import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 
 /** `ResourceServerEnv` isn't re-exported from the example's barrel; derive it from `readEnv`'s return type. */
@@ -39,8 +40,12 @@ import {
 import { SUITE_STATE_ENV } from "../setup/globalSetup.js";
 
 export interface ScenarioContextArgs {
-  /** Override the seller `LocalAccount`. Defaults to `ROLE_ACCOUNTS.seller`. */
-  sellerAccount?: LocalAccount;
+  /**
+   * Override the seller private key. Defaults to `ROLE_ACCOUNTS.seller.privateKey`.
+   * Taken as a raw key (not a `LocalAccount`) so the same identity drives both
+   * the `SellerActor` and the in-process resource server's `sellerPk`.
+   */
+  sellerPk?: Hex;
   /** Override the buyer `LocalAccount`. Defaults to `ROLE_ACCOUNTS.buyer`. */
   buyerAccount?: LocalAccount;
   /** Override the resolver `LocalAccount`. Defaults to `ROLE_ACCOUNTS.resolver`. */
@@ -79,7 +84,8 @@ function requireSuiteEnv(key: string): string {
 export async function createScenarioContext(
   args: ScenarioContextArgs = {},
 ): Promise<ScenarioContext> {
-  const sellerAccount = args.sellerAccount ?? privateKeyToAccount(ROLE_ACCOUNTS.seller.privateKey);
+  const sellerPk = args.sellerPk ?? ROLE_ACCOUNTS.seller.privateKey;
+  const sellerAccount = privateKeyToAccount(sellerPk);
   const buyerAccount = args.buyerAccount ?? privateKeyToAccount(ROLE_ACCOUNTS.buyer.privateKey);
   const resolverAccount =
     args.resolverAccount ?? privateKeyToAccount(ROLE_ACCOUNTS.resolver.privateKey);
@@ -104,7 +110,7 @@ export async function createScenarioContext(
     network: LOCAL_31337_0.network,
     escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
     facilitatorUrl: "http://127.0.0.1:8889",
-    sellerPk: ROLE_ACCOUNTS.seller.privateKey,
+    sellerPk,
     sellerId: suite.sellerId,
     disputeResolverId: suite.disputeResolverId,
     assetAddress: args.assetAddress ?? LOCAL_31337_0.contracts.testErc20,
