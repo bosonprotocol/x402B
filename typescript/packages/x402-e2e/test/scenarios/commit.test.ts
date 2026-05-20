@@ -37,9 +37,9 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
 
   beforeAll(async () => {
     const publicClient = buildPublicClient();
-    const funder = buildWalletClient(SEED_WALLETS.commit);
+    const funder = buildWalletClient(SEED_WALLETS.commit.account);
     buyerAccount = await createFundedBuyer({ funder, publicClient });
-    ctx = await createScenarioContext({ buyerAccount });
+    ctx = await createScenarioContext({ slot: "commit", buyerAccount });
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,

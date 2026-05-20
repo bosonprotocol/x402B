@@ -7,20 +7,19 @@
 //   1. `startStack({ waitForReady: true })` — bring up the canonical
 //      Boson stack + x402B services and block until the contracts +
 //      subgraph `deploy.done` markers exist.
-//   2. `seedSuite({ createSeller: buildCreateSellerCallback(...) })` —
-//      register the seller entity tied to `ROLE_ACCOUNTS.seller`.
-//      Idempotent: re-runs are no-ops because the subgraph already
-//      reports an existing seller for that assistant.
-//   3. Export the seeded state (seller id, dispute resolver id) via
-//      `process.env` so each test file's `beforeAll` can read it
-//      without re-querying the subgraph.
-//
-// Test files MUST also call `describe.skipIf(!process.env.E2E_DOCKER)`
-// or equivalent so they skip cleanly when the gate is off.
+//   2. Register one Boson seller entity per slot in `SEED_WALLETS`.
+//      Each chain-touching test FILE picks a slot — sharing a seller
+//      across parallel files causes `OfferSoldOut` races on FullOffer
+//      signature reuse, so we provision a distinct seller for every
+//      slot the suite knows about. `seedSuite` is idempotent so
+//      re-running on an existing chain state is a no-op.
+//   3. Export per-slot seller info (`{id, address}`) as a JSON map
+//      via `process.env[SELLERS_ENV_KEY]`, plus the protocol-global
+//      dispute resolver id, so each test file's `beforeAll` can read
+//      its slot's seller without re-querying the subgraph.
 
-import { privateKeyToAccount } from "viem/accounts";
+import type { Address } from "viem";
 
-import { ROLE_ACCOUNTS } from "../../src/config/accounts.js";
 import {
   buildCreateSellerCallback,
   buildPublicClient,
@@ -29,10 +28,17 @@ import {
 } from "../../src/harness/index.js";
 import { startStack, stopStack } from "../../src/stack/index.js";
 
+import {
+  SEED_WALLETS,
+  SELLERS_ENV_KEY,
+  type SeedWalletSellerInfo,
+} from "../scenarios/_seed-wallets.js";
+
 /** Env-var keys the scenario tests read from `process.env`. */
 export const SUITE_STATE_ENV = {
-  sellerId: "X402_E2E_SELLER_ID",
-  sellerAddress: "X402_E2E_SELLER_ADDRESS",
+  /** JSON map `{ slotName → { id, address } }` — populated by this setup. */
+  sellers: SELLERS_ENV_KEY,
+  /** Protocol-global dispute resolver id (shared across all sellers). */
   disputeResolverId: "X402_E2E_DISPUTE_RESOLVER_ID",
 } as const;
 
@@ -50,22 +56,37 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   await startStack({ waitForReady: true });
 
   try {
-    const sellerAccount = privateKeyToAccount(ROLE_ACCOUNTS.seller.privateKey);
     const publicClient = buildPublicClient();
-    const walletClient = buildWalletClient(sellerAccount);
+    const sellersBySlot: Record<string, SeedWalletSellerInfo> = {};
+    let disputeResolverId: string | undefined;
 
-    console.log(`[x402-e2e/globalSetup] seeding seller ${sellerAccount.address}…`);
-    const suite = await seedSuite({
-      sellerAddress: sellerAccount.address,
-      createSeller: buildCreateSellerCallback({ walletClient, publicClient }),
-    });
+    for (const [slotName, slot] of Object.entries(SEED_WALLETS)) {
+      const walletClient = buildWalletClient(slot.account);
+      console.log(
+        `[x402-e2e/globalSetup] seeding seller for slot "${slotName}" (${slot.account.address})…`,
+      );
+      const suite = await seedSuite({
+        sellerAddress: slot.account.address,
+        createSeller: buildCreateSellerCallback({ walletClient, publicClient }),
+      });
+      sellersBySlot[slotName] = {
+        id: suite.seller.id,
+        address: suite.seller.assistant as Address,
+      };
+      // The dispute resolver is a protocol-global entity (`id: 1` on the
+      // local stack); every slot's `seedSuite` returns the same value.
+      disputeResolverId = suite.disputeResolverId;
+    }
 
-    process.env[SUITE_STATE_ENV.sellerId] = suite.seller.id;
-    process.env[SUITE_STATE_ENV.sellerAddress] = suite.seller.assistant;
-    process.env[SUITE_STATE_ENV.disputeResolverId] = suite.disputeResolverId;
+    if (disputeResolverId === undefined) {
+      throw new Error("[x402-e2e/globalSetup] no slots registered — SEED_WALLETS is empty?");
+    }
+
+    process.env[SUITE_STATE_ENV.sellers] = JSON.stringify(sellersBySlot);
+    process.env[SUITE_STATE_ENV.disputeResolverId] = disputeResolverId;
 
     console.log(
-      `[x402-e2e/globalSetup] suite ready — sellerId=${suite.seller.id}, disputeResolverId=${suite.disputeResolverId}`,
+      `[x402-e2e/globalSetup] suite ready — sellers=${JSON.stringify(sellersBySlot)}, disputeResolverId=${disputeResolverId}`,
     );
   } catch (setupErr) {
     console.error("[x402-e2e/globalSetup] post-start setup failed, tearing down stack…");

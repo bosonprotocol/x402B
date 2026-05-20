@@ -20,7 +20,6 @@ import {
   readEnv,
 } from "@bosonprotocol/x402-example-resource-server";
 import { createServer, type AddressInfo } from "node:net";
-import { type Hex } from "viem";
 import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 
 /** `ResourceServerEnv` isn't re-exported from the example's barrel; derive it from `readEnv`'s return type. */
@@ -44,17 +43,25 @@ import {
 
 import { SUITE_STATE_ENV } from "../setup/globalSetup.js";
 
+import { SEED_WALLETS, getSellerInfo, type SeedWalletName } from "./_seed-wallets.js";
+
 const LOCALHOST_HTTP = "http://127.0.0.1";
 
 export interface ScenarioContextArgs {
   /**
-   * Override the seller private key. Defaults to `ROLE_ACCOUNTS.seller.privateKey`.
-   * Taken as a raw key (not a `LocalAccount`) so the same identity drives both
-   * the `SellerActor` and the in-process resource server's `sellerPk`.
+   * Per-file seed-wallet slot. The slot's account is the registered seller
+   * (its `sellerId` was published by `globalSetup`) and supplies the
+   * `sellerPk` the in-process resource server signs FullOffer templates
+   * with. Two chain-touching test files MUST NOT pick the same slot —
+   * see `_seed-wallets.ts`.
    */
-  sellerPk?: Hex;
-  /** Override the buyer `LocalAccount`. Defaults to `ROLE_ACCOUNTS.buyer`. */
-  buyerAccount?: LocalAccount;
+  slot: SeedWalletName;
+  /**
+   * Buyer `LocalAccount` — typically a fresh random EOA built via
+   * `createFundedBuyer({ funder: SEED_WALLETS[slot].account, … })` so each
+   * describe transacts from its own nonce space.
+   */
+  buyerAccount: LocalAccount;
   /** Override the resolver `LocalAccount`. Defaults to `ROLE_ACCOUNTS.resolver`. */
   resolverAccount?: LocalAccount;
   /** Override `ASSET_ADDRESS`. Defaults to the test ERC-20 (`testErc20`). */
@@ -116,18 +123,18 @@ async function allocateFreePort(): Promise<number> {
   return port;
 }
 
-export async function createScenarioContext(
-  args: ScenarioContextArgs = {},
-): Promise<ScenarioContext> {
-  const sellerPk = args.sellerPk ?? ROLE_ACCOUNTS.seller.privateKey;
-  const sellerAccount = privateKeyToAccount(sellerPk);
-  const buyerAccount = args.buyerAccount ?? privateKeyToAccount(ROLE_ACCOUNTS.buyer.privateKey);
+export async function createScenarioContext(args: ScenarioContextArgs): Promise<ScenarioContext> {
+  const slot = SEED_WALLETS[args.slot];
+  const sellerPk = slot.privateKey;
+  const sellerAccount = slot.account;
+  const buyerAccount = args.buyerAccount;
   const resolverAccount =
     args.resolverAccount ?? privateKeyToAccount(ROLE_ACCOUNTS.resolver.privateKey);
 
+  const sellerInfo = getSellerInfo(args.slot);
   const suite = {
-    sellerId: requireSuiteEnv(SUITE_STATE_ENV.sellerId),
-    sellerAddress: requireSuiteEnv(SUITE_STATE_ENV.sellerAddress) as `0x${string}`,
+    sellerId: sellerInfo.id,
+    sellerAddress: sellerInfo.address as `0x${string}`,
     disputeResolverId: requireSuiteEnv(SUITE_STATE_ENV.disputeResolverId),
   };
 

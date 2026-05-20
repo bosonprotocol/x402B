@@ -1,19 +1,30 @@
-// Per-describe seed wallets for the chain-touching scenario suite.
+// Per-FILE seed-wallet slots for the chain-touching scenario suite.
 //
 // Vitest runs test FILES in parallel by default. Each chain-touching
-// describe in each file is wired up against a freshly-generated random
-// buyer EOA that the slot below funds with native ETH for gas. Two
-// slots that run in parallel must never reuse the same account —
-// concurrent funding transactions on a shared EOA collide on tx nonce
-// and cascade into `NonceTooLow` / `BAD_META_TX_SIGNATURE` /
-// `OfferSoldOut` failures.
+// test FILE imports exactly one slot below. Two FILES that can run
+// concurrently MUST NOT share a slot — sharing causes:
+//
+//   1. Funding-tx nonce collisions on the slot account (since each
+//      describe's `beforeAll` funds a fresh random buyer EOA), and
+//   2. `OfferSoldOut` reverts inside `createOfferAndCommit`: parallel
+//      resource servers both sign FullOffer templates with the SAME
+//      seller and the protocol rejects the second submission because
+//      the predicted offerId has already been minted and bought.
+//
+// Each slot's account is therefore registered on-chain as a SEPARATE
+// Boson seller entity by `globalSetup` (see `test/setup/globalSetup.ts`).
+// The seller id is published via `process.env[SELLERS_ENV_KEY]` and
+// looked up at test time via `getSellerInfo(slot)`.
+//
+// Within one file, vitest serialises tests, so describes inside the
+// same file share the slot safely (post-commit.test.ts's `@p0` and
+// `@p1` both use `postCommit`).
 //
 // Mirrors `bosonprotocol/core-components/e2e/tests/utils.ts`'s
-// hand-maintained `seedWalletN` pool. Pick the slot at module scope
-// in each chain-touching test file; two parallel files must never
-// declare the same slot.
+// hand-maintained `seedWalletN` pool, but with each slot doubling as
+// both the buyer-funder and the registered seller.
 
-import type { LocalAccount } from "viem";
+import type { Address, Hex, LocalAccount } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import {
@@ -25,26 +36,73 @@ import {
   ACCOUNT_12,
 } from "../../src/config/accounts.js";
 
-const toAccount = (a: { privateKey: `0x${string}` }) => privateKeyToAccount(a.privateKey);
+export interface SeedWalletSlot {
+  /** viem `LocalAccount` — buyer-funder and seller signer for the slot. */
+  account: LocalAccount;
+  /** Raw private key — passed to the in-process resource server's `sellerPk` arg. */
+  privateKey: Hex;
+}
+
+const toSlot = (a: { privateKey: `0x${string}` }): SeedWalletSlot => ({
+  account: privateKeyToAccount(a.privateKey),
+  privateKey: a.privateKey,
+});
 
 /**
- * Named seed wallets. Each chain-touching test describe imports
- * exactly one. NEVER assign the same slot to two describes that can
- * run in parallel — Vitest runs files in parallel by default, so two
- * parallel files on the same EOA will race the chain nonce.
+ * Named per-FILE slots. Each chain-touching test file imports exactly
+ * one. NEVER assign the same slot to two test files that can run in
+ * parallel — globalSetup registers a separate seller per slot, and
+ * sharing a slot defeats the parallel-safety guarantees.
  */
 export const SEED_WALLETS = {
-  /** `commit.test.ts` — `@p0 commit-time scenarios` describe. */
-  commit: toAccount(ACCOUNT_5),
-  /** `post-commit.test.ts` — `@p0 post-commit lifecycle scenarios` describe. */
-  postCommitP0: toAccount(ACCOUNT_6),
-  /** `post-commit.test.ts` — `@p1 post-commit lifecycle scenarios` describe. */
-  postCommitP1: toAccount(ACCOUNT_7),
+  /** `commit.test.ts` */
+  commit: toSlot(ACCOUNT_5),
+  /** `post-commit.test.ts` — both `@p0` and `@p1` describes share this file's slot. */
+  postCommit: toSlot(ACCOUNT_6),
   /** Reserved for `validation-commit.test.ts` once it lands chain-touching tests. */
-  validationCommit: toAccount(ACCOUNT_10),
-  /** Spare slots for future chain-touching scenario files (D, E, F sections). */
-  spareA: toAccount(ACCOUNT_11),
-  spareB: toAccount(ACCOUNT_12),
-} as const satisfies Record<string, LocalAccount>;
+  validationCommit: toSlot(ACCOUNT_7),
+  /** Spare slots for future chain-touching scenario files. */
+  spareA: toSlot(ACCOUNT_10),
+  spareB: toSlot(ACCOUNT_11),
+  spareC: toSlot(ACCOUNT_12),
+} as const;
 
 export type SeedWalletName = keyof typeof SEED_WALLETS;
+
+/**
+ * Env-var key under which `globalSetup` publishes the JSON map of
+ * `{ slotName → { id, address } }` for the seller entity registered
+ * against each slot. Tests look this up via `getSellerInfo(slot)`.
+ */
+export const SELLERS_ENV_KEY = "X402_E2E_SELLERS";
+
+export interface SeedWalletSellerInfo {
+  /** Boson seller entity id (decimal string). */
+  id: string;
+  /** Seller's assistant address — matches `SEED_WALLETS[slot].account.address`. */
+  address: Address;
+}
+
+type SellerInfoMap = Record<string, SeedWalletSellerInfo>;
+
+/**
+ * Read the seller info that `globalSetup` registered for `slot`.
+ * Throws when the env map is missing (globalSetup didn't run — likely
+ * `E2E_DOCKER=1` was off) or the slot has no entry.
+ */
+export function getSellerInfo(slot: SeedWalletName): SeedWalletSellerInfo {
+  const raw = process.env[SELLERS_ENV_KEY];
+  if (raw === undefined || raw.length === 0) {
+    throw new Error(
+      `[x402-e2e/seed-wallets] ${SELLERS_ENV_KEY} not set — did globalSetup run? (set E2E_DOCKER=1)`,
+    );
+  }
+  const all = JSON.parse(raw) as SellerInfoMap;
+  const info = all[slot];
+  if (info === undefined) {
+    throw new Error(
+      `[x402-e2e/seed-wallets] no seller registered for slot "${slot}" in ${SELLERS_ENV_KEY}`,
+    );
+  }
+  return info;
+}

@@ -69,12 +69,12 @@ describe.skipIf(!ENABLED)("@p0 post-commit lifecycle scenarios", () => {
 
   beforeAll(async () => {
     const publicClient = buildPublicClient();
-    const funder = buildWalletClient(SEED_WALLETS.postCommitP0);
+    const funder = buildWalletClient(SEED_WALLETS.postCommit.account);
     // Each test in this describe commits multiple fresh exchanges, so
     // give the random buyer enough native ETH to cover all the local
     // mint + approve + transfer fees.
     const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
-    ctx = await createScenarioContext({ buyerAccount });
+    ctx = await createScenarioContext({ slot: "postCommit", buyerAccount });
     // Over-provision the buyer's allowance by ~10x the per-commit cap
     // so successive commits inside the describe don't need re-approval.
     await ensureBuyerCanPay({
@@ -231,9 +231,12 @@ describe.skipIf(!ENABLED)("@p1 post-commit lifecycle scenarios", () => {
 
   beforeAll(async () => {
     const publicClient = buildPublicClient();
-    const funder = buildWalletClient(SEED_WALLETS.postCommitP1);
+    // @p0 and @p1 live in the same file and run sequentially, so they
+    // share the file's slot — `vitest` serialises within-file tests
+    // and the slot's seller / funder can handle both describes' load.
+    const funder = buildWalletClient(SEED_WALLETS.postCommit.account);
     const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
-    ctx = await createScenarioContext({ buyerAccount });
+    ctx = await createScenarioContext({ slot: "postCommit", buyerAccount });
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,
