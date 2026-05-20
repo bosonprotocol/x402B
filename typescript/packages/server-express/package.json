@@ -53,6 +53,7 @@
   "devDependencies": {
     "@bosonprotocol/x402-actions": "workspace:^",
     "@bosonprotocol/x402-evm": "workspace:^",
+    "@bosonprotocol/x402-paywall": "workspace:^",
     "@types/express": "^4.17.21",
     "@types/node": "^20.17.10",
     "@types/supertest": "^6.0.2",

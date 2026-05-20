@@ -18,7 +18,11 @@ import {
 } from "@bosonprotocol/x402-server";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
-import { respondWithChallenge } from "./internal/x402-challenge.js";
+import {
+  respondWithChallenge,
+  type PaywallConfigLike,
+  type PaywallProviderLike,
+} from "./internal/x402-challenge.js";
 
 export interface ExpressMiddlewareOptions {
   /**
@@ -41,6 +45,17 @@ export interface ExpressMiddlewareOptions {
    * point so the buyer redeems in the same transaction.
    */
   flow?: "commit" | "commit-and-redeem";
+  /**
+   * Optional paywall provider. When supplied and the request's `Accept`
+   * header prefers `text/html` (a browser User-Agent), the 402 challenge
+   * is rendered as an HTML document via `paywall.generateHtml(...)`
+   * instead of the canonical JSON body. Non-browser clients always get
+   * JSON. Structurally compatible with
+   * `@bosonprotocol/x402-paywall`'s `evmEscrowPaywall`.
+   */
+  paywall?: PaywallProviderLike;
+  /** Forwarded to `paywall.generateHtml(...)` as the second argument when the paywall path fires. */
+  paywallConfig?: PaywallConfigLike;
 }
 
 export interface X402bResLocals {
@@ -76,7 +91,10 @@ export function expressMiddleware(
     if (header === undefined || header.length === 0) {
       try {
         const requirements = await opts.resolveRequirements(req, "challenge");
-        respondWithChallenge(res, requirements);
+        respondWithChallenge(req, res, requirements, {
+          paywall: opts.paywall,
+          paywallConfig: opts.paywallConfig,
+        });
       } catch (e) {
         next(e);
       }

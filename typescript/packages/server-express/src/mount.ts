@@ -20,7 +20,11 @@ import {
 import { Router, type Request, type RequestHandler, type Response } from "express";
 import type { Hex } from "viem";
 
-import { respondWithChallenge } from "./internal/x402-challenge.js";
+import {
+  respondWithChallenge,
+  type PaywallConfigLike,
+  type PaywallProviderLike,
+} from "./internal/x402-challenge.js";
 
 /** Shared error code for malformed `POST /x402B/*` bodies. */
 export const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
@@ -36,6 +40,16 @@ export interface MountX402bOptions {
   ) => Promise<EscrowPaymentRequirements> | EscrowPaymentRequirements;
   /** Optional mount path. Defaults to both `/x402B` and legacy `/x402b`. */
   basePath?: string;
+  /**
+   * Optional paywall provider. When supplied and the request's `Accept`
+   * header prefers `text/html`, the commit-route 402 challenge is
+   * rendered as an HTML document via `paywall.generateHtml(...)` instead
+   * of the canonical JSON body. Same semantics as
+   * `ExpressMiddlewareOptions.paywall`.
+   */
+  paywall?: PaywallProviderLike;
+  /** Forwarded to `paywall.generateHtml(...)` when the paywall path fires. */
+  paywallConfig?: PaywallConfigLike;
 }
 
 /**
@@ -79,7 +93,10 @@ function commitRoute(
       // useful for non-Express integrators, but not the x402 wire
       // contract clients branch on.
       if (header === undefined || header.length === 0) {
-        respondWithChallenge(res, requirements);
+        respondWithChallenge(req, res, requirements, {
+          paywall: opts.paywall,
+          paywallConfig: opts.paywallConfig,
+        });
         return;
       }
 
