@@ -18,10 +18,34 @@
 //     method, body, and every other init field.
 //  6. Return the retry response. A second `402` is NOT re-retried — the
 //     server has spoken twice, surface the error.
+//
+// Each wrapper invocation is tagged with a fresh
+// `X-X402-Boson-Session-Id` header on BOTH the initial request and the
+// retry. The example resource server uses this id to scope its
+// `FullOffer` cache: the 402 challenge and the X-PAYMENT retry share
+// one offer (the validator deep-equals `payload.offerRef.fullOffer`
+// against `requirements.offer.fullOffer`), while distinct buyer flows
+// see distinct offers so a single-quantity offer isn't served to two
+// commits in a row.
 
 import type { X402bClient } from "@bosonprotocol/x402-client";
 
 const X_PAYMENT_HEADER = "X-PAYMENT";
+
+/**
+ * Custom header the wrapper stamps on both the initial request and the
+ * X-PAYMENT retry, scoping the resource server's offer cache to one
+ * buyer flow. Resource servers that don't honour the header fall back
+ * to whatever cache strategy they implement.
+ */
+export const SESSION_ID_HEADER = "X-X402-Boson-Session-Id";
+
+function newSessionId(): string {
+  // `globalThis.crypto.randomUUID()` works in modern browsers and Node 19+
+  // (the engines this repo targets). No `node:crypto` import keeps the
+  // module isomorphic — browser bundlers don't need a node polyfill.
+  return globalThis.crypto.randomUUID();
+}
 
 /**
  * Wrap a `fetch` implementation so 402 responses carrying the Boson
@@ -34,6 +58,12 @@ export function wrapFetchWithPayment(
 ): typeof fetch {
   return async function fetchWithPayment(input, init) {
     const initialRequest = new Request(input, init);
+    // Stamp a fresh session id on this buyer flow's headers so the
+    // resource server's offer cache scopes the 402 challenge and the
+    // X-PAYMENT retry to the same offer. `Headers.set` mutates the
+    // Request's headers in place; the `clone()` below carries the id
+    // onto `retryBase`.
+    initialRequest.headers.set(SESSION_ID_HEADER, newSessionId());
     const retryBase = initialRequest.clone();
 
     const initial = await originalFetch(initialRequest);

@@ -92,14 +92,41 @@ export function createResourceServerApp(
   // retries with `X-PAYMENT`). The validator deep-equals
   // `payload.offerRef.fullOffer` against `requirements.offer.fullOffer`
   // and strict-equals the `sellerSig`, so the settle call must see the
-  // same signed offer the challenge emitted. Cache it and refresh
-  // lazily a few minutes before the offer's on-chain validity ends so
-  // an in-flight buyer commit can't race the expiry boundary.
-  const REFRESH_MARGIN_MS = 5 * 60 * 1000;
-  let cached: { promise: Promise<EscrowPaymentRequirements>; expiresAt: number } | undefined;
+  // same signed offer the challenge emitted.
+  //
+  // We scope that "same signed offer" to a single buyer flow via the
+  // `X-X402-Boson-Session-Id` header `@bosonprotocol/x402-client-fetch`
+  // stamps on both requests of a 402-retry pair. A short per-session
+  // TTL bounds memory and lets the cache invalidate naturally between
+  // unrelated commits (without it, a sequential second commit hits the
+  // cached offer and reverts `OfferSoldOut` on a single-quantity
+  // template). Clients that don't honour the header share the
+  // `FALLBACK_KEY` slot and get the previous time-based behaviour, so
+  // the change is backwards-compatible for non-x402b consumers.
+  const SESSION_ID_HEADER = "x-x402-boson-session-id";
+  const FALLBACK_KEY = "__no_session__";
+  const SESSION_CACHE_TTL_MS = 60_000;
+  const sessionCache = new Map<
+    string,
+    { promise: Promise<EscrowPaymentRequirements>; expiresAt: number }
+  >();
 
-  const resolveRequirements = async (_req: Request) => {
-    if (cached !== undefined && now() < cached.expiresAt) return cached.promise;
+  const resolveRequirements = async (req: Request) => {
+    // Express lowercases incoming header names. Coerce to string and
+    // trim — empty / whitespace-only ids fall through to the shared slot.
+    const rawSessionId = req.header(SESSION_ID_HEADER);
+    const sessionId =
+      typeof rawSessionId === "string" && rawSessionId.trim().length > 0
+        ? rawSessionId.trim()
+        : FALLBACK_KEY;
+
+    const existing = sessionCache.get(sessionId);
+    if (existing !== undefined && now() < existing.expiresAt) {
+      return existing.promise;
+    }
+    if (existing !== undefined) {
+      sessionCache.delete(sessionId);
+    }
 
     const promise = server.buildPaymentRequirements({
       offer: {
@@ -120,16 +147,16 @@ export function createResourceServerApp(
       maxTimeoutSeconds: env.maxTimeoutSeconds,
     });
 
-    // Assign before awaiting so concurrent challenge/settle callers
-    // join the same in-flight build; `expiresAt` is provisional until
+    // Assign before awaiting so a concurrent retry on the same session
+    // id joins the in-flight build; `expiresAt` is provisional until
     // the build resolves.
     const entry = { promise, expiresAt: Number.MAX_SAFE_INTEGER };
-    cached = entry;
+    sessionCache.set(sessionId, entry);
     try {
-      const requirements = await promise;
-      entry.expiresAt = Number(requirements.offer.fullOffer.validUntilDateInMS) - REFRESH_MARGIN_MS;
+      await promise;
+      entry.expiresAt = now() + SESSION_CACHE_TTL_MS;
     } catch (e) {
-      if (cached === entry) cached = undefined;
+      if (sessionCache.get(sessionId) === entry) sessionCache.delete(sessionId);
       throw e;
     }
     return promise;
