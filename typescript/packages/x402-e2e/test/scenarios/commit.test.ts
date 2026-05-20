@@ -40,13 +40,18 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
     const funder = buildWalletClient(SEED_WALLETS.commit.account);
     buyerAccount = await createFundedBuyer({ funder, publicClient });
     ctx = await createScenarioContext({ slot: "commit", buyerAccount });
+    // Over-provision the buyer for the whole describe — A1 spends 1
+    // USDC, A2's atomic flow spends another, and the to-be-unskipped
+    // A3–A5 each commit one more. Funding the deficit ~10x up-front
+    // keeps each test from re-minting (and matches the post-commit
+    // describe's pattern).
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
       escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
-      amount: 1_000_000n,
+      amount: 10_000_000n,
     });
   });
 
