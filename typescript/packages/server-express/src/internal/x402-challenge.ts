@@ -34,9 +34,11 @@ export interface PaywallProviderLike {
 
 /**
  * Opaque pass-through config forwarded to `PaywallProvider.generateHtml`.
- * The adapter doesn't introspect it.
+ * The adapter doesn't introspect it — `object` is intentionally broad so
+ * any concrete `PaywallConfig` shape (with named optional fields, no
+ * index signature) satisfies it structurally.
  */
-export type PaywallConfigLike = Record<string, unknown>;
+export type PaywallConfigLike = object;
 
 export interface ChallengeOptions {
   paywall?: PaywallProviderLike;

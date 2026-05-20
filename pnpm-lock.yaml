@@ -81,6 +81,9 @@ importers:
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../../typescript/packages/core
+      '@bosonprotocol/x402-paywall':
+        specifier: workspace:^
+        version: link:../../typescript/packages/paywall
       '@bosonprotocol/x402-server':
         specifier: workspace:^
         version: link:../../typescript/packages/server

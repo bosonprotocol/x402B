@@ -34,6 +34,22 @@ export interface ResourceServerEnv {
   subgraphUrl?: string;
   /** HTTP listen port. */
   port: number;
+  /**
+   * Paywall config block. Populated only when at least one
+   * `PAYWALL_*` env var is set; otherwise `undefined` and the
+   * resource server serves JSON-only 402s. Pair-shipped with
+   * the `paywall` option on `createResourceServerApp` — the binary
+   * passes both together so a fork can opt into the HTML paywall by
+   * setting env vars and importing `evmEscrowPaywall`.
+   */
+  paywall?: {
+    /** Display name used in the paywall UI + wagmi connector identity. */
+    appName?: string;
+    /** Enables the WalletConnect connector. Omit for injected + Coinbase only. */
+    walletConnectProjectId?: string;
+    /** Surface a "testnet" badge in the paywall UI. */
+    testnet: boolean;
+  };
 }
 
 function required(name: string): string {
@@ -117,5 +133,31 @@ export function readEnv(): ResourceServerEnv {
       ? { subgraphUrl: asHttpUrl(subgraphRaw, "SUBGRAPH_URL") }
       : {}),
     port: asInt(optional("PORT", "4001"), "PORT", { min: 1, max: 65535 }),
+    ...(readPaywallEnv() !== undefined ? { paywall: readPaywallEnv() } : {}),
+  };
+}
+
+/**
+ * Build the paywall config from `PAYWALL_*` env vars. Returns
+ * `undefined` when no paywall env var is set, signalling that the
+ * resource server should not enable the HTML paywall path. Any
+ * non-empty `PAYWALL_*` var opts in; `PAYWALL_TESTNET` defaults to
+ * `false` when the block is enabled but the var is unset.
+ */
+function readPaywallEnv(): ResourceServerEnv["paywall"] {
+  const appName = process.env.PAYWALL_APP_NAME;
+  const walletConnectProjectId = process.env.PAYWALL_WALLETCONNECT_PROJECT_ID;
+  const testnetRaw = process.env.PAYWALL_TESTNET;
+  const anySet =
+    (appName !== undefined && appName.length > 0) ||
+    (walletConnectProjectId !== undefined && walletConnectProjectId.length > 0) ||
+    (testnetRaw !== undefined && testnetRaw.length > 0);
+  if (!anySet) return undefined;
+  return {
+    ...(appName !== undefined && appName.length > 0 ? { appName } : {}),
+    ...(walletConnectProjectId !== undefined && walletConnectProjectId.length > 0
+      ? { walletConnectProjectId }
+      : {}),
+    testnet: testnetRaw === "true" || testnetRaw === "1",
   };
 }

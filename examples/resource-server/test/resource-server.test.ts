@@ -290,4 +290,68 @@ describe("resource-server example app", () => {
     expect(settle.body.exchangeId).toBe("42");
     expect(settle.body.txHash).toBe("0xabc");
   });
+
+  // Paywall integration — verifies that the `paywall` / `paywallConfig`
+  // options flow from `createResourceServerApp` through to
+  // `expressMiddleware` and `mountX402b`. Uses a tiny stub
+  // `PaywallProvider`; the real `evmEscrowPaywall` is exercised
+  // end-to-end through the middleware in `@bosonprotocol/x402-server-express`'s
+  // own test suite, so reusing the 4.7 MB bundle here would just
+  // duplicate that work (and choke supertest on the response size).
+  it("GET /resource with Accept: text/html and no paywall configured still returns JSON (no regression)", async () => {
+    const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
+    const res = await supertest(app).get("/resource").set("Accept", "text/html");
+
+    expect(res.status).toBe(402);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+    expect(res.body.x402Version).toBe(2);
+  });
+
+  it("GET /resource with Accept: text/html + paywall configured returns HTML 402 (wiring through expressMiddleware)", async () => {
+    const stubPaywall = {
+      supports: vi.fn().mockReturnValue(true),
+      generateHtml: vi
+        .fn()
+        .mockReturnValue('<!DOCTYPE html><html><body data-from="stub">x</body></html>'),
+    };
+
+    const { app } = createResourceServerApp(buildEnv(), {
+      exchangeReader: NULL_READER,
+      paywall: stubPaywall,
+      paywallConfig: { appName: "Demo", testnet: true },
+    });
+
+    const res = await supertest(app).get("/resource").set("Accept", "text/html");
+
+    expect(res.status).toBe(402);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+    expect(res.text).toContain('data-from="stub"');
+    expect(stubPaywall.generateHtml).toHaveBeenCalledTimes(1);
+    // The example forwards `paywallConfig` straight through.
+    expect(stubPaywall.generateHtml).toHaveBeenCalledWith(
+      expect.objectContaining({ requirements: expect.objectContaining({ scheme: "escrow" }) }),
+      { appName: "Demo", testnet: true },
+    );
+  });
+
+  it("POST /x402B/commit with Accept: text/html + paywall configured returns HTML 402 (wiring through mountX402b)", async () => {
+    const stubPaywall = {
+      supports: vi.fn().mockReturnValue(true),
+      generateHtml: vi
+        .fn()
+        .mockReturnValue('<!DOCTYPE html><html><body data-from="commit-stub">y</body></html>'),
+    };
+
+    const { app } = createResourceServerApp(buildEnv(), {
+      exchangeReader: NULL_READER,
+      paywall: stubPaywall,
+    });
+
+    const res = await supertest(app).post("/x402B/commit").set("Accept", "text/html").send();
+
+    expect(res.status).toBe(402);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+    expect(res.text).toContain('data-from="commit-stub"');
+    expect(stubPaywall.generateHtml).toHaveBeenCalledTimes(1);
+  });
 });
