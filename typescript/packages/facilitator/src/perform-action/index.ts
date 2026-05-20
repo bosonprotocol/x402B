@@ -56,7 +56,7 @@ import type {
   FacilitatorPerformActionInput,
   FacilitatorPerformActionResult,
 } from "../types.js";
-import { recoverMetaTxSigner } from "../verify/meta-tx-signature.js";
+import { recoverActionMetaTxSigner } from "../verify/meta-tx-signature.js";
 import { simulateExecuteMetaTransaction } from "../verify/simulate.js";
 import { parseChainId } from "../verify/structural.js";
 import { verifyTokenAuthSignature } from "../verify/token-auth-signature.js";
@@ -203,10 +203,11 @@ export async function performAction(
     // 7. Signature recovery — for performAction we just confirm the sig
     //    is self-consistent (recovered === metaTx.from). The role check
     //    (buyer vs seller vs assistant) is the protocol's job.
-    const recovery = await recoverMetaTxSigner({
+    const recovery = await recoverActionMetaTxSigner({
       chainId: chain.chainId,
       escrowAddress,
       metaTx,
+      action: input.action,
     });
     if (!recovery.ok) return recovery;
     if (recovery.recovered.toLowerCase() !== metaTx.from.toLowerCase()) {
