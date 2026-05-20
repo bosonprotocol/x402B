@@ -47,21 +47,35 @@ const client = createX402bClient({
 
 ## Usage — raw EIP-1193 provider
 
+`signerFromEip1193` resolves the signing address lazily on each call. By default it issues `eth_accounts` and assumes the wallet is already connected; passing `{ requestAccounts: true }` switches to `eth_requestAccounts`, which **will trigger a connection prompt** in the user's wallet UI if no account is connected yet. Prefer gating that on an explicit user gesture (e.g. a "Connect wallet" button) — or pass `{ account }` to skip account discovery entirely.
+
 ```ts
 import {
   createX402bClient,
   signerFromEip1193,
 } from "@bosonprotocol/x402-client-browser";
 
-// `requestAccounts: true` issues `eth_requestAccounts`, which may prompt
-// the user to connect. Omit it (the default) to use `eth_accounts` against
-// an already-connected wallet.
 const signer = signerFromEip1193(window.ethereum!, { requestAccounts: true });
 
 const client = createX402bClient({
   signer,
   // ...same config as above
 });
+```
+
+## End-to-end with `wrapFetchWithPayment`
+
+Once you have a `client`, pair it with [`wrapFetchWithPayment`](https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/client-fetch) from `@bosonprotocol/x402-client-fetch` so a request that gets a `402` carrying `scheme: "escrow"` is transparently retried with the `X-PAYMENT` header:
+
+```bash
+pnpm add @bosonprotocol/x402-client-fetch
+```
+
+```ts
+import { wrapFetchWithPayment } from "@bosonprotocol/x402-client-fetch";
+
+const fetchWithPayment = wrapFetchWithPayment(fetch, client);
+const res = await fetchWithPayment("https://seller.example/resource");
 ```
 
 ## License
