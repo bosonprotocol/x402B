@@ -6,13 +6,17 @@
 // (including the derived `EIP712Domain` types list), and how malformed
 // provider responses surface as errors.
 
+import { getAddress } from "viem";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
 import { signerFromEip1193, type Eip1193Provider } from "../src/signer-from-eip1193.js";
 
 const ALICE_LOWER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
 const ALICE_CHECKSUM = "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa" as const;
+const BOB_LOWER = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as const;
+const BOB_CHECKSUM = getAddress(BOB_LOWER);
 const SIG = "0x" + "ab".repeat(65);
+const SIG_2 = "0x" + "cd".repeat(65);
 
 function makeProvider(handler: (method: string, params?: unknown) => unknown): Eip1193Provider & {
   request: Mock;
@@ -129,5 +133,37 @@ describe("signerFromEip1193 — signTypedData", () => {
     await expect(signer.signTypedData(sampleTypedData)).rejects.toThrowError(
       /hex signature string/,
     );
+  });
+
+  it("re-resolves the signing address on each call so wallet account switches between signatures are picked up", async () => {
+    // First eth_accounts → Alice, second → Bob. Guards against a future
+    // refactor that memoizes the resolved address on the closure.
+    let accountsCallCount = 0;
+    const provider = makeProvider((method, params) => {
+      if (method === "eth_accounts") {
+        accountsCallCount += 1;
+        return [accountsCallCount === 1 ? ALICE_LOWER : BOB_LOWER];
+      }
+      if (method === "eth_signTypedData_v4") {
+        const [from] = params as [string, string];
+        return from === ALICE_CHECKSUM ? SIG : SIG_2;
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const signer = signerFromEip1193(provider);
+
+    const firstSig = await signer.signTypedData(sampleTypedData);
+    const secondSig = await signer.signTypedData(sampleTypedData);
+
+    expect(firstSig).toBe(SIG);
+    expect(secondSig).toBe(SIG_2);
+
+    const signCalls = provider.request.mock.calls
+      .map(([arg]) => arg as { method: string; params?: unknown[] })
+      .filter((arg) => arg.method === "eth_signTypedData_v4");
+    expect(signCalls).toHaveLength(2);
+    expect((signCalls[0].params as [string, string])[0]).toBe(ALICE_CHECKSUM);
+    expect((signCalls[1].params as [string, string])[0]).toBe(BOB_CHECKSUM);
   });
 });
