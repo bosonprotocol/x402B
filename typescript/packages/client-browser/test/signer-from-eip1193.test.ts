@@ -77,6 +77,21 @@ describe("signerFromEip1193 — getAddress", () => {
     const signer = signerFromEip1193(provider);
     await expect(signer.getAddress()).rejects.toThrowError(/no accounts/);
   });
+
+  it("propagates provider.request rejections (e.g. user denied, wallet locked)", async () => {
+    // EIP-1193 error code 4001 = "user rejected request". The adapter must
+    // not swallow or rewrap these — callers rely on the original error
+    // (code + message) to decide UX (e.g. show "connect wallet").
+    const rejection = Object.assign(new Error("User rejected the request."), { code: 4001 });
+    const provider: Eip1193Provider = {
+      request: vi.fn(async () => {
+        throw rejection;
+      }),
+    };
+
+    const signer = signerFromEip1193(provider);
+    await expect(signer.getAddress()).rejects.toBe(rejection);
+  });
 });
 
 describe("signerFromEip1193 — signTypedData", () => {
@@ -133,6 +148,18 @@ describe("signerFromEip1193 — signTypedData", () => {
     await expect(signer.signTypedData(sampleTypedData)).rejects.toThrowError(
       /hex signature string/,
     );
+  });
+
+  it("propagates provider.request rejections from eth_signTypedData_v4 (e.g. user denied)", async () => {
+    const rejection = Object.assign(new Error("User rejected the request."), { code: 4001 });
+    const provider = makeProvider((method) => {
+      if (method === "eth_accounts") return [ALICE_LOWER];
+      if (method === "eth_signTypedData_v4") throw rejection;
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    const signer = signerFromEip1193(provider);
+    await expect(signer.signTypedData(sampleTypedData)).rejects.toBe(rejection);
   });
 
   it("re-resolves the signing address on each call so wallet account switches between signatures are picked up", async () => {
