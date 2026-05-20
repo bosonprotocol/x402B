@@ -25,17 +25,16 @@ import { ExchangeState, DisputeState } from "@bosonprotocol/x402-actions";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { LOCAL_31337_0 } from "../../src/config/local-31337-0.js";
-import { ROLE_ACCOUNTS } from "../../src/config/accounts.js";
 import {
   buildPublicClient,
   buildWalletClient,
   performBuyerPostCommitAction,
   performCancelVoucher,
 } from "../../src/harness/index.js";
-import { privateKeyToAccount } from "viem/accounts";
 
-import { ensureBuyerCanPay } from "./_buyer-setup.js";
+import { createFundedBuyer, ensureBuyerCanPay } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
+import { SEED_WALLETS } from "./_seed-wallets.js";
 import { createScenarioContext, type ScenarioContext } from "./_setup.js";
 
 /**
@@ -69,15 +68,17 @@ describe.skipIf(!ENABLED)("@p0 post-commit lifecycle scenarios", () => {
   let ctx: ScenarioContext;
 
   beforeAll(async () => {
-    ctx = await createScenarioContext();
-    const buyerAccount = privateKeyToAccount(ROLE_ACCOUNTS.buyer.privateKey);
-    const buyerWallet = buildWalletClient(buyerAccount);
     const publicClient = buildPublicClient();
-    // The post-commit lifecycle file commits *multiple* fresh
-    // exchanges (one per test), so over-provision the buyer's
-    // allowance by ~10x the per-commit cap.
+    const funder = buildWalletClient(SEED_WALLETS.postCommitP0);
+    // Each test in this describe commits multiple fresh exchanges, so
+    // give the random buyer enough native ETH to cover all the local
+    // mint + approve + transfer fees.
+    const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
+    ctx = await createScenarioContext({ buyerAccount });
+    // Over-provision the buyer's allowance by ~10x the per-commit cap
+    // so successive commits inside the describe don't need re-approval.
     await ensureBuyerCanPay({
-      walletClient: buyerWallet,
+      walletClient: buildWalletClient(buyerAccount),
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
@@ -229,12 +230,12 @@ describe.skipIf(!ENABLED)("@p1 post-commit lifecycle scenarios", () => {
   let ctx: ScenarioContext;
 
   beforeAll(async () => {
-    ctx = await createScenarioContext();
-    const buyerAccount = privateKeyToAccount(ROLE_ACCOUNTS.buyer.privateKey);
-    const buyerWallet = buildWalletClient(buyerAccount);
     const publicClient = buildPublicClient();
+    const funder = buildWalletClient(SEED_WALLETS.postCommitP1);
+    const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
+    ctx = await createScenarioContext({ buyerAccount });
     await ensureBuyerCanPay({
-      walletClient: buyerWallet,
+      walletClient: buildWalletClient(buyerAccount),
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,

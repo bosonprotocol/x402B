@@ -15,32 +15,33 @@
 // in this PR and land in PR 7.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
+import type { LocalAccount } from "viem";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { LOCAL_31337_0 } from "../../src/config/local-31337-0.js";
-import { ROLE_ACCOUNTS } from "../../src/config/accounts.js";
 import {
   buildPublicClient,
   buildWalletClient,
   createBuyerActor,
   readXPaymentResponse,
 } from "../../src/harness/index.js";
-import { privateKeyToAccount } from "viem/accounts";
 
-import { ensureBuyerCanPay } from "./_buyer-setup.js";
+import { createFundedBuyer, ensureBuyerCanPay } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
+import { SEED_WALLETS } from "./_seed-wallets.js";
 import { createScenarioContext, type ScenarioContext } from "./_setup.js";
 
 describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
   let ctx: ScenarioContext;
+  let buyerAccount: LocalAccount;
 
   beforeAll(async () => {
-    ctx = await createScenarioContext();
-    const buyerAccount = privateKeyToAccount(ROLE_ACCOUNTS.buyer.privateKey);
-    const buyerWallet = buildWalletClient(buyerAccount);
     const publicClient = buildPublicClient();
+    const funder = buildWalletClient(SEED_WALLETS.commit);
+    buyerAccount = await createFundedBuyer({ funder, publicClient });
+    ctx = await createScenarioContext({ buyerAccount });
     await ensureBuyerCanPay({
-      walletClient: buyerWallet,
+      walletClient: buildWalletClient(buyerAccount),
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
@@ -92,9 +93,8 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
   it("A2 — atomic commit-and-redeem with `none` strategy", async () => {
     // A2 needs its own buyer with a non-default `Policy.redeemMode` so
     // the client picks `boson-createOfferCommitAndRedeem` instead of
-    // the deferred flow A1 used. Reuse the shared buyer's funded
-    // wallet (the allowance from `beforeAll` is still in place).
-    const buyerAccount = privateKeyToAccount(ROLE_ACCOUNTS.buyer.privateKey);
+    // the deferred flow A1 used. Reuse the describe-scoped funded
+    // buyer (the allowance from `beforeAll` is still in place).
     const atomicBuyer = createBuyerActor({
       account: buyerAccount,
       publicClient: ctx.buyer.publicClient,

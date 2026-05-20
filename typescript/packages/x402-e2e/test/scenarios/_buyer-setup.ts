@@ -11,7 +11,14 @@
 // scenario amount before approving. Both calls are no-ops when
 // re-run with already-sufficient balance / allowance.
 
-import type { Address, PublicClient, WalletClient } from "viem";
+import {
+  parseEther,
+  type Address,
+  type LocalAccount,
+  type PublicClient,
+  type WalletClient,
+} from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 const ERC20_TEST_ABI = [
   {
@@ -113,4 +120,37 @@ export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
     });
     await args.publicClient.waitForTransactionReceipt({ hash: approveHash });
   }
+}
+
+export interface CreateFundedBuyerArgs {
+  /** WalletClient built from one of `SEED_WALLETS` (see `_seed-wallets.ts`). */
+  funder: WalletClient;
+  /** Read-side client used to await the funding tx receipt. */
+  publicClient: PublicClient;
+  /** Native ETH to send to the new EOA, as a decimal string. Defaults to `"0.5"`. */
+  fundEth?: string;
+}
+
+/**
+ * Generate a fresh viem `LocalAccount`, fund it from `funder` with
+ * native ETH for gas, and return the account. Used by chain-touching
+ * scenario describes so each describe transacts from its own EOA —
+ * Vitest runs test files in parallel, and a shared buyer EOA races
+ * the chain nonce across parallel files.
+ *
+ * The mock `Foreign20` ERC-20 the local stack ships has a public
+ * `mint(to, amount)`, so the returned account self-funds payment
+ * tokens via `ensureBuyerCanPay`; the seed wallet only needs to
+ * cover gas.
+ */
+export async function createFundedBuyer(args: CreateFundedBuyerArgs): Promise<LocalAccount> {
+  const account = privateKeyToAccount(generatePrivateKey());
+  const hash = await args.funder.sendTransaction({
+    account: args.funder.account!,
+    chain: args.funder.chain!,
+    to: account.address,
+    value: parseEther(args.fundEth ?? "0.5"),
+  });
+  await args.publicClient.waitForTransactionReceipt({ hash });
+  return account;
 }

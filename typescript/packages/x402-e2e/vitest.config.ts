@@ -1,5 +1,12 @@
 import { defineConfig } from "vitest/config";
 
+// Debug fallback: set `E2E_SEQUENTIAL=1` to disable cross-file
+// parallelism. The suite is designed to be parallel-safe via the
+// per-describe seed-wallet pool (see `test/scenarios/_seed-wallets.ts`);
+// this knob exists only as an escape hatch when debugging suspected
+// chain-state interactions across files.
+const SEQUENTIAL = process.env.E2E_SEQUENTIAL === "1";
+
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
@@ -15,5 +22,6 @@ export default defineConfig({
     // wiring — flipping the gate runs the suite end-to-end without any
     // config change.
     globalSetup: ["./test/setup/globalSetup.ts"],
+    ...(SEQUENTIAL ? { fileParallelism: false } : {}),
   },
 });

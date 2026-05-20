@@ -61,6 +61,36 @@ export const ACCOUNT_9: TestAccount = {
   privateKey: "0x316b234f5fea007dcc40404188b588fb90cb9bb1e33fc163e212eab2f8565293",
 };
 
+export const ACCOUNT_10: TestAccount = {
+  address: "0x5a928D9a61d0c245362f7B41076b674C49FFd492",
+  privateKey: "0xbf1bbaeabb036f080dccf9589db26471057f9dc6dcb4bfc87f08dfd2326f648d",
+};
+
+export const ACCOUNT_11: TestAccount = {
+  address: "0x85aa07b513803d30373B2FeCA308b8d1c45Ea893",
+  privateKey: "0x6d677479a1304dae02ffd06656ebe408e6aaa014dca8238b3917080213117c25",
+};
+
+export const ACCOUNT_12: TestAccount = {
+  address: "0xf5bBA1aA5f84484137c2eeC6312F1993709E759B",
+  privateKey: "0x35253a0b89df66fa7c4fb98e46925f6e8804b55a80e2e1c3f22cb1b90a11567b",
+};
+
+export const ACCOUNT_13: TestAccount = {
+  address: "0xC448891cE3d85d141C43E9D95236B7C735bd74BB",
+  privateKey: "0x23b745a17fdcdfcc13a8d5af456898700cd798b25ef5ef3767ae859cc8114df1",
+};
+
+export const ACCOUNT_14: TestAccount = {
+  address: "0xb8a7e554798738Bd0A94c2e2288e73f5bee65295",
+  privateKey: "0x1527fa84bbd0be4ca5663856fcea5dabd3c27cd888a02ae98dc4a178326d6f2f",
+};
+
+export const ACCOUNT_15: TestAccount = {
+  address: "0x7c5F377448811512AcCE2ca1F30c1BCd351ee4f9",
+  privateKey: "0xf7ac2238f7b83f16d7f584c291c495bf75d6a0abe36d3b430d0beb2a145df4fd",
+};
+
 /**
  * Role assignments for the x402B e2e stack. Distinct accounts per role so
  * concurrent meta-tx submissions never share a relayer nonce.
