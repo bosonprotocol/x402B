@@ -11,6 +11,8 @@
 // canonical compose already wires to the in-container subgraph
 // endpoint (`http://host.docker.internal:8000/subgraphs/name/boson/corecomponents`).
 
+import type { Address, PublicClient } from "viem";
+
 import {
   createResourceServerApp,
   fetchProtocolConfig,
@@ -19,6 +21,48 @@ import {
 
 import { buildPublicClient } from "../harness/clients.js";
 import { createSubgraphExchangeReader } from "../harness/exchange-reader.js";
+
+// `docker compose up --wait` only blocks until each container reports
+// healthy; the contracts inside `boson-protocol-node` are still
+// deploying asynchronously when this entrypoint starts. Poll
+// `eth_getCode` until the Diamond is on chain before calling
+// `fetchProtocolConfig`, otherwise the first `readContract` returns
+// `0x` and the boot crashes (matches the docker-exec-based readiness
+// probe in `src/stack/readiness.ts`, but RPC-based because we run from
+// inside the network).
+const ESCROW_DEPLOY_TIMEOUT_MS = 10 * 60_000;
+const ESCROW_DEPLOY_POLL_INTERVAL_MS = 2_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForEscrowDeployed(args: {
+  publicClient: PublicClient;
+  escrowAddress: Address;
+}): Promise<void> {
+  const deadline = Date.now() + ESCROW_DEPLOY_TIMEOUT_MS;
+  console.log(
+    `[x402-e2e/resource-server] waiting for escrow ${args.escrowAddress} to be deployed…`,
+  );
+  while (true) {
+    try {
+      const code = await args.publicClient.getCode({ address: args.escrowAddress });
+      if (code !== undefined && code !== "0x") {
+        console.log(`[x402-e2e/resource-server] escrow ${args.escrowAddress} is deployed`);
+        return;
+      }
+    } catch {
+      // RPC not ready (boson-protocol-node still booting) — keep polling.
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `[x402-e2e/resource-server] timed out after ${ESCROW_DEPLOY_TIMEOUT_MS / 1000}s waiting for escrow ${args.escrowAddress} to be deployed`,
+      );
+    }
+    await sleep(ESCROW_DEPLOY_POLL_INTERVAL_MS);
+  }
+}
 
 async function main(): Promise<void> {
   const env = readEnv();
@@ -34,6 +78,8 @@ async function main(): Promise<void> {
   // harness's viem builder so the chain id / RPC URL stay consistent
   // with the rest of the suite.
   const publicClient = buildPublicClient({ rpcUrl: env.rpcNode });
+
+  await waitForEscrowDeployed({ publicClient, escrowAddress: env.escrowAddress });
 
   const exchangeReader = createSubgraphExchangeReader({
     subgraphUrl: env.subgraphUrl,
