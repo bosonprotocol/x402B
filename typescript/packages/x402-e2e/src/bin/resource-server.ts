@@ -17,6 +17,7 @@ import {
   createResourceServerApp,
   fetchProtocolConfig,
   readEnv,
+  type ProtocolConfig,
 } from "@bosonprotocol/x402-example-resource-server";
 
 import { buildPublicClient } from "../harness/clients.js";
@@ -24,12 +25,21 @@ import { createSubgraphExchangeReader } from "../harness/exchange-reader.js";
 
 // `docker compose up --wait` only blocks until each container reports
 // healthy; the contracts inside `boson-protocol-node` are still
-// deploying asynchronously when this entrypoint starts. Poll
-// `eth_getCode` until the Diamond is on chain before calling
-// `fetchProtocolConfig`, otherwise the first `readContract` returns
-// `0x` and the boot crashes (matches the docker-exec-based readiness
-// probe in `src/stack/readiness.ts`, but RPC-based because we run from
-// inside the network).
+// deploying asynchronously when this entrypoint starts. The deploy
+// script proceeds in stages — Diamond bytecode appears first, then
+// each facet is cut into the Diamond, and finally `ConfigHandlerFacet`
+// is initialized — so we gate boot in two stages:
+//
+//   1. Poll `eth_getCode` until the Diamond is on chain (otherwise the
+//      first `readContract` returns `0x` and crashes).
+//   2. Poll `fetchProtocolConfig` until the call succeeds AND returns
+//      non-zero values — facet-cut races surface as `readContract`
+//      reverts ("Diamond: Function does not exist"), and an
+//      uninitialized `ConfigHandlerFacet` returns `0` for both fields.
+//
+// Mirrors the docker-exec-based `/app/deploy.done` probe in
+// `src/stack/readiness.ts` over RPC, since the compose-service
+// entrypoint can't `docker compose exec` against the protocol node.
 const ESCROW_DEPLOY_TIMEOUT_MS = 10 * 60_000;
 const ESCROW_DEPLOY_POLL_INTERVAL_MS = 2_000;
 
@@ -64,6 +74,38 @@ async function waitForEscrowDeployed(args: {
   }
 }
 
+async function waitForProtocolConfigInitialized(args: {
+  publicClient: PublicClient;
+  escrowAddress: Address;
+}): Promise<ProtocolConfig> {
+  const deadline = Date.now() + ESCROW_DEPLOY_TIMEOUT_MS;
+  console.log(
+    `[x402-e2e/resource-server] waiting for ConfigHandlerFacet at ${args.escrowAddress} to be initialized…`,
+  );
+  while (true) {
+    try {
+      const config = await fetchProtocolConfig({
+        publicClient: args.publicClient,
+        escrowAddress: args.escrowAddress,
+      });
+      if (config.maxOfferFeeBps > 0 && config.minDisputePeriodMs > 0) {
+        console.log(
+          `[x402-e2e/resource-server] ConfigHandlerFacet initialized (maxOfferFeeBps=${config.maxOfferFeeBps}, minDisputePeriodMs=${config.minDisputePeriodMs})`,
+        );
+        return config;
+      }
+    } catch {
+      // Facet not yet cut into the Diamond — readContract reverts. Keep polling.
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `[x402-e2e/resource-server] timed out after ${ESCROW_DEPLOY_TIMEOUT_MS / 1000}s waiting for ConfigHandlerFacet at ${args.escrowAddress} to be initialized`,
+      );
+    }
+    await sleep(ESCROW_DEPLOY_POLL_INTERVAL_MS);
+  }
+}
+
 async function main(): Promise<void> {
   const env = readEnv();
 
@@ -81,20 +123,21 @@ async function main(): Promise<void> {
 
   await waitForEscrowDeployed({ publicClient, escrowAddress: env.escrowAddress });
 
+  // Tighten the offer's `feeLimit` cap and floor its
+  // `disputePeriodDurationInMS` against the live `ConfigHandlerFacet`
+  // values, instead of the hand-picked safe defaults baked into
+  // `buildUnsignedOffer`. Reuses the polled fetch result so we don't
+  // call the view twice.
+  const protocolConfig = await waitForProtocolConfigInitialized({
+    publicClient,
+    escrowAddress: env.escrowAddress,
+  });
+
   const exchangeReader = createSubgraphExchangeReader({
     subgraphUrl: env.subgraphUrl,
     escrowAddress: env.escrowAddress,
     chainId: env.chainId,
     publicClient,
-  });
-
-  // Tighten the offer's `feeLimit` cap and floor its
-  // `disputePeriodDurationInMS` against the live `ConfigHandlerFacet`
-  // values, instead of the hand-picked safe defaults baked into
-  // `buildUnsignedOffer`.
-  const protocolConfig = await fetchProtocolConfig({
-    publicClient,
-    escrowAddress: env.escrowAddress,
   });
 
   const { app, seller } = createResourceServerApp(env, { exchangeReader, protocolConfig });
