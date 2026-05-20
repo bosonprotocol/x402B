@@ -52,6 +52,24 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     };
   }
 
+  // Defensive `down -v` before `up`: a previous run aborted before its
+  // teardown (Ctrl+C, vitest crash, OS shutdown) leaves containers up
+  // but with stale in-process state — most notably the facilitator's
+  // viem `nonceManager`, which caches the relayer's next-nonce in
+  // memory. Once the chain is redeployed (deploy.done re-runs on
+  // volume reset), the chain expects nonce 0 while the lingering
+  // facilitator process still thinks it's at N+1 → "Nonce too high"
+  // on every meta-tx submit. Tearing the stack down here guarantees
+  // every test run starts from genesis: fresh containers, fresh
+  // in-memory state, fresh chain. The cost is a few extra seconds at
+  // suite startup; the win is determinism.
+  console.log("[x402-e2e/globalSetup] resetting any leftover stack…");
+  try {
+    await stopStack();
+  } catch (e) {
+    console.warn("[x402-e2e/globalSetup] stopStack() before startStack failed — continuing:", e);
+  }
+
   console.log("[x402-e2e/globalSetup] starting stack…");
   await startStack({ waitForReady: true });
 

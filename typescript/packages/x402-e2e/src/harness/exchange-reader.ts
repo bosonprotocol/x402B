@@ -10,14 +10,20 @@
 // `@bosonprotocol/core-sdk`'s `getExchangeById` and maps the result to
 // the `ExchangeSnapshot` shape the server expects.
 //
-// Subgraph indexer lag is the dominant failure mode immediately after
-// a settle: `coreSdk.getExchangeById(id)` returns `null` until the
-// indexer ingests the block. When a `PublicClient` is supplied the
-// reader asks core-sdk to wait for the indexer to catch up to the
-// current chain head before forwarding `null` — that is the canonical
-// "indexer is behind" recovery path; the older polling wrapper
-// (`withPollUntilFound`) remains for callers that don't have an
-// `PublicClient` to hand.
+// Subgraph indexer lag affects every read after a fresh on-chain
+// write: `coreSdk.getExchangeById(id)` either returns `null` (the id
+// doesn't exist yet) or — more subtly — returns a STALE snapshot
+// (the indexer reports the previous state because the new state's
+// block hasn't been ingested). The "still says COMMITTED" right after
+// a `redeemVoucher` tx is the canonical example.
+//
+// When a `PublicClient` is supplied the reader unconditionally calls
+// `coreSdk.waitForGraphNodeIndexing(chainHead)` BEFORE every read so
+// both failure modes collapse into "the reader returns the freshest
+// snapshot the subgraph can provide". Without a `PublicClient` the
+// reader forwards whatever the subgraph has and the older polling
+// wrapper (`withPollUntilFound`) is the only recovery — kept for
+// backwards compatibility but generally outclassed by the wait path.
 
 import { CoreSDK } from "@bosonprotocol/core-sdk";
 import type { ExchangeReader, ExchangeSnapshot } from "@bosonprotocol/x402-server";
@@ -50,12 +56,13 @@ export interface SubgraphExchangeReaderArgs {
   /** Chain id. Defaults to `LOCAL_31337_0.chainId`. */
   chainId?: number;
   /**
-   * Optional read-only chain client. When supplied, the reader queries
-   * the chain head on a `null` subgraph result and waits for the
-   * indexer to catch up before returning. Without it the reader
-   * forwards `null` immediately (the server's own retry budget then
-   * decides how long to wait, which is short — see
-   * `withPollUntilFound`).
+   * Optional read-only chain client. When supplied, the reader calls
+   * `coreSdk.waitForGraphNodeIndexing(chainHead)` **before every read**
+   * so the returned snapshot reflects the latest block, not a stale
+   * pre-action state. Without it the reader returns whatever the
+   * subgraph has at query time, and the server's bounded retry budget
+   * (`verifyExchange` defaults to 3 attempts × 50 ms) decides whether
+   * to ask again — usually too short for an indexer that needs 1-5 s.
    */
   publicClient?: PublicClient;
 }
@@ -125,11 +132,15 @@ interface CoreSdkWithIndexerWait {
  * Boson subgraph. The CoreSDK is constructed with a throwing web3Lib
  * stub so any accidental write attempt surfaces immediately.
  *
- * When `args.publicClient` is set, a `null` from the subgraph is
- * treated as "indexer is behind" — the reader fetches the current
+ * When `args.publicClient` is set, the reader fetches the current
  * chain head and calls `coreSdk.waitForGraphNodeIndexing(blockNumber)`
- * before trying once more. The second `null` is forwarded so the
- * server's own retry path can take over.
+ * BEFORE every subgraph read. That guarantees the returned snapshot
+ * reflects the freshest on-chain state — necessary after a
+ * post-commit action (redeem / complete / dispute family) whose tx
+ * has been mined but whose block the indexer hasn't yet ingested,
+ * which would otherwise surface as a `STATE_VERIFY_STATE_MISMATCH`
+ * (e.g. the subgraph still reports `COMMITTED` immediately after a
+ * `redeemVoucher` tx confirms).
  */
 export function createSubgraphExchangeReader(
   args: SubgraphExchangeReaderArgs = {},
@@ -163,23 +174,29 @@ export function createSubgraphExchangeReader(
 
   return {
     read: async (exchangeId: string): Promise<ExchangeSnapshot | null> => {
-      const first = await fetchSnapshot(exchangeId);
-      if (first !== null) return first;
-      if (publicClient === undefined) return null;
-
-      // Indexer lag recovery: get the current chain head and ask
-      // core-sdk to wait until the subgraph has ingested at least that
-      // block. Any tx already mined has block <= head, so once the
-      // indexer reaches `head`, our exchange (if it exists on chain)
-      // is guaranteed visible. Cap the wait with `Promise.race` so a
-      // stuck indexer doesn't pin a scenario indefinitely.
-      try {
-        const head = await publicClient.getBlockNumber();
-        await sdk.waitForGraphNodeIndexing(Number(head));
-      } catch {
-        // Network hiccup against the indexer or the RPC — fall through
-        // to a final read so the caller's retry budget (or
-        // `withPollUntilFound`) can decide what to do.
+      // Wait for the subgraph to ingest the current chain head before
+      // reading. The on-chain tx for any in-flight action has a block
+      // number ≤ head, so once the indexer reaches `head` the
+      // resulting state transition is guaranteed visible. Both lag
+      // modes — missing entity (NULL row) and stale snapshot
+      // (previous state still indexed) — are covered by this single
+      // wait. Failures here (e.g. RPC hiccup) fall through to a
+      // best-effort read so a network blip doesn't break the suite.
+      if (publicClient !== undefined) {
+        try {
+          // `cacheTime: 0` defeats viem's default block-number cache
+          // (≈ pollingInterval, 4 s for chain 31337). Without it, a
+          // post-action read inside the same test reuses the
+          // pre-action block N as the head, `waitForGraphNodeIndexing(N)`
+          // is a no-op (subgraph already past N), and we get the
+          // pre-action state for the post-action verify.
+          const head = await publicClient.getBlockNumber({ cacheTime: 0 });
+          await sdk.waitForGraphNodeIndexing(Number(head));
+        } catch {
+          // Continue with the read; the caller's retry budget
+          // (`withPollUntilFound` or `verifyExchange`) decides what
+          // to do with a stale or missing result.
+        }
       }
       return fetchSnapshot(exchangeId);
     },

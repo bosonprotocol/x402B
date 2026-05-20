@@ -73,7 +73,14 @@ interface BasePerformArgs {
   fulfillment?: { option: string; data: Record<string, unknown> | null };
 }
 
-/** Successful post-commit response (mirrors `PerformActionOk` in the server handlers). */
+/**
+ * Successful post-commit response — flattened view over the server's
+ * `{ txHash, nextActions }` body. The server stamps the new state on
+ * the `nextActions` envelope (`exchangeState`, `disputeState`) rather
+ * than as top-level `newExchangeState` / `newDisputeState` fields; the
+ * harness exposes them under the latter names so scenarios stay
+ * symmetric with the facilitator-direct `performCancelVoucher` result.
+ */
 export interface PostCommitActionResult {
   txHash: Hex;
   newExchangeState: ExchangeState;
@@ -148,7 +155,38 @@ export async function performBuyerPostCommitAction(
   if (parsed === null || typeof parsed !== "object") {
     throw new PostCommitActionError(actionId, res.status, parsed);
   }
-  return parsed as PostCommitActionResult;
+  return flattenServerResponse(actionId, res.status, parsed);
+}
+
+/**
+ * Coerce the server's `{ txHash, nextActions: { exchangeState, disputeState? } }`
+ * body into the flat `PostCommitActionResult` shape scenarios expect.
+ * Throws `PostCommitActionError` if the response is missing fields
+ * required for assertion (txHash, exchangeState).
+ */
+function flattenServerResponse(
+  actionId: BuyerPostCommitActionId,
+  status: number,
+  body: object,
+): PostCommitActionResult {
+  const raw = body as {
+    txHash?: unknown;
+    nextActions?: { exchangeState?: unknown; disputeState?: unknown };
+  };
+  const txHash = raw.txHash;
+  const newExchangeState = raw.nextActions?.exchangeState;
+  if (typeof txHash !== "string" || typeof newExchangeState !== "string") {
+    throw new PostCommitActionError(actionId, status, body);
+  }
+  const result: PostCommitActionResult = {
+    txHash: txHash as Hex,
+    newExchangeState: newExchangeState as ExchangeState,
+  };
+  const newDisputeState = raw.nextActions?.disputeState;
+  if (typeof newDisputeState === "string") {
+    result.newDisputeState = newDisputeState as DisputeState;
+  }
+  return result;
 }
 
 function safeStringify(value: unknown): string {
