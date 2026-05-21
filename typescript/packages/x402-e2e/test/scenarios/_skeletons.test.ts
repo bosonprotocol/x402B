@@ -38,6 +38,10 @@ describe.skipIf(!ENABLED)("@p2 commit-time validations — PR 7", () => {
 describe.skipIf(!ENABLED)("@p0/@p1 nextActions / channel routing — PR 7", () => {
   it.todo("D1 — post-commit nextActions[] matches ACTION_POST_STATE for the new state");
   it.todo("D2 — post-redeem nextActions[] shrinks to [completeExchange, raiseDispute]");
+  // D3 stays a todo: the client-side channel fallback chain
+  // (server → facilitator → onchain on 5xx / network error) isn't
+  // implemented today in `x402-client` / `x402-client-fetch`. The
+  // test will land alongside the feature work in its own PR.
   it.todo("D3 — server/facilitator/onchain channel fallback chain (kill facilitator)");
   it.todo(
     "D4 — `mcp` channel for buyer-side action — skipped until `@bosonprotocol/x402-agent` lands",
@@ -48,13 +52,6 @@ describe.skipIf(!ENABLED)("@p1/@p2 multi-party — PR 7", () => {
   it.todo("E1 — two concurrent buyers commit to the same offer → distinct exchangeIds");
   it.todo("E2 — buyer commits, then seller revokeVoucher → buyer refunded");
   it.todo("E3 — mutual resolveDispute requires both buyer + seller sigs (dual-sig regression)");
-});
-
-describe.skipIf(!ENABLED)("@p1/@p2 operational / failure-mode — PR 8", () => {
-  it.todo("F1 — facilitator restart mid-flight → client retries idempotently");
-  it.todo("F2 — subgraph indexer lag → server falls back to RPC ExchangeReader");
-  it.todo("F3 — meta-tx-gateway down during createSeller seed → clear error surfaces");
-  it.todo("F4 — buyer key rotation mid-flow → redeem rejected (from-address mismatch)");
 });
 
 describe.skipIf(!ENABLED)("@p1/@p2 commit-time fulfillment — PR 7", () => {

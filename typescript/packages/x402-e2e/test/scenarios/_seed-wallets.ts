@@ -64,8 +64,9 @@ export const SEED_WALLETS = {
   validationCommit: toSlot(ACCOUNT_7),
   /** `concurrent.test.ts` — funds the 20 parallel buyers and registers the slot's seller. */
   concurrent: toSlot(ACCOUNT_13),
+  /** `operational.test.ts` — F1 / F2 / F4 failure-mode scenarios. */
+  operational: toSlot(ACCOUNT_10),
   /** Spare slots for future chain-touching scenario files. */
-  spareA: toSlot(ACCOUNT_10),
   spareB: toSlot(ACCOUNT_11),
   spareC: toSlot(ACCOUNT_12),
 } as const;
