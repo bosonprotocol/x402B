@@ -114,7 +114,14 @@ function wantsHtml(req: Request): boolean {
 
   if (!explicitlyAcceptsHtml) return false;
 
-  return req.accepts(["html", "json"]) === "html";
+  // Confirm HTML is preferred over JSON per the Accept q-values. Match
+  // against full media types here rather than Express's `html`/`json`
+  // short aliases, because the short `html` alias only resolves to
+  // `text/html` — an XHTML-only client (`Accept: application/xhtml+xml`)
+  // would otherwise fall through to JSON despite the explicit check
+  // above listing it as HTML-capable.
+  const preferred = req.accepts(["text/html", "application/xhtml+xml", "application/json"]);
+  return preferred === "text/html" || preferred === "application/xhtml+xml";
 }
 
 function resolveCurrentUrl(

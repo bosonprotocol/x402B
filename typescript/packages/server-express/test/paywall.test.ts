@@ -81,6 +81,31 @@ describe("expressMiddleware — paywall content negotiation", () => {
     );
   });
 
+  it("serves HTML when Accept prefers application/xhtml+xml", async () => {
+    // `wantsHtml` explicitly lists `application/xhtml+xml` alongside
+    // `text/html`. Lock in that branch so a future regression in the
+    // hand-rolled Accept parser doesn't silently downgrade XHTML clients
+    // to the JSON 402.
+    const paywall = makePaywall({ html: "<!DOCTYPE html><html><body>xhtml</body></html>" });
+
+    const app = express();
+    app.get(
+      "/datafeed",
+      expressMiddleware(emptyServer, {
+        resolveRequirements: () => REQUIREMENTS,
+        paywall,
+      }),
+      (_req, res) => res.json({ kpi: 42 }),
+    );
+
+    const res = await supertest(app).get("/datafeed").set("Accept", "application/xhtml+xml");
+
+    expect(res.status).toBe(402);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+    expect(res.text).toContain("<!DOCTYPE html>");
+    expect(paywall.generateHtml).toHaveBeenCalledTimes(1);
+  });
+
   it("serves JSON when Accept prefers application/json (browser API client)", async () => {
     const paywall = makePaywall();
 
