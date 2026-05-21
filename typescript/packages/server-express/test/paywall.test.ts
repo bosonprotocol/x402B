@@ -186,6 +186,121 @@ describe("expressMiddleware — paywall content negotiation", () => {
     expect(res.body.x402Version).toBe(2);
   });
 
+  it("stamps Cache-Control: no-store and Vary: Accept on the JSON branch", async () => {
+    // The 402 body carries per-request signature state (offer.sellerSig,
+    // single-use token-auth nonces) — an intermediary cache MUST NOT
+    // store it or cross-serve HTML to a JSON client.
+    const app = express();
+    app.get(
+      "/datafeed",
+      expressMiddleware(emptyServer, { resolveRequirements: () => REQUIREMENTS }),
+      (_req, res) => res.json({ kpi: 42 }),
+    );
+
+    const res = await supertest(app).get("/datafeed").set("Accept", "application/json");
+
+    expect(res.status).toBe(402);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.headers["vary"]).toMatch(/Accept/i);
+  });
+
+  it("stamps Cache-Control: no-store and Vary: Accept on the HTML branch", async () => {
+    const paywall = makePaywall();
+
+    const app = express();
+    app.get(
+      "/datafeed",
+      expressMiddleware(emptyServer, {
+        resolveRequirements: () => REQUIREMENTS,
+        paywall,
+      }),
+      (_req, res) => res.json({ kpi: 42 }),
+    );
+
+    const res = await supertest(app).get("/datafeed").set("Accept", "text/html");
+
+    expect(res.status).toBe(402);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.headers["vary"]).toMatch(/Accept/i);
+  });
+
+  it("uses an explicit currentUrl override verbatim when provided as a string", async () => {
+    const paywall = makePaywall();
+
+    const app = express();
+    app.get(
+      "/datafeed",
+      expressMiddleware(emptyServer, {
+        resolveRequirements: () => REQUIREMENTS,
+        paywall,
+        currentUrl: "https://seller.example/checkout/abc",
+      }),
+      (_req, res) => res.json({ ok: true }),
+    );
+
+    await supertest(app).get("/datafeed").set("Accept", "text/html");
+
+    const callArg = paywall.generateHtml.mock.calls[0]?.[0] as { currentUrl?: string };
+    expect(callArg.currentUrl).toBe("https://seller.example/checkout/abc");
+  });
+
+  it("uses an explicit currentUrl override when provided as a (req) => string resolver", async () => {
+    const paywall = makePaywall();
+
+    const app = express();
+    app.get(
+      "/checkout/:id",
+      expressMiddleware(emptyServer, {
+        resolveRequirements: () => REQUIREMENTS,
+        paywall,
+        currentUrl: (req) => `https://seller.example/checkout/${req.params.id}`,
+      }),
+      (_req, res) => res.json({ ok: true }),
+    );
+
+    await supertest(app).get("/checkout/abc123").set("Accept", "text/html");
+
+    const callArg = paywall.generateHtml.mock.calls[0]?.[0] as { currentUrl?: string };
+    expect(callArg.currentUrl).toBe("https://seller.example/checkout/abc123");
+  });
+
+  it("honors X-Forwarded-Proto when app.set('trust proxy') is configured", async () => {
+    // Behind a TLS-terminating proxy, `req.protocol` returns the raw
+    // socket scheme unless `trust proxy` is set — in which case Express
+    // honors `X-Forwarded-Proto`. The reviewer's concern (#79) was that
+    // an integrator without `trust proxy` would inject `http://...` as
+    // the retry URL even when the browser loaded the page over HTTPS;
+    // pin the contract.
+    //
+    // Note: `req.get('host')` returns the raw `Host` header (not
+    // `X-Forwarded-Host`), so real reverse-proxy deployments typically
+    // configure their proxy to preserve the original `Host` (nginx:
+    // `proxy_set_header Host $host`) — mirrored here by overriding
+    // `Host` in supertest.
+    const paywall = makePaywall();
+
+    const app = express();
+    app.set("trust proxy", true);
+    app.get(
+      "/datafeed",
+      expressMiddleware(emptyServer, {
+        resolveRequirements: () => REQUIREMENTS,
+        paywall,
+      }),
+      (_req, res) => res.json({ ok: true }),
+    );
+
+    await supertest(app)
+      .get("/datafeed")
+      .set("Accept", "text/html")
+      .set("Host", "seller.example")
+      .set("X-Forwarded-Proto", "https");
+
+    const callArg = paywall.generateHtml.mock.calls[0]?.[0] as { currentUrl?: string };
+    expect(callArg.currentUrl).toBe("https://seller.example/datafeed");
+  });
+
   it("forwards a checkout-style currentUrl built from req.protocol + host + originalUrl", async () => {
     const paywall = makePaywall();
 

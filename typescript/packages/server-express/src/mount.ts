@@ -46,10 +46,22 @@ export interface MountX402bOptions {
    * rendered as an HTML document via `paywall.generateHtml(...)` instead
    * of the canonical JSON body. Same semantics as
    * `ExpressMiddlewareOptions.paywall`.
+   *
+   * When deployed behind a TLS-terminating proxy, call
+   * `app.set('trust proxy', ...)` on the Express app so the paywall's
+   * `currentUrl` is built with the original `https://` scheme and
+   * forwarded host. Alternatively, use `currentUrl` below to pass an
+   * explicit value.
    */
   paywall?: PaywallProviderLike;
   /** Forwarded to `paywall.generateHtml(...)` when the paywall path fires. */
   paywallConfig?: PaywallConfigLike;
+  /**
+   * Optional override for the canonical URL embedded in the paywall
+   * HTML response. Either a literal string or a `(req) => string`
+   * resolver. Same semantics as `ExpressMiddlewareOptions.currentUrl`.
+   */
+  currentUrl?: string | ((req: Request) => string);
 }
 
 /**
@@ -96,6 +108,7 @@ function commitRoute(
         respondWithChallenge(req, res, requirements, {
           paywall: opts.paywall,
           paywallConfig: opts.paywallConfig,
+          currentUrl: opts.currentUrl,
         });
         return;
       }

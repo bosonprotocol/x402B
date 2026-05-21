@@ -41,6 +41,17 @@ export type PaywallConfigLike = Record<string, unknown>;
 export interface ChallengeOptions {
   paywall?: PaywallProviderLike;
   paywallConfig?: PaywallConfigLike;
+  /**
+   * Optional override for the canonical URL embedded in the paywall
+   * HTML response as `window.x402b.currentUrl` (the URL the buyer's
+   * browser will POST the X-PAYMENT retry to). Use this when deployed
+   * behind a TLS-terminating proxy where `req.protocol` /
+   * `req.get('host')` may not reflect the public origin. If omitted,
+   * falls back to `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+   * which honors `X-Forwarded-Proto` / `X-Forwarded-Host` only when
+   * `app.set('trust proxy', ...)` is configured on the Express app.
+   */
+  currentUrl?: string | ((req: Request) => string);
 }
 
 /**
@@ -51,6 +62,11 @@ export interface ChallengeOptions {
  * response body is the paywall's `generateHtml(...)` output (status 402,
  * `Content-Type: text/html`). Otherwise the canonical JSON body is
  * emitted.
+ *
+ * Both branches set `Cache-Control: no-store` and `Vary: Accept`:
+ * the 402 body is per-buyer / per-request state (signed offer, single-use
+ * token-auth nonces, injected `window.x402b` payload), so an intermediary
+ * must never cache it or cross-serve HTML to a JSON client.
  */
 export function respondWithChallenge(
   req: Request,
@@ -58,9 +74,12 @@ export function respondWithChallenge(
   requirements: EscrowPaymentRequirements,
   opts: ChallengeOptions = {},
 ): void {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Vary", "Accept");
+
   if (opts.paywall && wantsHtml(req) && opts.paywall.supports(requirements)) {
     const html = opts.paywall.generateHtml(
-      { requirements, currentUrl: buildCurrentUrl(req) },
+      { requirements, currentUrl: resolveCurrentUrl(req, opts.currentUrl) },
       opts.paywallConfig,
     );
     res.status(402).type("html").send(html);
@@ -90,7 +109,12 @@ function wantsHtml(req: Request): boolean {
   return req.accepts(["html", "json"]) === "html";
 }
 
-function buildCurrentUrl(req: Request): string {
+function resolveCurrentUrl(
+  req: Request,
+  override: string | ((req: Request) => string) | undefined,
+): string {
+  if (typeof override === "string") return override;
+  if (typeof override === "function") return override(req);
   const host = req.get("host") ?? "";
   return `${req.protocol}://${host}${req.originalUrl}`;
 }
