@@ -69,15 +69,13 @@ export function respondWithChallenge(
   res.status(402).json({ x402Version: X402_VERSION, accepts: [requirements] });
 }
 
-/**
- * `req.accepts(['html', 'json'])` returns whichever the client prefers
- * (per the standard `Accept` header q-value ordering). However, generic
- * headers such as `*/*` can make both HTML and JSON acceptable, and
- * Express will typically select the first listed type. To keep JSON as
- * the canonical default for non-browser clients, only treat the request
- * as HTML-capable when the raw `Accept` header explicitly includes
- * `text/html` or `application/xhtml+xml`.
- */
+// `req.accepts(['html', 'json'])` returns whichever the client prefers
+// (per the standard `Accept` header q-value ordering). However, generic
+// wildcard Accept values can make both HTML and JSON acceptable, and
+// Express will typically select the first listed type. To keep JSON as
+// the canonical default for non-browser clients, only treat the request
+// as HTML-capable when the raw `Accept` header explicitly includes
+// `text/html` or `application/xhtml+xml`.
 function wantsHtml(req: Request): boolean {
   const acceptHeader = req.headers.accept;
   if (typeof acceptHeader !== "string" || acceptHeader.length === 0) return false;
