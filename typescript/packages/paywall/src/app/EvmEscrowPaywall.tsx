@@ -16,7 +16,7 @@
 // token authorization) happen inside that single call.
 
 import { createX402bClient, signerFromWalletClient } from "@bosonprotocol/x402-client-browser";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   useAccount,
   useChainId,
@@ -62,83 +62,93 @@ export function EvmEscrowPaywall({ state }: Props) {
   const [selectedFulfillment, setSelectedFulfillment] = useState<string | undefined>(() => {
     return requirements.fulfillment?.options[0]?.id;
   });
+  // Rapid clicks can fire `handlePay` again before React re-renders the
+  // disabled button, which would launch a second signing/submission
+  // flow in parallel. Guard with a ref so the second click is a no-op.
+  const payInFlightRef = useRef(false);
 
   const wrongNetwork = isConnected && connectedChainId !== requiredChainId;
 
   async function handlePay() {
-    if (!walletClient) {
-      setStatus("error");
-      setErrorMessage("Wallet client is not ready yet — try clicking Pay again.");
-      return;
-    }
-    if (wrongNetwork) {
+    if (payInFlightRef.current) return;
+    payInFlightRef.current = true;
+    try {
+      if (!walletClient) {
+        setStatus("error");
+        setErrorMessage("Wallet client is not ready yet — try clicking Pay again.");
+        return;
+      }
+      if (wrongNetwork) {
+        try {
+          await switchChain({ chainId: requiredChainId });
+        } catch (err) {
+          setStatus("error");
+          setErrorMessage(`Wallet refused to switch to chain ${requiredChainId}: ${describe(err)}`);
+          return;
+        }
+      }
+      if (requirements.fulfillment?.required && !selectedFulfillment) {
+        setStatus("error");
+        setErrorMessage("Pick a delivery option before continuing.");
+        return;
+      }
+
+      setStatus("signing");
+      setErrorMessage(undefined);
       try {
-        await switchChain({ chainId: requiredChainId });
+        const signer = signerFromWalletClient(walletClient);
+        const tokenDomain = lookupTokenDomain(config?.tokenDomains, requirements.asset);
+        const client = createX402bClient({
+          signer,
+          tokenDomainResolver: async (asset, chainId) => ({
+            name: tokenDomain?.name ?? asset,
+            version: tokenDomain?.version ?? "1",
+            chainId,
+            verifyingContract: asset,
+          }),
+          ...(requirements.fulfillment?.required && selectedFulfillment
+            ? { fulfillment: { option: selectedFulfillment, data: null } }
+            : {}),
+        });
+
+        const headerValue = await client.handle402(requirements);
+
+        setStatus("submitting");
+        const response = await fetch(currentUrl, {
+          headers: { [X_PAYMENT_HEADER]: headerValue },
+        });
+        if (response.status === 402) {
+          const body = await response.text();
+          throw new Error(`Server still returned 402 after payment; body: ${body.slice(0, 200)}`);
+        }
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(`Resource request failed (${response.status}): ${body.slice(0, 200)}`);
+        }
+
+        const contentType = response.headers.get("content-type") ?? "";
+        if (contentType.includes("text/html")) {
+          const html = await response.text();
+          replaceDocument(html);
+          setStatus("success");
+          return;
+        }
+        // For non-HTML resources we must not re-navigate to `currentUrl` —
+        // the server middleware sees no X-PAYMENT on that second hop and
+        // would loop the buyer right back to the paywall. Instead, stream
+        // the response we already paid for into a Blob and hand the
+        // browser an object URL it can render natively (images, JSON,
+        // PDFs) or download (application/octet-stream, etc.).
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        window.location.replace(objectUrl);
+        setStatus("success");
       } catch (err) {
         setStatus("error");
-        setErrorMessage(`Wallet refused to switch to chain ${requiredChainId}: ${describe(err)}`);
-        return;
+        setErrorMessage(describe(err));
       }
-    }
-    if (requirements.fulfillment?.required && !selectedFulfillment) {
-      setStatus("error");
-      setErrorMessage("Pick a delivery option before continuing.");
-      return;
-    }
-
-    setStatus("signing");
-    setErrorMessage(undefined);
-    try {
-      const signer = signerFromWalletClient(walletClient);
-      const tokenDomain = lookupTokenDomain(config?.tokenDomains, requirements.asset);
-      const client = createX402bClient({
-        signer,
-        tokenDomainResolver: async (asset, chainId) => ({
-          name: tokenDomain?.name ?? asset,
-          version: tokenDomain?.version ?? "1",
-          chainId,
-          verifyingContract: asset,
-        }),
-        ...(requirements.fulfillment?.required && selectedFulfillment
-          ? { fulfillment: { option: selectedFulfillment, data: null } }
-          : {}),
-      });
-
-      const headerValue = await client.handle402(requirements);
-
-      setStatus("submitting");
-      const response = await fetch(currentUrl, {
-        headers: { [X_PAYMENT_HEADER]: headerValue },
-      });
-      if (response.status === 402) {
-        const body = await response.text();
-        throw new Error(`Server still returned 402 after payment; body: ${body.slice(0, 200)}`);
-      }
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`Resource request failed (${response.status}): ${body.slice(0, 200)}`);
-      }
-
-      const contentType = response.headers.get("content-type") ?? "";
-      if (contentType.includes("text/html")) {
-        const html = await response.text();
-        replaceDocument(html);
-        setStatus("success");
-        return;
-      }
-      // For non-HTML resources we must not re-navigate to `currentUrl` —
-      // the server middleware sees no X-PAYMENT on that second hop and
-      // would loop the buyer right back to the paywall. Instead, stream
-      // the response we already paid for into a Blob and hand the
-      // browser an object URL it can render natively (images, JSON,
-      // PDFs) or download (application/octet-stream, etc.).
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      window.location.replace(objectUrl);
-      setStatus("success");
-    } catch (err) {
-      setStatus("error");
-      setErrorMessage(describe(err));
+    } finally {
+      payInFlightRef.current = false;
     }
   }
 
