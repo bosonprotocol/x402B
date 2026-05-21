@@ -47,7 +47,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@bosonprotocol/x402-client": "workspace:^"
+    "@bosonprotocol/x402-client": "workspace:^",
+    "@bosonprotocol/x402-core": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",

@@ -1,10 +1,16 @@
-import { metaTransactionTypedData } from "@bosonprotocol/x402-core/eip712";
+import {
+  metaTransactionDisputeResolutionTypedData,
+  metaTransactionExchangeTypedData,
+  metaTransactionFundTypedData,
+  metaTransactionTypedData,
+} from "@bosonprotocol/x402-core/eip712";
 import { permit2TypedData } from "@bosonprotocol/x402-core/eip712/token-auth";
 import { ACTION_POST_STATE, type ActionId } from "@bosonprotocol/x402-core/state-machine";
 import { describe, expect, it } from "vitest";
 import {
   BaseError,
   RawContractError,
+  decodeFunctionData,
   encodeFunctionData,
   parseAbi,
   parseSignature,
@@ -147,7 +153,17 @@ function buildPostCommitCalldata(functionName: string, exchangeId = EXCHANGE_ID)
   }
 }
 
-/** Sign a BosonMetaTx for the given action against the Diamond domain. */
+/**
+ * Sign a BosonMetaTx for the given action against the Diamond domain.
+ *
+ * core-sdk uses four different EIP-712 primary types depending on the
+ * action family — `MetaTransaction` (commit-time + revokeVoucher),
+ * `MetaTxExchange` (redeem / cancel / complete / raise / retract /
+ * escalate), `MetaTxDisputeResolution` (resolveDispute), and
+ * `MetaTxFund` (withdrawFunds). The fixture mirrors that dispatch so
+ * the tests exercise the facilitator's `recoverActionMetaTxSigner`
+ * against the same typed-data shape a real client would produce.
+ */
 async function buildSignedPayload(
   opts: {
     signer?: ReturnType<typeof privateKeyToAccount>;
@@ -162,16 +178,11 @@ async function buildSignedPayload(
   const functionSignature: Hex =
     opts.functionSignature ?? buildPostCommitCalldata(functionName, opts.exchangeId);
   const nonce = opts.nonce ?? "7";
-  const typedData = await metaTransactionTypedData({
-    chainId: CHAIN_ID,
-    verifyingContract: ESCROW,
-    message: {
-      nonce: BigInt(nonce),
-      from: signer.address,
-      contractAddress: ESCROW,
-      functionName,
-      functionSignature,
-    },
+  const typedData = await buildActionTypedData({
+    functionName,
+    functionSignature,
+    nonce,
+    from: signer.address,
   });
   const sig = await signer.signTypedData({
     domain: typedData.domain,
@@ -188,6 +199,98 @@ async function buildSignedPayload(
     functionSignature,
     sig: { v, r: parsed.r, s: parsed.s },
   });
+}
+
+/**
+ * Dispatch the action's `functionName` to the matching typed-data
+ * builder. Mirrors `recoverActionMetaTxSigner`'s dispatch so signing
+ * and recovery hash the same EIP-712 structure.
+ */
+async function buildActionTypedData(args: {
+  functionName: string;
+  functionSignature: Hex;
+  nonce: string;
+  from: Address;
+}): Promise<{
+  domain: Record<string, unknown>;
+  types: Record<string, readonly { name: string; type: string }[]>;
+  primaryType: string;
+  message: Record<string, unknown>;
+}> {
+  const base = {
+    chainId: CHAIN_ID,
+    verifyingContract: ESCROW,
+    nonce: BigInt(args.nonce),
+    from: args.from,
+  };
+
+  switch (args.functionName) {
+    case "redeemVoucher(uint256)":
+    case "cancelVoucher(uint256)":
+    case "completeExchange(uint256)":
+    case "raiseDispute(uint256)":
+    case "retractDispute(uint256)":
+    case "escalateDispute(uint256)": {
+      const decoded = decodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        data: args.functionSignature,
+      });
+      const exchangeId = decoded.args[0] as bigint;
+      return metaTransactionExchangeTypedData({
+        ...base,
+        functionName: args.functionName,
+        exchangeId,
+      });
+    }
+    case "resolveDispute(uint256,uint256,bytes)": {
+      const decoded = decodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        data: args.functionSignature,
+      });
+      const [exchangeId, buyerPercent, counterpartySig] = decoded.args as readonly [
+        bigint,
+        bigint,
+        `0x${string}`,
+      ];
+      return metaTransactionDisputeResolutionTypedData({
+        ...base,
+        exchangeId,
+        buyerPercentBasisPoints: buyerPercent,
+        counterpartySig,
+      });
+    }
+    case "withdrawFunds(uint256,address[],uint256[])": {
+      const decoded = decodeFunctionData({
+        abi: POST_COMMIT_ABI,
+        data: args.functionSignature,
+      });
+      const [entityId, tokenList, tokenAmounts] = decoded.args as readonly [
+        bigint,
+        readonly `0x${string}`[],
+        readonly bigint[],
+      ];
+      return metaTransactionFundTypedData({
+        ...base,
+        entityId,
+        tokenList,
+        tokenAmounts,
+      });
+    }
+    default:
+      // `revokeVoucher(uint256)` and any future action that uses the
+      // basic `MetaTransaction` primary type.
+      return metaTransactionTypedData({
+        chainId: CHAIN_ID,
+        verifyingContract: ESCROW,
+        message: {
+          nonce: BigInt(args.nonce),
+          from: args.from,
+          contractAddress: ESCROW,
+          functionName: args.functionName,
+          functionSignature: args.functionSignature,
+        },
+      });
+  }
 }
 
 function buildPublicClient(

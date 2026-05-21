@@ -15,36 +15,44 @@
 // in this PR and land in PR 7.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
+import type { LocalAccount } from "viem";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { LOCAL_31337_0 } from "../../src/config/local-31337-0.js";
-import { ROLE_ACCOUNTS } from "../../src/config/accounts.js";
 import {
   buildPublicClient,
   buildWalletClient,
+  createBuyerActor,
   readXPaymentResponse,
 } from "../../src/harness/index.js";
-import { privateKeyToAccount } from "viem/accounts";
 
-import { ensureBuyerCanPay } from "./_buyer-setup.js";
+import { EXPECTED_PRICE, TX_HASH_REGEX } from "./_assertion-constants.js";
+import { createFundedBuyer, ensureBuyerCanPay } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
+import { SEED_WALLETS } from "./_seed-wallets.js";
 import { createScenarioContext, type ScenarioContext } from "./_setup.js";
 
 describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
   let ctx: ScenarioContext;
+  let buyerAccount: LocalAccount;
 
   beforeAll(async () => {
-    ctx = await createScenarioContext();
-    const buyerAccount = privateKeyToAccount(ROLE_ACCOUNTS.buyer.privateKey);
-    const buyerWallet = buildWalletClient(buyerAccount);
     const publicClient = buildPublicClient();
+    const funder = buildWalletClient(SEED_WALLETS.commit.account);
+    buyerAccount = await createFundedBuyer({ funder, publicClient });
+    ctx = await createScenarioContext({ slot: "commit", buyerAccount });
+    // Over-provision the buyer for the whole describe — A1 spends 1
+    // USDC, A2's atomic flow spends another, and the to-be-unskipped
+    // A3–A5 each commit one more. Funding the deficit ~10x up-front
+    // keeps each test from re-minting (and matches the post-commit
+    // describe's pattern).
     await ensureBuyerCanPay({
-      walletClient: buyerWallet,
+      walletClient: buildWalletClient(buyerAccount),
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
       escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
-      amount: 1_000_000n,
+      amount: 10_000_000n,
     });
   });
 
@@ -70,7 +78,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
     const decoded = readXPaymentResponse(res.headers);
     expect(decoded, "X-PAYMENT-RESPONSE header should decode to a JSON payload").not.toBeNull();
     expect(decoded?.exchangeId).toBe(body.x402b?.exchangeId);
-    expect(decoded?.txHash).toMatch(/^0x[0-9a-fA-F]+$/);
+    expect(decoded?.txHash).toMatch(TX_HASH_REGEX);
 
     // On-chain state — exchange should be `COMMITTED` with seller +
     // exchangeToken + price matching the requirements. The asserter
@@ -80,15 +88,49 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
       state: ExchangeState.COMMITTED,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc20,
-      price: "1000000",
+      price: EXPECTED_PRICE,
     });
   });
 
   // Atomic commit-and-redeem (`boson-createOfferCommitAndRedeem`).
   // Same wire path as A1 but the client selects `commit-and-redeem`
   // via `Policy.redeemMode: "commit-and-redeem"` so the buyer ends
-  // up at `REDEEMED` in a single tx. Unblocked by Boson PR #1105.
-  it.todo("A2 — atomic commit-and-redeem with `none` strategy");
+  // up at `REDEEMED` in a single tx.
+  it("A2 — atomic commit-and-redeem with `none` strategy", async () => {
+    // A2 needs its own buyer with a non-default `Policy.redeemMode` so
+    // the client picks `boson-createOfferCommitAndRedeem` instead of
+    // the deferred flow A1 used. Reuse the describe-scoped funded
+    // buyer (the allowance from `beforeAll` is still in place).
+    const atomicBuyer = createBuyerActor({
+      account: buyerAccount,
+      publicClient: ctx.buyer.publicClient,
+      policy: { redeemMode: "commit-and-redeem" },
+    });
+
+    const res = await atomicBuyer.fetch(`${ctx.resourceServerUrl}/resource`);
+    expect(res.status, await res.clone().text()).toBe(200);
+
+    const body = (await res.json()) as {
+      ok?: boolean;
+      x402b?: { exchangeId?: string; txHash?: `0x${string}` };
+    };
+    expect(body.ok).toBe(true);
+    expect(typeof body.x402b?.exchangeId).toBe("string");
+
+    const decoded = readXPaymentResponse(res.headers);
+    expect(decoded?.exchangeId).toBe(body.x402b?.exchangeId);
+    expect(decoded?.txHash).toMatch(TX_HASH_REGEX);
+
+    // Atomic flow → exchange should land directly in REDEEMED, not
+    // COMMITTED. Same seller / exchangeToken / price as A1.
+    const exchangeId = body.x402b!.exchangeId!;
+    await ctx.asserter.expect(exchangeId, {
+      state: ExchangeState.REDEEMED,
+      seller: ctx.seller.address,
+      exchangeToken: LOCAL_31337_0.contracts.testErc20,
+      price: EXPECTED_PRICE,
+    });
+  });
 
   // Token-auth strategies. The resource server already advertises
   // `["none","erc3009","permit","permit2"]`; PR6 follow-up implements

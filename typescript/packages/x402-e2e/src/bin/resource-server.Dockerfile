@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.7-labs
 #
 # Build from the monorepo root so the root pnpm-lock.yaml is in context:
 #   docker build -t x402b-e2e-resource-server -f typescript/packages/x402-e2e/src/bin/resource-server.Dockerfile .
@@ -11,22 +11,32 @@ FROM node:22-alpine AS base
 RUN corepack enable
 WORKDIR /repo
 
+# --- Stage 1: install (cache key = lockfile + workspace manifests) ---
+# Source code is NOT copied here, so this layer only invalidates when
+# pnpm-lock.yaml or a package.json changes. BuildKit's pnpm-store cache
+# mount reuses tarballs across rebuilds even when install does re-run.
 FROM base AS deps
-COPY . .
-RUN pnpm install --frozen-lockfile \
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+COPY --parents typescript/packages/*/package.json examples/*/package.json ./
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile \
     --filter @bosonprotocol/x402-e2e...
 
+# --- Stage 2: build + deploy (invalidated when source changes) ---
 # Build the workspace deps the bin entrypoint imports (tsup emits dist/
 # + the exports map points at it). The trailing `...` includes the
 # transitive workspace chain (x402-core, x402-evm, x402-actions,
 # x402-fulfillment, x402-server, x402-server-express, x402-example-resource-server).
-RUN pnpm --filter @bosonprotocol/x402-example-resource-server... build
-
+FROM deps AS build
+COPY . .
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm --filter @bosonprotocol/x402-example-resource-server... build
 RUN pnpm --filter @bosonprotocol/x402-e2e deploy --legacy /deploy
 
+# --- Stage 3: runtime ---
 FROM node:22-alpine AS runtime
 WORKDIR /app
-COPY --from=deps /deploy ./
+COPY --from=build /deploy ./
 
 ENV PORT=4001
 EXPOSE 4001

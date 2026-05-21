@@ -19,6 +19,7 @@
 //    this function, and listens. The binary refuses to start if no
 //    reader can be built from the env (see README).
 
+import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
   createX402bServer,
@@ -33,6 +34,7 @@ import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 import { buildExampleChannelRegistry } from "./channel-registry.js";
 import type { ResourceServerEnv } from "./config.js";
 import { buildUnsignedOffer } from "./offer.js";
+import type { ProtocolConfig } from "./protocol-config.js";
 
 export interface ResourceServerAppOptions {
   /**
@@ -43,6 +45,13 @@ export interface ResourceServerAppOptions {
   exchangeReader: ExchangeReader;
   /** Replace `Date.now()` for deterministic offer-validity windows in tests. */
   now?: () => number;
+  /**
+   * Optional on-chain `ConfigHandlerFacet` slice for tightening
+   * `feeLimit` and flooring `disputePeriodDurationInMS`. Production
+   * forks should fetch this once at boot via `fetchProtocolConfig`.
+   * Omitted in unit tests that don't have a live chain.
+   */
+  protocolConfig?: ProtocolConfig;
 }
 
 export interface ResourceServerAppBundle {
@@ -75,6 +84,7 @@ export function createResourceServerApp(
   const seller = privateKeyToAccount(env.sellerPk);
   const exchangeReader = options.exchangeReader;
   const now = options.now ?? Date.now;
+  const protocolConfig = options.protocolConfig;
 
   const server = createX402bServer(buildServerConfig(env, seller, exchangeReader));
 
@@ -83,17 +93,102 @@ export function createResourceServerApp(
   // retries with `X-PAYMENT`). The validator deep-equals
   // `payload.offerRef.fullOffer` against `requirements.offer.fullOffer`
   // and strict-equals the `sellerSig`, so the settle call must see the
-  // same signed offer the challenge emitted. Cache it and refresh
-  // lazily a few minutes before the offer's on-chain validity ends so
-  // an in-flight buyer commit can't race the expiry boundary.
-  const REFRESH_MARGIN_MS = 5 * 60 * 1000;
-  let cached: { promise: Promise<EscrowPaymentRequirements>; expiresAt: number } | undefined;
+  // same signed offer the challenge emitted.
+  //
+  // We scope that "same signed offer" to a single buyer flow via the
+  // `SESSION_ID_HEADER` `@bosonprotocol/x402-client-fetch` stamps on
+  // both requests of a 402-retry pair (Express's `req.header()` is
+  // case-insensitive, so the canonical mixed-case constant works for
+  // the lookup). A short per-session TTL bounds memory and lets the
+  // cache invalidate naturally between unrelated commits (without it,
+  // a sequential second commit hits the cached offer and reverts
+  // `OfferSoldOut` on a single-quantity template). Clients that don't
+  // honour the header share the `FALLBACK_KEY` slot and get the
+  // previous time-based behaviour, so the change is backwards-
+  // compatible for non-x402b consumers.
+  const FALLBACK_KEY = "__no_session__";
+  const SESSION_CACHE_TTL_BUFFER_MS = 5_000;
+  const SESSION_CACHE_MIN_TTL_MS = 60_000;
+  const derivedSessionCacheTtlMs = env.maxTimeoutSeconds * 1_000 + SESSION_CACHE_TTL_BUFFER_MS;
+  const SESSION_CACHE_TTL_MS =
+    Number.isFinite(derivedSessionCacheTtlMs) && derivedSessionCacheTtlMs > 0
+      ? Math.max(SESSION_CACHE_MIN_TTL_MS, derivedSessionCacheTtlMs)
+      : SESSION_CACHE_MIN_TTL_MS;
+  const MAX_SESSION_ID_LENGTH = 128;
+  const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+  const MAX_SESSION_CACHE_ENTRIES = 256;
+  type SessionCacheEntry = {
+    promise: Promise<EscrowPaymentRequirements>;
+    expiresAt: number;
+  };
+  const sessionCache = new (class extends Map<string, SessionCacheEntry> {
+    override set(key: string, value: SessionCacheEntry) {
+      const currentTime = now();
+      for (const [cacheKey, entry] of this) {
+        if (currentTime >= entry.expiresAt) {
+          this.delete(cacheKey);
+        }
+      }
+      if (this.has(key)) {
+        this.delete(key);
+      } else {
+        while (this.size >= MAX_SESSION_CACHE_ENTRIES) {
+          const oldestKey = this.keys().next().value;
+          if (typeof oldestKey !== "string") {
+            break;
+          }
+          this.delete(oldestKey);
+        }
+      }
+      return super.set(key, value);
+    }
+  })();
 
-  const resolveRequirements = async (_req: Request) => {
-    if (cached !== undefined && now() < cached.expiresAt) return cached.promise;
+  const pruneExpiredSessions = () => {
+    const currentTime = now();
+    for (const [cacheKey, entry] of sessionCache) {
+      if (currentTime >= entry.expiresAt) {
+        sessionCache.delete(cacheKey);
+      }
+    }
+  };
+
+  const normalizeSessionId = (req: Request) => {
+    // Express lowercases incoming header names. Coerce to string and
+    // trim — empty / whitespace-only / invalid ids fall through to the
+    // shared slot to avoid unbounded attacker-controlled key growth.
+    const rawSessionId = req.header(SESSION_ID_HEADER);
+    const trimmedSessionId = typeof rawSessionId === "string" ? rawSessionId.trim() : "";
+    if (
+      trimmedSessionId.length === 0 ||
+      trimmedSessionId.length > MAX_SESSION_ID_LENGTH ||
+      !SESSION_ID_PATTERN.test(trimmedSessionId)
+    ) {
+      return FALLBACK_KEY;
+    }
+    return trimmedSessionId;
+  };
+
+  const resolveRequirements = async (req: Request) => {
+    pruneExpiredSessions();
+    const sessionId = normalizeSessionId(req);
+
+    const existing = sessionCache.get(sessionId);
+    if (existing !== undefined) {
+      sessionCache.set(sessionId, existing);
+      return existing.promise;
+    }
 
     const promise = server.buildPaymentRequirements({
-      offer: { unsigned: buildUnsignedOffer({ env, sellerAddress: seller.address, now: now() }) },
+      offer: {
+        unsigned: buildUnsignedOffer({
+          env,
+          sellerAddress: seller.address,
+          now: now(),
+          sessionId,
+          ...(protocolConfig !== undefined ? { protocolConfig } : {}),
+        }),
+      },
       asset: env.assetAddress,
       amount: env.amount,
       // Settle path is end-to-end runnable only for `none` today; the
@@ -104,16 +199,16 @@ export function createResourceServerApp(
       maxTimeoutSeconds: env.maxTimeoutSeconds,
     });
 
-    // Assign before awaiting so concurrent challenge/settle callers
-    // join the same in-flight build; `expiresAt` is provisional until
+    // Assign before awaiting so a concurrent retry on the same session
+    // id joins the in-flight build; `expiresAt` is provisional until
     // the build resolves.
     const entry = { promise, expiresAt: Number.MAX_SAFE_INTEGER };
-    cached = entry;
+    sessionCache.set(sessionId, entry);
     try {
-      const requirements = await promise;
-      entry.expiresAt = Number(requirements.offer.fullOffer.validUntilDateInMS) - REFRESH_MARGIN_MS;
+      await promise;
+      entry.expiresAt = now() + SESSION_CACHE_TTL_MS;
     } catch (e) {
-      if (cached === entry) cached = undefined;
+      if (sessionCache.get(sessionId) === entry) sessionCache.delete(sessionId);
       throw e;
     }
     return promise;

@@ -10,7 +10,7 @@ import {
   type PublicClient,
   type WalletClient,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { nonceManager, privateKeyToAccount } from "viem/accounts";
 
 export interface FacilitatorEnv {
   /** Public URL the facilitator service is reachable at; populates `nextActions[].endpoints.facilitator`. */
@@ -86,7 +86,14 @@ function chainFor(chainId: number, rpcNode: string): Chain {
 export function buildFacilitatorConfig(env: FacilitatorEnv): FacilitatorConfig {
   const chain = chainFor(env.chainId, env.rpcNode);
   const network = `eip155:${env.chainId}` as const;
-  const account = privateKeyToAccount(env.relayerPk);
+  // Wrap the relayer with viem's built-in `nonceManager` so concurrent
+  // `executeMetaTransaction(...)` submissions are serialised on the
+  // relayer's nonce. Without this, parallel HTTP requests race
+  // `eth_getTransactionCount` and the chain rejects the loser as
+  // `Nonce too low` — surfaces as INTERNAL_ERROR / FACILITATOR_REJECTED
+  // for buyers retrying in parallel (e.g. the e2e suite running
+  // multiple test files at once).
+  const account = privateKeyToAccount(env.relayerPk, { nonceManager });
 
   const walletClient: WalletClient = createWalletClient({
     account,

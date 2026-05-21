@@ -14,7 +14,12 @@
 // edge cases the harness doesn't yet bake in (e.g. custom fulfillment
 // selection or post-commit action signing).
 
-import { createX402bClient, type Signer, type X402bClient } from "@bosonprotocol/x402-client";
+import {
+  createX402bClient,
+  type Policy,
+  type Signer,
+  type X402bClient,
+} from "@bosonprotocol/x402-client";
 import { wrapFetchWithPayment } from "@bosonprotocol/x402-client-fetch";
 import type { Address, Hex, LocalAccount, PublicClient } from "viem";
 
@@ -33,6 +38,12 @@ export interface BuyerActorArgs {
   subgraphUrl?: string;
   /** Chain id the buyer signs against. Defaults to `LOCAL_31337_0.chainId`. */
   chainId?: number;
+  /**
+   * Optional `Policy` override — controls e.g. `redeemMode` for
+   * scenarios that need atomic `boson-createOfferCommitAndRedeem`
+   * instead of the default `auto` (which prefers deferred commit).
+   */
+  policy?: Policy;
 }
 
 /** Wrap a viem `LocalAccount` so it satisfies `@bosonprotocol/x402-client`'s `Signer` interface. */
@@ -66,6 +77,7 @@ export function createBuyerActor(args: BuyerActorArgs): BuyerActor {
     signer: signerFromAccount(args.account),
     subgraphUrls: { [chainId]: args.subgraphUrl ?? LOCAL_31337_0.urls.subgraph },
     publicClients: { [chainId]: publicClient },
+    ...(args.policy !== undefined ? { policy: args.policy } : {}),
   });
 
   return {

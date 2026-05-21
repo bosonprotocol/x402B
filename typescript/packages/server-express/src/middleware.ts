@@ -10,6 +10,7 @@
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
+  decodeXPaymentHeader,
   encodeXPaymentResponse,
   X_PAYMENT_RESPONSE_HEADER,
   type CommitOk,
@@ -35,10 +36,15 @@ export interface ExpressMiddlewareOptions {
     mode: "challenge" | "settle",
   ) => Promise<EscrowPaymentRequirements> | EscrowPaymentRequirements;
   /**
-   * Optional flow selector — defaults to `commit` (Flow A, deferred
-   * redeem). Flow B (`commit-and-redeem`) is opt-in and routes the
-   * commit through the atomic `createOfferCommitAndRedeem` entry
-   * point so the buyer redeems in the same transaction.
+   * Optional flow restriction. When omitted the middleware peeks at
+   * the buyer's `X-PAYMENT` action and dispatches to the matching
+   * handler — Flow A (`boson-createOfferAndCommit` → `commit`) or
+   * Flow B (`boson-createOfferCommitAndRedeem` → `commitAndRedeem`).
+   * That mirrors the 402 contract, which advertises BOTH commit-time
+   * actions; the buyer picks one based on policy. Set this option
+   * only when the resource server wants to enforce a single flow —
+   * payloads carrying the other action then fail at the handler with
+   * `ACTION_ROUTE_MISMATCH`.
    */
   flow?: "commit" | "commit-and-redeem";
 }
@@ -70,7 +76,6 @@ export function expressMiddleware(
   server: X402bServer,
   opts: ExpressMiddlewareOptions,
 ): RequestHandler {
-  const flow = opts.flow ?? "commit";
   return async (req: Request, res: Response, next: NextFunction) => {
     const header = req.header("x-payment");
     if (header === undefined || header.length === 0) {
@@ -85,6 +90,13 @@ export function expressMiddleware(
 
     try {
       const requirements = await opts.resolveRequirements(req, "settle");
+      // When `opts.flow` is set, honour it strictly — payloads
+      // carrying the other action will surface `ACTION_ROUTE_MISMATCH`
+      // at the handler. When it's omitted, peek at the buyer's chosen
+      // action and dispatch accordingly; a malformed header falls
+      // through to the commit handler so the buyer sees a structured
+      // decode error rather than a silent flow swap.
+      const flow = opts.flow ?? detectFlowFromHeader(header);
       const handler = flow === "commit" ? server.handlers.commit : server.handlers.commitAndRedeem;
       const result = await handler({ paymentHeader: header, requirements });
       if (!result.ok) {
@@ -101,4 +113,18 @@ export function expressMiddleware(
       next(e);
     }
   };
+}
+
+/**
+ * Peek at the action in an `X-PAYMENT` header to decide which commit
+ * handler to dispatch to. A malformed header (bad base64, bad JSON,
+ * schema violation) returns `"commit"` so the commit handler's own
+ * structured error surfaces to the buyer instead of a silent swap.
+ */
+function detectFlowFromHeader(header: string): "commit" | "commit-and-redeem" {
+  const decoded = decodeXPaymentHeader(header);
+  if (!decoded.ok) return "commit";
+  return decoded.payload.payload.action === "boson-createOfferCommitAndRedeem"
+    ? "commit-and-redeem"
+    : "commit";
 }

@@ -31,6 +31,8 @@ if (isMain) {
 //     );
 //   });
 //
-// `createResourceServerApp` and `readEnv` are re-exported so the fork
-// only needs to add the reader.
+// `createResourceServerApp`, `readEnv`, and `fetchProtocolConfig` are
+// re-exported so the fork only needs to add the reader (and,
+// optionally, the on-chain protocol-config slice).
 export { createResourceServerApp, readEnv };
+export { fetchProtocolConfig, type ProtocolConfig } from "./protocol-config.js";
