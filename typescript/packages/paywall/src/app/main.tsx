@@ -10,6 +10,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { parseChainIdFromCaip2 } from "./chain.js";
 import { EvmEscrowPaywall } from "./EvmEscrowPaywall.js";
 import { Providers } from "./Providers.js";
 import type { InjectedPaywallState } from "../types.js";
@@ -33,6 +34,20 @@ window.addEventListener("load", () => {
     errorEl.className = "x402b-error";
     errorEl.textContent =
       "Paywall failed to load: window.x402b is missing or malformed. The server-side generateHtml() may not have spliced the payload correctly.";
+    root.replaceChildren(errorEl);
+    return;
+  }
+  // Validate the CAIP-2 network string up front. `EvmEscrowPaywall`
+  // calls `parseChainIdFromCaip2` inside a `useMemo`, which throws
+  // during render for malformed input — that error bubbles to the
+  // React root and replaces our friendly fallback with a blank page.
+  try {
+    parseChainIdFromCaip2(state.requirements.network);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    const errorEl = document.createElement("p");
+    errorEl.className = "x402b-error";
+    errorEl.textContent = `Paywall failed to load: invalid requirements.network (${reason})`;
     root.replaceChildren(errorEl);
     return;
   }
