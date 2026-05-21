@@ -107,7 +107,13 @@ export function createResourceServerApp(
   // previous time-based behaviour, so the change is backwards-
   // compatible for non-x402b consumers.
   const FALLBACK_KEY = "__no_session__";
-  const SESSION_CACHE_TTL_MS = 60_000;
+  const SESSION_CACHE_TTL_BUFFER_MS = 5_000;
+  const SESSION_CACHE_MIN_TTL_MS = 60_000;
+  const derivedSessionCacheTtlMs = env.maxTimeoutSeconds * 1_000 + SESSION_CACHE_TTL_BUFFER_MS;
+  const SESSION_CACHE_TTL_MS =
+    Number.isFinite(derivedSessionCacheTtlMs) && derivedSessionCacheTtlMs > 0
+      ? Math.max(SESSION_CACHE_MIN_TTL_MS, derivedSessionCacheTtlMs)
+      : SESSION_CACHE_MIN_TTL_MS;
   const MAX_SESSION_ID_LENGTH = 128;
   const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
   const MAX_SESSION_CACHE_ENTRIES = 256;
