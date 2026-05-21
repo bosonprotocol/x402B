@@ -103,7 +103,7 @@ describe("expressMiddleware — paywall content negotiation", () => {
     expect(paywall.generateHtml).not.toHaveBeenCalled();
   });
 
-  it("serves JSON when no Accept header is sent (e.g. a default fetch() with no headers)", async () => {
+  it("serves JSON when the Accept header is empty (explicitly cleared by the client)", async () => {
     const paywall = makePaywall();
 
     const app = express();
@@ -121,6 +121,32 @@ describe("expressMiddleware — paywall content negotiation", () => {
 
     expect(res.status).toBe(402);
     expect(res.headers["content-type"]).toMatch(/application\/json/);
+    expect(paywall.generateHtml).not.toHaveBeenCalled();
+  });
+
+  it("serves JSON when Accept is */* (e.g. a default browser fetch() with no headers)", async () => {
+    // Browsers send `Accept: */*` for `fetch()` without an explicit
+    // headers option. Generic API clients (curl, etc.) do the same.
+    // Such requests must default to the canonical JSON wire contract,
+    // not the paywall HTML — only requests that explicitly accept
+    // `text/html` (or `application/xhtml+xml`) opt into the paywall.
+    const paywall = makePaywall();
+
+    const app = express();
+    app.get(
+      "/datafeed",
+      expressMiddleware(emptyServer, {
+        resolveRequirements: () => REQUIREMENTS,
+        paywall,
+      }),
+      (_req, res) => res.json({ kpi: 42 }),
+    );
+
+    const res = await supertest(app).get("/datafeed").set("Accept", "*/*");
+
+    expect(res.status).toBe(402);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+    expect(res.body.x402Version).toBe(2);
     expect(paywall.generateHtml).not.toHaveBeenCalled();
   });
 
