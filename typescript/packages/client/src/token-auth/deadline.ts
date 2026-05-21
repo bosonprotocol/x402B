@@ -20,5 +20,13 @@ export function computeTokenAuthDeadline(
   maxTimeoutSeconds: number,
   now: () => number = Date.now,
 ): number {
-  return Math.floor(now() / 1000) + maxTimeoutSeconds - TOKEN_AUTH_DEADLINE_SAFETY_MARGIN_SECONDS;
+  // Clamp so the margin can never make the deadline retroactive — if
+  // the caller's `maxTimeoutSeconds < 60`, subtracting the full margin
+  // would emit an already-expired signature.
+  const timeoutSeconds = Math.max(1, Math.floor(maxTimeoutSeconds));
+  const safetyMarginSeconds = Math.min(
+    TOKEN_AUTH_DEADLINE_SAFETY_MARGIN_SECONDS,
+    Math.max(0, timeoutSeconds - 1),
+  );
+  return Math.floor(now() / 1000) + timeoutSeconds - safetyMarginSeconds;
 }
