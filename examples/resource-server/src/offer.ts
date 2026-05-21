@@ -25,6 +25,17 @@ export interface BuildOfferArgs {
   /** Wall-clock time to anchor offer validity windows. Injectable for tests. */
   now?: number;
   /**
+   * Per-request session id — folded into `metadataUri` / `metadataHash`
+   * so concurrent buyers (each with a distinct session id) never
+   * produce byte-identical `UnsignedFullOffer` structs. Without this
+   * salt, two requests hitting the server within the same millisecond
+   * share `validFromDateInMS` and every other field, the seller signs
+   * the same offer twice, and the second commit reverts `OfferSoldOut`
+   * on the single-quantity template. Defaults to `"no-session"` for
+   * callers that don't track sessions.
+   */
+  sessionId?: string;
+  /**
    * On-chain `ConfigHandlerFacet` slice — when supplied, the builder
    * tightens `feeLimit` and floors `disputePeriodDurationInMS` against
    * the actual on-chain values instead of using the conservative
@@ -87,11 +98,21 @@ export interface BuildOfferArgs {
  *
  * ## Customising for your catalogue
  *
- * The demo uses deliberately short windows (offer 1 h, redemption 1 h,
- * dispute 1 d, resolution 1 w) so e2e runs finish quickly. Real
- * catalogues should widen all four to whatever fits the product. The
- * only hard constraints are the validation rules in
- * `IBosonOfferHandler` and core-sdk's `CreateOfferArgs`:
+ * The defaults below are deliberately wide — offer + redemption open
+ * 1 day in the past and run 30 days into the future. Two reasons:
+ *
+ * 1. **Local-stack chain-time drift tolerance.** Hardhat under
+ *    interval mining advances `block.timestamp` 1 s per block, so at
+ *    a 50 ms interval chain time runs ~20× wall-clock. A 1-hour
+ *    validity window expires in ~3 min of wall-clock; a 30-day
+ *    window survives any realistic suite run.
+ * 2. **Drop-in for varied catalogue lifetimes.** Real catalogues
+ *    pick whatever fits the product; "30 days" is a sane upper
+ *    default that won't surprise demos.
+ *
+ * Forks can narrow these to fit their flow — the only hard
+ * constraints are the validation rules in `IBosonOfferHandler` and
+ * core-sdk's `CreateOfferArgs`:
  *
  * - `validFromDateInMS < validUntilDateInMS`, and `validUntilDateInMS`
  *   must be in the future at submission time.
@@ -103,12 +124,15 @@ export function buildUnsignedOffer({
   env,
   sellerAddress,
   now,
+  sessionId,
   protocolConfig,
 }: BuildOfferArgs): UnsignedFullOffer {
   const t = now ?? Date.now();
+  const salt = sessionId ?? "no-session";
   const oneHour = 60 * 60 * 1000;
   const oneDay = 24 * oneHour;
   const oneWeek = 7 * oneDay;
+  const thirtyDays = 30 * oneDay;
 
   // `disputePeriodDurationInMS`: prefer the demo's 1-week target but
   // floor it against the protocol's `getMinDisputePeriod()` when the
@@ -140,17 +164,17 @@ export function buildUnsignedOffer({
     agentId: "0",
     buyerCancelPenalty: "0",
     quantityAvailable: "1",
-    validFromDateInMS: String(t),
-    validUntilDateInMS: String(t + oneHour),
-    voucherRedeemableFromDateInMS: String(t),
-    voucherRedeemableUntilDateInMS: String(t + oneHour),
+    validFromDateInMS: String(t - oneDay),
+    validUntilDateInMS: String(t + thirtyDays),
+    voucherRedeemableFromDateInMS: String(t - oneDay),
+    voucherRedeemableUntilDateInMS: String(t + thirtyDays),
     disputePeriodDurationInMS: String(disputePeriodDurationInMS),
     voucherValidDurationInMS: "0",
     resolutionPeriodDurationInMS: String(oneWeek),
     exchangeToken: env.assetAddress,
     disputeResolverId: env.disputeResolverId,
-    metadataUri: "ipfs://x402b-example",
-    metadataHash: "x402b-example",
+    metadataUri: `ipfs://x402b-example/${salt}`,
+    metadataHash: `x402b-example-${salt}`,
     collectionIndex: "0",
     feeLimit,
     offerCreator: sellerAddress,
