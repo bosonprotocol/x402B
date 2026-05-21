@@ -315,22 +315,11 @@ describe.skipIf(!ENABLED)("@p2 operational scenarios", () => {
     });
     const wrongBuyer = createBuyerActor({ account: rotatedAccount, publicClient });
 
-    await expect(
-      performBuyerPostCommitAction({
-        actionId: "boson-redeem",
-        buyer: wrongBuyer,
-        resourceServerUrl: ctx.resourceServerUrl,
-        exchangeId,
-        escrowAddress: ctx.escrowAddress,
-        network: ctx.network,
-      }),
-    ).rejects.toBeInstanceOf(PostCommitActionError);
-
-    // Replay the call to inspect the error shape — `rejects.toBeInstanceOf`
-    // consumes the rejection but doesn't expose it. The replay is
-    // deterministic (no state has changed on-chain) so the second
-    // attempt rejects with the same error.
-    let caught: PostCommitActionError | null = null;
+    // Capture the rejection from a single invocation so we can inspect
+    // status / body on the same error instance. Avoid the
+    // `expect(...).rejects` + replay pattern: it doubles runtime and
+    // assumes the call is perfectly deterministic across retries.
+    let caught: unknown = null;
     try {
       await performBuyerPostCommitAction({
         actionId: "boson-redeem",
@@ -341,11 +330,12 @@ describe.skipIf(!ENABLED)("@p2 operational scenarios", () => {
         network: ctx.network,
       });
     } catch (e) {
-      caught = e as PostCommitActionError;
+      caught = e;
     }
-    expect(caught).not.toBeNull();
-    expect(caught?.status).toBe(502);
-    const body = caught?.body as { code?: string; reason?: string; details?: unknown } | undefined;
+    expect(caught).toBeInstanceOf(PostCommitActionError);
+    const err = caught as PostCommitActionError;
+    expect(err.status).toBe(502);
+    const body = err.body as { code?: string; reason?: string; details?: unknown } | undefined;
     expect(body?.code).toBe("FACILITATOR_REJECTED");
     // The redeem MUST be rejected — that's the load-bearing assertion.
     // The specific facilitator-side code reflects which classification
