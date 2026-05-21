@@ -85,6 +85,36 @@ The `up` flow runs in two phases:
    Matches `bosonprotocol/core-components:e2e/prepare-e2e-services.sh`.
    Pass `--no-wait` if you only need IPFS + RPC.
 
+### When to rebuild
+
+`stack:up` accepts two refresh flags that target different layers:
+
+- `--pull` — refreshes the **upstream** Boson images (`boson-protocol-node`,
+  `boson-subgraph`, `boson-mcp-server`, `postgres`, `ipfs`, `meta-tx-gateway`).
+  Use it after a new tag lands on `main` upstream, or periodically.
+- `--build` — rebuilds the **local** x402B images
+  (`x402b-facilitator-http`, `x402b-resource-server`, `x402b-webhook-sink`)
+  from their Dockerfiles in this repo.
+
+`--build` is needed when any source the image bundles has changed:
+
+| Changed files | Service to rebuild |
+|---|---|
+| `examples/facilitator-http/src/**` or `typescript/packages/{facilitator-express,facilitator,core,evm,actions,fulfillment}/src/**` | `x402b-facilitator-http` |
+| `typescript/packages/x402-e2e/src/bin/**` or `examples/resource-server/src/**` or `typescript/packages/{server-express,server,core,evm,actions,fulfillment}/src/**` | `x402b-resource-server` |
+| `examples/webhook-sink/src/**` | `x402b-webhook-sink` |
+| Only `typescript/packages/x402-e2e/test/**` (scenario / harness tests) | nothing — tests run out-of-container |
+| Only docs, CI, or `.dockerignore` | nothing |
+
+The Dockerfiles are layered so that **passing `--build` when nothing actually
+changed is near-free**: BuildKit reuses every cached layer up to the first
+invalidated one. If you're unsure whether you need it, just pass it — that's
+the recommended default for inner-loop work.
+
+`pnpm-lock.yaml` changes invalidate the install layer (~30–45s of rebuild),
+but the pnpm content-addressable store is cached via BuildKit cache mounts,
+so no network downloads happen on a warm cache.
+
 ```sh
 pnpm --filter @bosonprotocol/x402-e2e stack:down [--keep-volumes] [--rmi]
 ```
