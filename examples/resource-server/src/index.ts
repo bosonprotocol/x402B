@@ -23,8 +23,17 @@ if (isMain) {
 // Reference assembly for forks — once `exchangeReader` is wired in,
 // replace the throw above with:
 //
+//   import { evmEscrowPaywall } from "@bosonprotocol/x402-paywall";
+//
 //   const env = readEnv();
-//   const { app, seller } = createResourceServerApp(env, { exchangeReader });
+//   const { app, seller } = createResourceServerApp(env, {
+//     exchangeReader,
+//     // Opt-in HTML paywall for browser User-Agents; programmatic
+//     // clients keep seeing JSON 402s.
+//     ...(env.paywall !== undefined
+//       ? { paywall: evmEscrowPaywall, paywallConfig: env.paywall }
+//       : {}),
+//   });
 //   app.listen(env.port, () => {
 //     console.log(
 //       `[resource-server] listening on :${env.port} (chain ${env.chainId}, seller ${seller.address}, asset ${env.assetAddress})`,

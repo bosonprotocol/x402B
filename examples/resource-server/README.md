@@ -50,6 +50,9 @@ this host adds no protocol logic of its own.
 | `MAX_TIMEOUT_SECONDS` | no  | `3600` | `PaymentRequirements.maxTimeoutSeconds`. Capped at 24 h. |
 | `SUBGRAPH_URL`        | no  | — | Optional Boson subgraph URL — required for `getAvailableFunds` / `withdrawFunds`. |
 | `PORT`                | no  | `4001` | HTTP listen port. |
+| `PAYWALL_APP_NAME`    | no  | — | Display name in the paywall UI + wagmi connector identity. Setting any `PAYWALL_*` var enables the HTML paywall path. |
+| `PAYWALL_WALLETCONNECT_PROJECT_ID` | no | — | Enables the WalletConnect connector; omit for injected + Coinbase only. |
+| `PAYWALL_TESTNET`     | no  | `false` | `true` / `1` surfaces a "testnet" badge in the paywall UI. |
 
 ## Run locally
 
@@ -76,6 +79,23 @@ pnpm --filter @bosonprotocol/x402-example-resource-server start
 
 Then `curl http://localhost:4001/resource` returns 402 + the
 `PaymentRequirements` echoed from your env.
+
+### Browser paywall
+
+Setting any `PAYWALL_*` env var (e.g. `PAYWALL_APP_NAME="My App"`)
+populates `env.paywall` / `paywallConfig`; by itself, that does **not**
+make this repo's default binary serve the HTML paywall. HTML 402s are
+only returned when a `paywall` provider (for example
+`evmEscrowPaywall`) is actually passed into
+`createResourceServerApp(env, { paywall, paywallConfig })`.
+Programmatic clients (anything that doesn't send `Accept: text/html`)
+still get JSON 402s — the content-negotiation gate lives in
+[`@bosonprotocol/x402-server-express`](../../typescript/packages/server-express).
+If you wire a paywall provider into a fork/custom entrypoint, browsing
+to `http://localhost:4001/resource` will show the paywall: the React
+app renders the offer, lets the buyer connect a wallet
+(injected / Coinbase / optionally WalletConnect), drives the atomic
+commit-and-redeem flow, and swaps in the gated resource on success.
 
 ## Run in Docker
 
