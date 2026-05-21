@@ -126,10 +126,15 @@ export function EvmEscrowPaywall({ state }: Props) {
         setStatus("success");
         return;
       }
-      // For non-HTML resources, navigate (browser will render JSON / image / etc.
-      // natively). The X-PAYMENT-RESPONSE header isn't carried by this hop —
-      // the resource server already settled — so a direct fetch is fine.
-      window.location.href = currentUrl;
+      // For non-HTML resources we must not re-navigate to `currentUrl` —
+      // the server middleware sees no X-PAYMENT on that second hop and
+      // would loop the buyer right back to the paywall. Instead, stream
+      // the response we already paid for into a Blob and hand the
+      // browser an object URL it can render natively (images, JSON,
+      // PDFs) or download (application/octet-stream, etc.).
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      window.location.replace(objectUrl);
       setStatus("success");
     } catch (err) {
       setStatus("error");
