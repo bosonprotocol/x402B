@@ -1,0 +1,69 @@
+name: Nightly e2e
+
+# Runs the full x402-e2e scenario suite (@p0 + @p1 + @p2) against the
+# real Docker stack on a daily schedule. Operational failure-mode
+# scenarios (F1 facilitator restart, F2 subgraph lag, F4 buyer key
+# rotation) live in the @p1 / @p2 tiers so they only exercise here —
+# the per-PR `e2e-p0` job in `ci.yml` skips them by tag filter.
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  # Manual `workflow_dispatch` should not cancel a scheduled run in
+  # progress (and vice versa). Each is a deliberate request.
+  cancel-in-progress: false
+
+# Mirrors ci.yml: opt JS-action runtimes onto Node 24 ahead of
+# GitHub's June 2026 forced migration so deprecation warnings stay
+# off the log.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  e2e-full:
+    name: e2e (full suite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.7.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Run full e2e suite
+        env:
+          E2E_DOCKER: "1"
+          # operational.test.ts pauses / kills containers other test
+          # files depend on. `E2E_SEQUENTIAL=1` switches vitest into
+          # `fileParallelism: false` so the chaos in one file can't
+          # race the chain-touching tests in another.
+          E2E_SEQUENTIAL: "1"
+        run: pnpm --filter @bosonprotocol/x402-e2e test
+
+      - name: Dump docker compose logs
+        if: always()
+        run: |
+          cd typescript/packages/x402-e2e
+          docker compose -f src/stack/compose.yaml logs --no-color > docker-compose.log || true
+
+      - name: Upload docker logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-logs-${{ github.run_id }}
+          path: typescript/packages/x402-e2e/docker-compose.log
+          if-no-files-found: ignore

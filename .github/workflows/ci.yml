@@ -47,3 +47,48 @@ jobs:
       - run: pnpm test
 
       - run: pnpm format:check
+
+  # Runs the @p0 subset of the x402-e2e scenario suite against the real
+  # Docker stack. Always-on per PR. Cold image pulls + stack boot take
+  # 2–5 minutes; the @p0 subset itself completes in ~1–2 minutes. The
+  # full breadth (including @p1 / @p2 operational scenarios) runs in
+  # the nightly workflow.
+  e2e-p0:
+    name: e2e (@p0)
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.7.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Run @p0 e2e suite
+        env:
+          E2E_DOCKER: "1"
+        run: pnpm --filter @bosonprotocol/x402-e2e test -- -t '@p0'
+
+      - name: Dump docker compose logs on failure
+        if: failure()
+        run: |
+          cd typescript/packages/x402-e2e
+          docker compose -f src/stack/compose.yaml logs --no-color > docker-compose.log || true
+
+      - name: Upload docker logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-p0-logs-${{ github.run_id }}
+          path: typescript/packages/x402-e2e/docker-compose.log
+          if-no-files-found: ignore

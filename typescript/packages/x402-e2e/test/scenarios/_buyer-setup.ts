@@ -20,6 +20,8 @@ import {
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
+import { buildWalletClient } from "../../src/harness/clients.js";
+
 const ERC20_TEST_ABI = [
   {
     type: "function",
@@ -143,6 +145,40 @@ export interface CreateFundedBuyerArgs {
  * tokens via `ensureBuyerCanPay`; the seed wallet only needs to
  * cover gas.
  */
+export interface RotateBuyerArgs extends CreateFundedBuyerArgs {
+  /** Payment-asset address (typically `LOCAL_31337_0.contracts.testErc20`). */
+  assetAddress: Address;
+  /** Escrow address — the `spender` the rotated buyer approves. */
+  escrowAddress: Address;
+  /** Amount the rotated buyer must be able to pay (atomic units). */
+  amount: bigint;
+}
+
+/**
+ * Generate a fresh buyer EOA, fund it with native ETH from `funder`,
+ * and ensure it has at least `amount` of the payment asset both
+ * minted and approved against `escrowAddress`. Used by F4 (buyer
+ * key rotation) where the test needs a SECOND buyer key — fully
+ * funded and approved — to attempt a redeem against an exchange
+ * committed by the FIRST buyer key.
+ *
+ * Sequential: funds gas first, then mint + approve through the new
+ * EOA's wallet. The mint + approve calls go through `ensureBuyerCanPay`
+ * which we delegate to so the recipe stays in one place.
+ */
+export async function rotateBuyer(args: RotateBuyerArgs): Promise<LocalAccount> {
+  const account = await createFundedBuyer(args);
+  await ensureBuyerCanPay({
+    walletClient: buildWalletClient(account),
+    publicClient: args.publicClient,
+    buyerAddress: account.address,
+    assetAddress: args.assetAddress,
+    escrowAddress: args.escrowAddress,
+    amount: args.amount,
+  });
+  return account;
+}
+
 export async function createFundedBuyer(args: CreateFundedBuyerArgs): Promise<LocalAccount> {
   // `WalletClient` doesn't require `account` / `chain` at the type
   // level, so unguarded non-null assertions would crash with an opaque
