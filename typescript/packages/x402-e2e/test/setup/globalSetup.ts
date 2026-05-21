@@ -133,10 +133,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   console.log("[x402-e2e/globalSetup] starting stack…");
   await startStack({ waitForReady: true });
 
-  console.log("[x402-e2e/globalSetup] switching Hardhat to 50 ms interval mining…");
-  await enableIntervalMining();
-
   try {
+    console.log("[x402-e2e/globalSetup] switching Hardhat to 50 ms interval mining…");
+    await enableIntervalMining();
+
     const publicClient = buildPublicClient();
     const sellersBySlot: Record<string, SeedWalletSellerInfo> = {};
     let disputeResolverId: string | undefined;
