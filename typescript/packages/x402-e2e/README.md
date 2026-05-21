@@ -114,11 +114,12 @@ Without `E2E_DOCKER=1`, the suite skips itself so the repo-wide
   seller, buyer, resolver) live in the `ROLE_ACCOUNTS` map; distinct
   account per role so concurrent meta-tx submissions never share a
   nonce.
-- **Per-describe seed wallets** — Vitest runs test FILES in parallel.
-  Each chain-touching describe block picks one slot from
+- **Per-test-file seed wallets** — Vitest runs test FILES in parallel.
+  Each chain-touching test file picks one slot from
   [`test/scenarios/_seed-wallets.ts`](./test/scenarios/_seed-wallets.ts)
-  and uses it to fund a freshly-generated random buyer EOA (via
-  `createFundedBuyer`). Two describes that run in parallel must never
+  and uses it to fund freshly-generated random buyer EOAs (via
+  `createFundedBuyer`). Multiple describes in the same file may share
+  that file's slot, but two files that run in parallel must never
   share a slot — a shared EOA races the chain nonce and cascades into
   `NonceTooLow` / `BAD_META_TX_SIGNATURE` / `OfferSoldOut` failures.
   Mirrors the `seedWalletN` pattern from
