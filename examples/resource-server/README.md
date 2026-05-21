@@ -82,14 +82,18 @@ Then `curl http://localhost:4001/resource` returns 402 + the
 
 ### Browser paywall
 
-Set any `PAYWALL_*` env var (e.g. `PAYWALL_APP_NAME="My App"`) to
-enable the HTML paywall. Programmatic clients (anything that doesn't
-send `Accept: text/html`) still get JSON 402s — the content-negotiation
-gate lives in
-[`@bosonprotocol/x402-server-express`](../../typescript/packages/server-express),
-which this example wires up via `createResourceServerApp(env, { paywall, paywallConfig })`.
-Browse to `http://localhost:4001/resource` to see the paywall — the
-React app renders the offer, lets the buyer connect a wallet
+Setting any `PAYWALL_*` env var (e.g. `PAYWALL_APP_NAME="My App"`)
+populates `env.paywall` / `paywallConfig`; by itself, that does **not**
+make this repo's default binary serve the HTML paywall. HTML 402s are
+only returned when a `paywall` provider (for example
+`evmEscrowPaywall`) is actually passed into
+`createResourceServerApp(env, { paywall, paywallConfig })`.
+Programmatic clients (anything that doesn't send `Accept: text/html`)
+still get JSON 402s — the content-negotiation gate lives in
+[`@bosonprotocol/x402-server-express`](../../typescript/packages/server-express).
+If you wire a paywall provider into a fork/custom entrypoint, browsing
+to `http://localhost:4001/resource` will show the paywall: the React
+app renders the offer, lets the buyer connect a wallet
 (injected / Coinbase / optionally WalletConnect), drives the atomic
 commit-and-redeem flow, and swaps in the gated resource on success.
 
