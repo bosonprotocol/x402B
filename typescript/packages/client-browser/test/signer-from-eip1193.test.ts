@@ -6,15 +6,17 @@
 // (including the derived `EIP712Domain` types list), and how malformed
 // provider responses surface as errors.
 
-import { getAddress } from "viem";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
 import { signerFromEip1193, type Eip1193Provider } from "../src/signer-from-eip1193.js";
+import {
+  ALICE_CHECKSUM,
+  ALICE_LOWER,
+  BOB_CHECKSUM,
+  BOB_LOWER,
+  sampleTypedData,
+} from "./fixtures.js";
 
-const ALICE_LOWER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
-const ALICE_CHECKSUM = "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa" as const;
-const BOB_LOWER = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as const;
-const BOB_CHECKSUM = getAddress(BOB_LOWER);
 const SIG = "0x" + "ab".repeat(65);
 const SIG_2 = "0x" + "cd".repeat(65);
 
@@ -25,13 +27,6 @@ function makeProvider(handler: (method: string, params?: unknown) => unknown): E
     request: vi.fn(async ({ method, params }) => handler(method, params)),
   };
 }
-
-const sampleTypedData = {
-  domain: { name: "Sample", version: "1", chainId: 8453, verifyingContract: ALICE_LOWER },
-  types: { Hello: [{ name: "msg", type: "string" }] },
-  primaryType: "Hello",
-  message: { msg: "world" },
-} as const;
 
 describe("signerFromEip1193 — getAddress", () => {
   it("uses eth_accounts by default and returns the first account checksummed", async () => {

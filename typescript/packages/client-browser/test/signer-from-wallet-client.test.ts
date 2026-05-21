@@ -9,11 +9,13 @@
 import { describe, expect, it, vi, type Mock } from "vitest";
 
 import { signerFromWalletClient, type WalletClientLike } from "../src/signer-from-wallet-client.js";
-
-const ALICE_LOWER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
-const ALICE_CHECKSUM = "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa" as const;
-const BOB_LOWER = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as const;
-const BOB_CHECKSUM = "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB" as const;
+import {
+  ALICE_CHECKSUM,
+  ALICE_LOWER,
+  BOB_CHECKSUM,
+  BOB_LOWER,
+  sampleTypedData,
+} from "./fixtures.js";
 
 function makeWalletClient(account?: {
   address: `0x${string}`;
@@ -23,13 +25,6 @@ function makeWalletClient(account?: {
     signTypedData: vi.fn().mockResolvedValue("0xdeadbeef"),
   };
 }
-
-const sampleTypedData = {
-  domain: { name: "Sample", version: "1", chainId: 8453, verifyingContract: ALICE_LOWER },
-  types: { Hello: [{ name: "msg", type: "string" }] },
-  primaryType: "Hello",
-  message: { msg: "world" },
-} as const;
 
 describe("signerFromWalletClient", () => {
   it("resolves getAddress from the wallet client's bound account (checksummed)", async () => {
