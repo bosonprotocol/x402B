@@ -18,6 +18,8 @@ import type { Address, Hex } from "viem";
 import { parseChainId } from "../core-sdk-factory.js";
 import type { TokenDomainResolver } from "../types.js";
 
+import { computeTokenAuthDeadline } from "./deadline.js";
+
 export interface SignErc3009Args {
   requirements: EscrowPaymentRequirements;
   buyer: Address;
@@ -42,7 +44,7 @@ export async function signErc3009({
   const domain = await tokenDomainResolver(requirements.asset as Address, chainId);
 
   const validAfter = 0;
-  const validBefore = Math.floor(now() / 1000) + requirements.maxTimeoutSeconds;
+  const validBefore = computeTokenAuthDeadline(requirements.maxTimeoutSeconds, now);
 
   const result = await coreSdk.signReceiveWithErc3009Authorization(
     requirements.asset,

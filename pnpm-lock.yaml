@@ -230,6 +230,9 @@ importers:
       '@bosonprotocol/x402-client':
         specifier: workspace:^
         version: link:../client
+      '@bosonprotocol/x402-core':
+        specifier: workspace:^
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^20.17.10

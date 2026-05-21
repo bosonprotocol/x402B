@@ -31,6 +31,21 @@ describe("SellerActor", () => {
     expect(actor.signer.address.toLowerCase()).toBe(account.address.toLowerCase());
     expect(typeof actor.signer.signTypedData).toBe("function");
     expect(typeof actor.signOffer).toBe("function");
+    expect(typeof actor.signResolutionProposal).toBe("function");
+  });
+
+  it("signResolutionProposal returns a 65-byte signature + split { r, s, v }", async () => {
+    const account = privateKeyToAccount(ROLE_ACCOUNTS.seller.privateKey);
+    const actor = createSellerActor({ account });
+    const signed = await actor.signResolutionProposal({
+      exchangeId: "1",
+      buyerPercentBasisPoints: "5000",
+    });
+    // 0x + 64 r + 64 s + 2 v = 132 chars
+    expect(signed.signature).toMatch(/^0x[0-9a-fA-F]{130}$/);
+    expect(signed.r).toMatch(/^0x[0-9a-fA-F]{64}$/);
+    expect(signed.s).toMatch(/^0x[0-9a-fA-F]{64}$/);
+    expect(signed.v === 27 || signed.v === 28).toBe(true);
   });
 });
 

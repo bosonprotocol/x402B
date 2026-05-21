@@ -31,3 +31,19 @@ export {
 
 export { seedSuite, type SeedArgs, type SeededSeller, type SuiteState } from "./seed.js";
 export { buildCreateSellerCallback, type BuildCreateSellerCallbackArgs } from "./create-seller.js";
+
+export {
+  performBuyerPostCommitAction,
+  PostCommitActionError,
+  type BuyerPostCommitActionId,
+  type PerformBuyerPostCommitActionArgs,
+  type PostCommitActionResult,
+} from "./post-commit-http.js";
+
+export {
+  performCancelVoucher,
+  FacilitatorPerformError,
+  type CancelVoucherArgs,
+  type FacilitatorOnlyActionId,
+  type FacilitatorPerformResult,
+} from "./facilitator-perform-action.js";

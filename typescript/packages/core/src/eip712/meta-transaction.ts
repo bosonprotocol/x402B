@@ -133,3 +133,175 @@ export async function recoverMetaTransactionSigner(
     signature,
   } as unknown as Parameters<typeof recoverTypedDataAddress>[0]);
 }
+
+// ===========================================================================
+// Action-specific MetaTx variants.
+//
+// core-sdk's `metaTx.handler.signMetaTx*` methods use different EIP-712
+// primary types for different action families. The recovery side MUST
+// reconstruct the same typed-data structure or `ecrecover` yields a
+// garbage address. The basic `MetaTransaction` type (handled by
+// `metaTransactionTypedData` above) only covers the commit-time actions
+// and `revokeVoucher`; the three builders below cover the rest. Each
+// routes through the corresponding core-sdk `signMetaTx*({…,
+// returnTypedDataToSign: true})` so the typed-data shape stays in
+// lock-step with the deployed protocol — no manual re-derivation of
+// types, domain, or message structure on our side.
+// ===========================================================================
+
+/** Loose typed-data shape — covers the action-specific variants below. */
+export interface ActionMetaTransactionTypedData {
+  domain: Record<string, unknown>;
+  types: Record<string, readonly TypedDataField[]>;
+  primaryType: string;
+  message: Record<string, unknown>;
+}
+
+interface BaseActionArgs {
+  chainId: number;
+  /** Address of the Boson escrow contract — the EIP-712 verifyingContract. */
+  verifyingContract: Address;
+  /** Boson `MetaTransactionsHandlerFacet.usedNonce[from][nonce]` replay-protection slot. */
+  nonce: bigint;
+  /** Buyer / signer EOA — populates the typed-data `message.from`. */
+  from: Address;
+}
+
+/**
+ * Build the EIP-712 typed-data for an EXCHANGE-keyed post-commit meta-tx
+ * (`redeemVoucher`, `cancelVoucher`, `completeExchange`,
+ * `raiseDispute`, `retractDispute`, `escalateDispute`). All six share
+ * the `MetaTxExchange` primary type and `exchangeDetails: {exchangeId}`
+ * sub-struct; the only difference between them is `message.functionName`.
+ */
+export async function metaTransactionExchangeTypedData(
+  args: BaseActionArgs & {
+    /** Boson function signature, e.g. `"redeemVoucher(uint256)"`. */
+    functionName: string;
+    /** Exchange the action targets. */
+    exchangeId: bigint;
+  },
+): Promise<ActionMetaTransactionTypedData> {
+  return callCoreSdkForTypedData(args.from, args.chainId, async (web3Lib) =>
+    metaTx.handler.signMetaTxRedeemVoucher({
+      web3Lib,
+      nonce: args.nonce.toString(),
+      metaTxHandlerAddress: args.verifyingContract,
+      chainId: args.chainId,
+      exchangeId: args.exchangeId.toString(),
+      returnTypedDataToSign: true,
+    }),
+  ).then((td) => withOverriddenFunctionName(td, args.functionName));
+}
+
+/**
+ * Build the EIP-712 typed-data for `resolveDispute` — `MetaTxDisputeResolution`
+ * primary type with a nested `disputeResolutionDetails` struct carrying
+ * the exchange id, the buyer's percent split, and the counterparty's
+ * signature.
+ */
+export async function metaTransactionDisputeResolutionTypedData(
+  args: BaseActionArgs & {
+    exchangeId: bigint;
+    buyerPercentBasisPoints: bigint;
+    /** Counterparty's signature over the resolution proposal — packed `r||s||v` hex. */
+    counterpartySig: Hex;
+  },
+): Promise<ActionMetaTransactionTypedData> {
+  return callCoreSdkForTypedData(args.from, args.chainId, async (web3Lib) =>
+    metaTx.handler.signMetaTxResolveDispute({
+      web3Lib,
+      nonce: args.nonce.toString(),
+      metaTxHandlerAddress: args.verifyingContract,
+      chainId: args.chainId,
+      exchangeId: args.exchangeId.toString(),
+      buyerPercent: args.buyerPercentBasisPoints.toString(),
+      counterpartySig: args.counterpartySig,
+      returnTypedDataToSign: true,
+    }),
+  );
+}
+
+/**
+ * Build the EIP-712 typed-data for `withdrawFunds` — `MetaTxFund` primary
+ * type with a nested `fundDetails` struct carrying the entity id, the
+ * token-address list, and the per-token amounts.
+ */
+export async function metaTransactionFundTypedData(
+  args: BaseActionArgs & {
+    entityId: bigint;
+    tokenList: readonly Address[];
+    tokenAmounts: readonly bigint[];
+  },
+): Promise<ActionMetaTransactionTypedData> {
+  return callCoreSdkForTypedData(args.from, args.chainId, async (web3Lib) =>
+    metaTx.handler.signMetaTxWithdrawFunds({
+      web3Lib,
+      nonce: args.nonce.toString(),
+      metaTxHandlerAddress: args.verifyingContract,
+      chainId: args.chainId,
+      entityId: args.entityId.toString(),
+      tokenList: args.tokenList as string[],
+      tokenAmounts: args.tokenAmounts.map((amount) => amount.toString()),
+      returnTypedDataToSign: true,
+    }),
+  );
+}
+
+/**
+ * Drive a core-sdk `signMetaTx*({…, returnTypedDataToSign: true})` and
+ * strip the convenience fields (`functionName`, `functionSignature`)
+ * the SDK appends — only the EIP-712 typed-data shape is needed for
+ * recovery.
+ *
+ * core-sdk's `returnTypedDataToSign: true` path short-circuits before
+ * `eth_signTypedData_v4` is invoked, so we only need a `Web3LibAdapter`
+ * that can answer `getSignerAddress()` and `getChainId()`. Any other
+ * method invocation indicates core-sdk's internals changed and surfaces
+ * loudly through {@link createTypedDataInterceptAdapter}'s stubs.
+ */
+async function callCoreSdkForTypedData(
+  from: Address,
+  chainId: number,
+  invoke: (web3Lib: Parameters<typeof metaTx.handler.signMetaTx>[0]["web3Lib"]) => Promise<{
+    domain: Record<string, unknown>;
+    types: Record<string, readonly TypedDataField[]>;
+    primaryType: string;
+    message: Record<string, unknown>;
+  }>,
+): Promise<ActionMetaTransactionTypedData> {
+  const intercept = createTypedDataInterceptAdapter<ActionMetaTransactionTypedData>({
+    callerTag: STUB_CALLER_TAG,
+    signerAddress: from,
+    chainId,
+    // `parse` is wired up but never called — `returnTypedDataToSign: true`
+    // short-circuits in core-sdk before `eth_signTypedData_v4` would fire.
+    parse: (json) => JSON.parse(json) as ActionMetaTransactionTypedData,
+  });
+  const result = await invoke(intercept.adapter);
+  return {
+    domain: result.domain,
+    types: result.types,
+    primaryType: result.primaryType,
+    message: result.message,
+  };
+}
+
+/**
+ * Substitute the typed-data's `message.functionName` for the action's
+ * specific value. `metaTransactionExchangeTypedData` routes every
+ * exchange-keyed action through `signMetaTxRedeemVoucher` (the six
+ * methods produce identical types/domain/primaryType, differing only in
+ * the hard-coded `functionName`); this override restores the correct
+ * value so the recovered EIP-712 hash matches whatever the signer
+ * actually signed.
+ */
+function withOverriddenFunctionName(
+  td: ActionMetaTransactionTypedData,
+  functionName: string,
+): ActionMetaTransactionTypedData {
+  return {
+    ...td,
+    message: { ...td.message, functionName },
+  };
+}
