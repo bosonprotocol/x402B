@@ -7,19 +7,37 @@
 //   1. `startStack({ waitForReady: true })` — bring up the canonical
 //      Boson stack + x402B services and block until the contracts +
 //      subgraph `deploy.done` markers exist.
-//   2. Register one Boson seller entity per slot in `SEED_WALLETS`.
+//   2. Switch the chain from default automine to a 50 ms mining
+//      interval (see `enableIntervalMining` below). Concurrent
+//      meta-tx submissions only queue in the mempool when automine
+//      is off — under automine Hardhat rejects everything that isn't
+//      the next-next nonce.
+//   3. Register one Boson seller entity per slot in `SEED_WALLETS`.
 //      Each chain-touching test FILE picks a slot — sharing a seller
 //      across parallel files causes `OfferSoldOut` races on FullOffer
 //      signature reuse, so we provision a distinct seller for every
 //      slot the suite knows about. `seedSuite` is idempotent so
 //      re-running on an existing chain state is a no-op.
-//   3. Export per-slot seller info (`{id, address}`) as a JSON map
+//   4. Export per-slot seller info (`{id, address}`) as a JSON map
 //      via `process.env[SELLERS_ENV_KEY]`, plus the protocol-global
 //      dispute resolver id, so each test file's `beforeAll` can read
 //      its slot's seller without re-querying the subgraph.
+//
+// Standalone-run escape hatch — `E2E_DOCKER_KEEP_STACK=1`:
+//   When set alongside `E2E_DOCKER=1`, the setup skips BOTH the
+//   defensive pre-start `stopStack()` AND the post-suite teardown.
+//   `startStack({ waitForReady: true })` is still called (`docker
+//   compose up -d --wait` is idempotent and returns ~instantly when
+//   every container is already healthy) and seller seeding still
+//   runs (`seedSuite` is itself idempotent). The caller's contract:
+//   "the stack I brought up matches the facilitator's view of the
+//   chain — don't touch it." Use this when iterating on a single
+//   scenario file against a stack you launched manually via
+//   `pnpm stack:up`.
 
 import type { Address } from "viem";
 
+import { LOCAL_31337_0 } from "../../src/config/local-31337-0.js";
 import {
   buildCreateSellerCallback,
   buildPublicClient,
@@ -43,6 +61,40 @@ export const SUITE_STATE_ENV = {
 } as const;
 
 const ENABLED = process.env.E2E_DOCKER === "1";
+const KEEP_STACK = process.env.E2E_DOCKER_KEEP_STACK === "1";
+
+/**
+ * Switch the local Hardhat chain from automine to a 50 ms mining
+ * interval. Concurrent meta-tx submissions through the facilitator
+ * (e.g. `concurrent.test.ts`'s 20 parallel buyers) only queue in the
+ * mempool when automine is OFF — under default automine Hardhat
+ * rejects every tx whose nonce isn't already-next with
+ * `"transactions can't be queued when automining"`. The 50 ms cadence
+ * keeps the sequential seeding phase fast (~1.5 s for the ~30 txs
+ * across all `SEED_WALLETS` slots) while letting a burst of 20+
+ * concurrent commits land in one or two blocks.
+ *
+ * Idempotent: re-invoking on an already-interval-mining chain just
+ * resets the timer. Called every globalSetup invocation so the
+ * KEEP_STACK fast-path doesn't have to remember the prior setting.
+ */
+async function enableIntervalMining(): Promise<void> {
+  const rpc = LOCAL_31337_0.urls.jsonRpc;
+  const post = async (method: string, params: unknown[]): Promise<unknown> => {
+    const res = await fetch(rpc, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    });
+    const body = (await res.json()) as { result?: unknown; error?: { message: string } };
+    if (body.error !== undefined) {
+      throw new Error(`[x402-e2e/globalSetup] ${method} failed: ${body.error.message}`);
+    }
+    return body.result;
+  };
+  await post("evm_setAutomine", [false]);
+  await post("evm_setIntervalMining", [50]);
+}
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   if (!ENABLED) {
@@ -52,26 +104,37 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     };
   }
 
-  // Defensive `down -v` before `up`: a previous run aborted before its
-  // teardown (Ctrl+C, vitest crash, OS shutdown) leaves containers up
-  // but with stale in-process state — most notably the facilitator's
-  // viem `nonceManager`, which caches the relayer's next-nonce in
-  // memory. Once the chain is redeployed (deploy.done re-runs on
-  // volume reset), the chain expects nonce 0 while the lingering
-  // facilitator process still thinks it's at N+1 → "Nonce too high"
-  // on every meta-tx submit. Tearing the stack down here guarantees
-  // every test run starts from genesis: fresh containers, fresh
-  // in-memory state, fresh chain. The cost is a few extra seconds at
-  // suite startup; the win is determinism.
-  console.log("[x402-e2e/globalSetup] resetting any leftover stack…");
-  try {
-    await stopStack();
-  } catch (e) {
-    console.warn("[x402-e2e/globalSetup] stopStack() before startStack failed — continuing:", e);
+  if (KEEP_STACK) {
+    // Caller asserts they brought the stack up themselves (via
+    // `pnpm stack:up` or a previous KEEP_STACK run) and want it left
+    // running afterwards. Skip the defensive `stopStack()` — tearing
+    // down would defeat the whole purpose of the flag.
+    console.log("[x402-e2e/globalSetup] E2E_DOCKER_KEEP_STACK=1 — using existing stack as-is…");
+  } else {
+    // Defensive `down -v` before `up`: a previous run aborted before its
+    // teardown (Ctrl+C, vitest crash, OS shutdown) leaves containers up
+    // but with stale in-process state — most notably the facilitator's
+    // viem `nonceManager`, which caches the relayer's next-nonce in
+    // memory. Once the chain is redeployed (deploy.done re-runs on
+    // volume reset), the chain expects nonce 0 while the lingering
+    // facilitator process still thinks it's at N+1 → "Nonce too high"
+    // on every meta-tx submit. Tearing the stack down here guarantees
+    // every test run starts from genesis: fresh containers, fresh
+    // in-memory state, fresh chain. The cost is a few extra seconds at
+    // suite startup; the win is determinism.
+    console.log("[x402-e2e/globalSetup] resetting any leftover stack…");
+    try {
+      await stopStack();
+    } catch (e) {
+      console.warn("[x402-e2e/globalSetup] stopStack() before startStack failed — continuing:", e);
+    }
   }
 
   console.log("[x402-e2e/globalSetup] starting stack…");
   await startStack({ waitForReady: true });
+
+  console.log("[x402-e2e/globalSetup] switching Hardhat to 50 ms interval mining…");
+  await enableIntervalMining();
 
   try {
     const publicClient = buildPublicClient();
@@ -120,6 +183,12 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   }
 
   return async () => {
+    if (KEEP_STACK) {
+      console.log(
+        "[x402-e2e/globalSetup] E2E_DOCKER_KEEP_STACK=1 — preserving stack; run `pnpm stack:down` manually when done.",
+      );
+      return;
+    }
     console.log("[x402-e2e/globalSetup] tearing down stack…");
     await stopStack();
   };
