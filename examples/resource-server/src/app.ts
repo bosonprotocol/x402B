@@ -106,26 +106,69 @@ export function createResourceServerApp(
   const SESSION_ID_HEADER = "x-x402-boson-session-id";
   const FALLBACK_KEY = "__no_session__";
   const SESSION_CACHE_TTL_MS = 60_000;
-  const sessionCache = new Map<
-    string,
-    { promise: Promise<EscrowPaymentRequirements>; expiresAt: number }
-  >();
+  const MAX_SESSION_ID_LENGTH = 128;
+  const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+  const MAX_SESSION_CACHE_ENTRIES = 256;
+  type SessionCacheEntry = {
+    promise: Promise<EscrowPaymentRequirements>;
+    expiresAt: number;
+  };
+  const sessionCache = new (class extends Map<string, SessionCacheEntry> {
+    override set(key: string, value: SessionCacheEntry) {
+      const currentTime = now();
+      for (const [cacheKey, entry] of this) {
+        if (currentTime >= entry.expiresAt) {
+          this.delete(cacheKey);
+        }
+      }
+      if (this.has(key)) {
+        this.delete(key);
+      } else {
+        while (this.size >= MAX_SESSION_CACHE_ENTRIES) {
+          const oldestKey = this.keys().next().value;
+          if (typeof oldestKey !== "string") {
+            break;
+          }
+          this.delete(oldestKey);
+        }
+      }
+      return super.set(key, value);
+    }
+  })();
+
+  const pruneExpiredSessions = () => {
+    const currentTime = now();
+    for (const [cacheKey, entry] of sessionCache) {
+      if (currentTime >= entry.expiresAt) {
+        sessionCache.delete(cacheKey);
+      }
+    }
+  };
+
+  const normalizeSessionId = (req: Request) => {
+    // Express lowercases incoming header names. Coerce to string and
+    // trim — empty / whitespace-only / invalid ids fall through to the
+    // shared slot to avoid unbounded attacker-controlled key growth.
+    const rawSessionId = req.header(SESSION_ID_HEADER);
+    const trimmedSessionId = typeof rawSessionId === "string" ? rawSessionId.trim() : "";
+    if (
+      trimmedSessionId.length === 0 ||
+      trimmedSessionId.length > MAX_SESSION_ID_LENGTH ||
+      !SESSION_ID_PATTERN.test(trimmedSessionId)
+    ) {
+      return FALLBACK_KEY;
+    }
+    return trimmedSessionId;
+  };
 
   const resolveRequirements = async (req: Request) => {
-    // Express lowercases incoming header names. Coerce to string and
-    // trim — empty / whitespace-only ids fall through to the shared slot.
-    const rawSessionId = req.header(SESSION_ID_HEADER);
-    const sessionId =
-      typeof rawSessionId === "string" && rawSessionId.trim().length > 0
-        ? rawSessionId.trim()
-        : FALLBACK_KEY;
+    pruneExpiredSessions();
+    const sessionId = normalizeSessionId(req);
 
     const existing = sessionCache.get(sessionId);
-    if (existing !== undefined && now() < existing.expiresAt) {
-      return existing.promise;
-    }
     if (existing !== undefined) {
-      sessionCache.delete(sessionId);
+      sessionCache.set(sessionId, existing);
+      return existing.promise;
     }
 
     const promise = server.buildPaymentRequirements({
