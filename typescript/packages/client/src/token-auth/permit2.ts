@@ -23,6 +23,8 @@ import type { Address, Hex } from "viem";
 
 import { randomUint256 } from "../utils/crypto.js";
 
+import { computeTokenAuthDeadline } from "./deadline.js";
+
 export interface SignPermit2Args {
   requirements: EscrowPaymentRequirements;
   buyer: Address;
@@ -42,7 +44,7 @@ export async function signPermit2({
   coreSdk,
   now = Date.now,
 }: SignPermit2Args): Promise<Permit2AuthData> {
-  const deadline = Math.floor(now() / 1000) + requirements.maxTimeoutSeconds;
+  const deadline = computeTokenAuthDeadline(requirements.maxTimeoutSeconds, now);
   const permit2Nonce = randomUint256();
 
   // `buyer` is exposed in the call site for symmetry with the other
