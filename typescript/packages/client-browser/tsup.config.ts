@@ -5,29 +5,27 @@ import { defineConfig } from "tsup";
 // `entry` glob picks every `index.ts` under `src/` so future subpaths are
 // purely additive, and `scripts/postbuild.mjs` writes the
 // `dist/{esm,cjs}/package.json` module-type markers.
-const entry = ["src/**/index.ts"];
+const shared = {
+  entry: ["src/**/index.ts"],
+  outExtension: () => ({ js: ".js" }),
+  sourcemap: true,
+  target: "es2020" as const,
+  treeshake: true,
+};
 
 export default defineConfig([
   {
-    entry,
+    ...shared,
     format: "esm",
     outDir: "dist/esm",
-    outExtension: () => ({ js: ".js" }),
     dts: false,
-    sourcemap: true,
     clean: true,
-    target: "es2020",
-    treeshake: true,
   },
   {
-    entry,
+    ...shared,
     format: "cjs",
     outDir: "dist/cjs",
-    outExtension: () => ({ js: ".js" }),
     dts: true,
-    sourcemap: true,
     clean: false,
-    target: "es2020",
-    treeshake: true,
   },
 ]);
