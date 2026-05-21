@@ -206,8 +206,11 @@ export function mapSubmitError(e: unknown): Exclude<FacilitatorSettleResult, { o
     };
   }
   // core-sdk wraps adapter errors in its own Error. Walk the cause chain
-  // for a tagged RelayerSubmitError before falling back.
+  // for a tagged RelayerSubmitError before falling back. Also capture the
+  // first viem BaseError encountered (which may be `e` itself or a wrapped
+  // cause) so the ONCHAIN_REVERT classifier below sees wrapped reverts.
   let cursor: unknown = e;
+  let viemBase: BaseError | undefined = e instanceof BaseError ? e : undefined;
   while (cursor && typeof cursor === "object" && "cause" in cursor) {
     const cause = (cursor as { cause: unknown }).cause;
     if (cause instanceof RelayerSubmitError) {
@@ -217,11 +220,14 @@ export function mapSubmitError(e: unknown): Exclude<FacilitatorSettleResult, { o
         reason: cause.message,
       };
     }
+    if (!viemBase && cause instanceof BaseError) {
+      viemBase = cause;
+    }
     if (cause === cursor) break;
     cursor = cause;
   }
-  if (e instanceof BaseError) {
-    const reverted = e.walk(
+  if (viemBase) {
+    const reverted = viemBase.walk(
       (err) => err instanceof RawContractError || err instanceof ContractFunctionRevertedError,
     );
     if (reverted) {
@@ -230,7 +236,7 @@ export function mapSubmitError(e: unknown): Exclude<FacilitatorSettleResult, { o
           ? (reverted.reason ?? reverted.shortMessage ?? reverted.message)
           : reverted instanceof RawContractError
             ? reverted.message || reverted.shortMessage || "execution reverted"
-            : (e.shortMessage ?? e.message);
+            : (viemBase.shortMessage ?? viemBase.message);
       return {
         ok: false,
         code: "ONCHAIN_REVERT",
@@ -240,7 +246,7 @@ export function mapSubmitError(e: unknown): Exclude<FacilitatorSettleResult, { o
     return {
       ok: false,
       code: "INTERNAL_ERROR",
-      reason: e.shortMessage ?? e.message,
+      reason: viemBase.shortMessage ?? viemBase.message,
     };
   }
   return {
