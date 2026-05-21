@@ -47,9 +47,10 @@ export interface ChallengeOptions {
    * browser will POST the X-PAYMENT retry to). Use this when deployed
    * behind a TLS-terminating proxy where `req.protocol` /
    * `req.get('host')` may not reflect the public origin. If omitted,
-   * falls back to `${req.protocol}://${req.get('host')}${req.originalUrl}`,
-   * which honors `X-Forwarded-Proto` / `X-Forwarded-Host` only when
-   * `app.set('trust proxy', ...)` is configured on the Express app.
+   * falls back to `${req.protocol}://${req.get('host')}${req.originalUrl}`.
+   * With `app.set('trust proxy', ...)`, `req.protocol` may honor
+   * `X-Forwarded-Proto`, but `req.get('host')` reads the `Host` header
+   * and does not consult `X-Forwarded-Host`.
    */
   currentUrl?: string | ((req: Request) => string);
 }
