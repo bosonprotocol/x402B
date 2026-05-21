@@ -20,7 +20,11 @@ import {
 import { Router, type Request, type RequestHandler, type Response } from "express";
 import type { Hex } from "viem";
 
-import { respondWithChallenge } from "./internal/x402-challenge.js";
+import {
+  respondWithChallenge,
+  type PaywallConfigLike,
+  type PaywallProviderLike,
+} from "./internal/x402-challenge.js";
 
 /** Shared error code for malformed `POST /x402B/*` bodies. */
 export const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
@@ -36,6 +40,28 @@ export interface MountX402bOptions {
   ) => Promise<EscrowPaymentRequirements> | EscrowPaymentRequirements;
   /** Optional mount path. Defaults to both `/x402B` and legacy `/x402b`. */
   basePath?: string;
+  /**
+   * Optional paywall provider. When supplied and the request's `Accept`
+   * header prefers `text/html`, the commit-route 402 challenge is
+   * rendered as an HTML document via `paywall.generateHtml(...)` instead
+   * of the canonical JSON body. Same semantics as
+   * `ExpressMiddlewareOptions.paywall`.
+   *
+   * When deployed behind a TLS-terminating proxy, call
+   * `app.set('trust proxy', ...)` on the Express app so the paywall's
+   * `currentUrl` is built with the original `https://` scheme and
+   * forwarded host. Alternatively, use `currentUrl` below to pass an
+   * explicit value.
+   */
+  paywall?: PaywallProviderLike;
+  /** Forwarded to `paywall.generateHtml(...)` when the paywall path fires. */
+  paywallConfig?: PaywallConfigLike;
+  /**
+   * Optional override for the canonical URL embedded in the paywall
+   * HTML response. Either a literal string or a `(req) => string`
+   * resolver. Same semantics as `ExpressMiddlewareOptions.currentUrl`.
+   */
+  currentUrl?: string | ((req: Request) => string);
 }
 
 /**
@@ -79,7 +105,11 @@ function commitRoute(
       // useful for non-Express integrators, but not the x402 wire
       // contract clients branch on.
       if (header === undefined || header.length === 0) {
-        respondWithChallenge(res, requirements);
+        respondWithChallenge(req, res, requirements, {
+          paywall: opts.paywall,
+          paywallConfig: opts.paywallConfig,
+          currentUrl: opts.currentUrl,
+        });
         return;
       }
 

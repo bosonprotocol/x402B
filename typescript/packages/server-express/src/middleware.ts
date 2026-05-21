@@ -18,7 +18,11 @@ import {
 } from "@bosonprotocol/x402-server";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
-import { respondWithChallenge } from "./internal/x402-challenge.js";
+import {
+  respondWithChallenge,
+  type PaywallConfigLike,
+  type PaywallProviderLike,
+} from "./internal/x402-challenge.js";
 
 export interface ExpressMiddlewareOptions {
   /**
@@ -41,6 +45,34 @@ export interface ExpressMiddlewareOptions {
    * point so the buyer redeems in the same transaction.
    */
   flow?: "commit" | "commit-and-redeem";
+  /**
+   * Optional paywall provider. When supplied and the request's `Accept`
+   * header prefers `text/html` (a browser User-Agent), the 402 challenge
+   * is rendered as an HTML document via `paywall.generateHtml(...)`
+   * instead of the canonical JSON body. Non-browser clients always get
+   * JSON. Structurally compatible with
+   * `@bosonprotocol/x402-paywall`'s `evmEscrowPaywall`.
+   *
+   * When deployed behind a TLS-terminating proxy, call
+   * `app.set('trust proxy', ...)` on the Express app so the paywall's
+   * `currentUrl` is built with the original `https://` scheme and
+   * forwarded host (the browser's retry URL is embedded in
+   * `window.x402b.currentUrl` — an `http://` value loaded from an HTTPS
+   * page hits mixed-content blocking). Alternatively, use `currentUrl`
+   * below to pass an explicit value.
+   */
+  paywall?: PaywallProviderLike;
+  /** Forwarded to `paywall.generateHtml(...)` as the second argument when the paywall path fires. */
+  paywallConfig?: PaywallConfigLike;
+  /**
+   * Optional override for the canonical URL embedded in the paywall
+   * HTML response. Either a literal string or a `(req) => string`
+   * resolver. Use this when `trust proxy` isn't sufficient — e.g. when
+   * the public origin differs from `X-Forwarded-Host`, or when you want
+   * the retry URL pinned to a fixed checkout endpoint. Only consulted
+   * on the paywall (HTML) branch.
+   */
+  currentUrl?: string | ((req: Request) => string);
 }
 
 export interface X402bResLocals {
@@ -76,7 +108,11 @@ export function expressMiddleware(
     if (header === undefined || header.length === 0) {
       try {
         const requirements = await opts.resolveRequirements(req, "challenge");
-        respondWithChallenge(res, requirements);
+        respondWithChallenge(req, res, requirements, {
+          paywall: opts.paywall,
+          paywallConfig: opts.paywallConfig,
+          currentUrl: opts.currentUrl,
+        });
       } catch (e) {
         next(e);
       }

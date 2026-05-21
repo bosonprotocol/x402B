@@ -20,6 +20,7 @@
 //    reader can be built from the env (see README).
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { PaywallConfig, PaywallProvider } from "@bosonprotocol/x402-paywall";
 import {
   createX402bServer,
   type ExchangeReader,
@@ -43,6 +44,17 @@ export interface ResourceServerAppOptions {
   exchangeReader: ExchangeReader;
   /** Replace `Date.now()` for deterministic offer-validity windows in tests. */
   now?: () => number;
+  /**
+   * Optional paywall provider — typically `evmEscrowPaywall` from
+   * `@bosonprotocol/x402-paywall`. When supplied, browser User-Agents
+   * hitting `/resource` (i.e. requests preferring `text/html`) get a
+   * full HTML paywall body instead of the JSON 402; programmatic
+   * clients still see JSON. The `paywallConfig` is forwarded to the
+   * paywall's `generateHtml(...)` as the second argument.
+   */
+  paywall?: PaywallProvider;
+  /** Forwarded to `paywall.generateHtml(...)`. Ignored when `paywall` is omitted. */
+  paywallConfig?: PaywallConfig;
 }
 
 export interface ResourceServerAppBundle {
@@ -134,15 +146,38 @@ export function createResourceServerApp(
     }
   });
 
-  app.get("/resource", expressMiddleware(server, { resolveRequirements }), (_req, res) => {
-    res.json({
-      ok: true,
-      x402b: res.locals.x402b,
-      resource: "example resource bytes",
-    });
-  });
+  // `paywallConfig` is only forwarded alongside `paywall`: the adapters
+  // ignore `paywallConfig` when no provider is set, and surfacing the
+  // pairing here keeps the example from modelling an ambiguous config.
+  const paywallOptions =
+    options.paywall !== undefined
+      ? {
+          paywall: options.paywall,
+          ...(options.paywallConfig !== undefined ? { paywallConfig: options.paywallConfig } : {}),
+        }
+      : {};
 
-  app.use(mountX402b(server, { resolveRequirements }));
+  app.get(
+    "/resource",
+    expressMiddleware(server, {
+      resolveRequirements,
+      ...paywallOptions,
+    }),
+    (_req, res) => {
+      res.json({
+        ok: true,
+        x402b: res.locals.x402b,
+        resource: "example resource bytes",
+      });
+    },
+  );
+
+  app.use(
+    mountX402b(server, {
+      resolveRequirements,
+      ...paywallOptions,
+    }),
+  );
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const status =
