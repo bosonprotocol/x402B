@@ -31,7 +31,8 @@ const OUT_FILE = join(GEN_DIR, "template.ts");
 // in the browser the call will fail loudly, which is the behaviour we
 // want — better than silently shipping broken code.
 const NODE_BUILTIN_STUBS: Record<string, string> = {
-  crypto: 'export default {}; export const randomUUID = () => "";',
+  crypto:
+    'export default {}; export const randomUUID = () => { throw new Error("x402-paywall/build: stubbed node:crypto.randomUUID() was called in the browser bundle"); };',
 };
 const stubNodeBuiltinsPlugin: esbuild.Plugin = {
   name: "stub-node-builtins",
