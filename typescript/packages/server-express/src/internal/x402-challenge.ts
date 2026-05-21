@@ -76,7 +76,7 @@ export function respondWithChallenge(
   opts: ChallengeOptions = {},
 ): void {
   res.setHeader("Cache-Control", "no-store");
-  res.setHeader("Vary", "Accept");
+  res.vary("Accept");
 
   if (opts.paywall && wantsHtml(req) && opts.paywall.supports(requirements)) {
     const html = opts.paywall.generateHtml(
