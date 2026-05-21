@@ -104,7 +104,13 @@ The `up` flow runs in two phases:
 | `typescript/packages/x402-e2e/src/bin/**` or `examples/resource-server/src/**` or `typescript/packages/{server-express,server,core,evm,actions,fulfillment}/src/**` | `x402b-resource-server` |
 | `examples/webhook-sink/src/**` | `x402b-webhook-sink` |
 | Only `typescript/packages/x402-e2e/test/**` (scenario / harness tests) | nothing — tests run out-of-container |
-| Only docs, CI, or `.dockerignore` | nothing |
+| Only docs or CI | nothing |
+| `.dockerignore` | `--build` all three (`x402b-facilitator-http`, `x402b-resource-server`, `x402b-webhook-sink`) |
+
+`.dockerignore` shapes the build context itself, so changes to it commonly
+require a rebuild when Dockerfiles use `COPY . .` (as ours do) — files newly
+included or excluded by the ignore rules will only appear in / disappear from
+the image after `--build`.
 
 The Dockerfiles are layered so that **passing `--build` when nothing actually
 changed is near-free**: BuildKit reuses every cached layer up to the first
