@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.7-labs
 #
 # Build from the monorepo root so the root pnpm-lock.yaml is in context:
 #   docker build -t x402b-webhook-sink -f examples/webhook-sink/Dockerfile .

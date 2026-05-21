@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.7-labs
 #
 # Build from the monorepo root so the root pnpm-lock.yaml is in context:
 #   docker build -t x402b-e2e-resource-server -f typescript/packages/x402-e2e/src/bin/resource-server.Dockerfile .
