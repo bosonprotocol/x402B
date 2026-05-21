@@ -338,12 +338,16 @@ function describe(err: unknown): string {
 }
 
 // Swap the current document with the HTML body of the paid resource.
-// Parse with DOMParser instead of mutating the live DOM with string HTML —
-// the resource came from a server we just paid, so it's trusted, but
-// going through DOMParser keeps the swap a structural operation rather
-// than a string-level one.
+// `document.open() / write() / close()` rather than a DOMParser splice:
+// DOMParser-cloned `<script>` nodes are flagged "already started" and
+// will never execute, leaving any paid HTML that depends on inline or
+// external JS broken. The open/write/close path lets the HTML parser
+// take the string fresh, which handles doctype, head, body, and script
+// execution exactly as a top-level navigation would. The resource came
+// from a server we just paid, so trusting its HTML is the same trust
+// boundary the buyer already crossed.
 function replaceDocument(html: string): void {
-  const parsed = new DOMParser().parseFromString(html, "text/html");
-  const newRoot = document.importNode(parsed.documentElement, true);
-  document.replaceChild(newRoot, document.documentElement);
+  document.open();
+  document.write(html);
+  document.close();
 }
