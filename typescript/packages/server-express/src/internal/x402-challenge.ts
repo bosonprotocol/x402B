@@ -71,14 +71,24 @@ export function respondWithChallenge(
 
 /**
  * `req.accepts(['html', 'json'])` returns whichever the client prefers
- * (per the standard `Accept` header q-value ordering). When the header
- * is missing entirely `accepts` returns the first listed entry — which
- * we don't want as a paywall trigger, so we also gate on `req.headers.accept`
- * being a non-empty string.
+ * (per the standard `Accept` header q-value ordering). However, generic
+ * headers such as `*/*` can make both HTML and JSON acceptable, and
+ * Express will typically select the first listed type. To keep JSON as
+ * the canonical default for non-browser clients, only treat the request
+ * as HTML-capable when the raw `Accept` header explicitly includes
+ * `text/html` or `application/xhtml+xml`.
  */
 function wantsHtml(req: Request): boolean {
   const acceptHeader = req.headers.accept;
   if (typeof acceptHeader !== "string" || acceptHeader.length === 0) return false;
+
+  const explicitlyAcceptsHtml = acceptHeader
+    .split(",")
+    .map((value) => value.split(";")[0]?.trim().toLowerCase())
+    .some((value) => value === "text/html" || value === "application/xhtml+xml");
+
+  if (!explicitlyAcceptsHtml) return false;
+
   return req.accepts(["html", "json"]) === "html";
 }
 
