@@ -167,7 +167,8 @@ with `-t '@p0'`. Priorities:
 | `@p1`    | post-commit lifecycle (B6, B7)                | `post-commit.test.ts`         |
 | `@p1`    | operational scenarios (F1)                    | `operational.test.ts`         |
 | `@p2`    | operational scenarios (F2, F4)                | `operational.test.ts`         |
-| `it.todo`| follow-up scenarios (B5, B8–9, C6–C10, D1–D4, E1–E3, A6–A8) | `_skeletons.test.ts` |
+| `@p1/@p2`| commit-time fulfillment (A6–A8)               | `_skeletons.test.ts`          |
+| `it.todo`| follow-up scenarios (B5, B8–9, C6–C10, D1–D4, E1–E3) | `_skeletons.test.ts`   |
 
 ### Running a tag subset
 
