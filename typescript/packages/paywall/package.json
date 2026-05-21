@@ -1,0 +1,73 @@
+{
+  "name": "@bosonprotocol/x402-paywall",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Browser paywall for the Boson Protocol x402 escrow scheme — renders the FullOffer, connects a wallet via wagmi, drives the atomic commit-and-redeem flow, and returns the resource. Mirrors the upstream @x402/paywall PaywallProvider contract.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosonprotocol/x402B.git",
+    "directory": "typescript/packages/paywall"
+  },
+  "homepage": "https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/paywall",
+  "bugs": {
+    "url": "https://github.com/bosonprotocol/x402B/issues"
+  },
+  "keywords": [
+    "x402",
+    "boson-protocol",
+    "escrow",
+    "paywall",
+    "browser",
+    "react",
+    "wagmi",
+    "viem",
+    "web3",
+    "payments"
+  ],
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build:app": "tsx src/build.ts",
+    "build": "pnpm build:app && tsup && node scripts/postbuild.mjs",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src test --max-warnings 0",
+    "clean": "rm -rf dist .turbo src/gen"
+  },
+  "dependencies": {
+    "@bosonprotocol/x402-client": "workspace:^",
+    "@bosonprotocol/x402-client-browser": "workspace:^",
+    "@bosonprotocol/x402-core": "workspace:^",
+    "@tanstack/react-query": "^5.59.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "viem": "^2.39.3",
+    "wagmi": "^2.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.24.0",
+    "jsdom": "^25.0.1",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
