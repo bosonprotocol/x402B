@@ -1,7 +1,8 @@
-import { decodeAbiParameters, decodeFunctionData, parseAbi } from "viem";
+import { decodeAbiParameters, decodeFunctionData } from "viem";
 import { describe, expect, it } from "vitest";
 
 import {
+  META_TX_BPIP12_ABI,
   buildBpip12Calldata,
   buildBpip12QueueBytes,
 } from "../../src/internal/build-bpip12-calldata.js";
@@ -21,10 +22,6 @@ const SAMPLE_ERC3009 = {
     v: 27,
   },
 };
-
-const BPIP12_ABI = parseAbi([
-  "function executeMetaTransactionWithTokenTransferAuthorization(address userAddress, string functionName, bytes functionSignature, uint256 nonce, bytes signature, bytes tokenTransferAuthorization) returns (bytes)",
-]);
 
 describe("preBuyerSkipSlots", () => {
   it("returns 1 for createOfferAndCommit (zero-amount seller-deposit slot precedes the buyer pull)", () => {
@@ -95,7 +92,7 @@ describe("buildBpip12Calldata", () => {
     expect(calldata.to).toBe(escrow);
 
     const decoded = decodeFunctionData({
-      abi: BPIP12_ABI,
+      abi: META_TX_BPIP12_ABI,
       data: calldata.data,
     });
     expect(decoded.functionName).toBe("executeMetaTransactionWithTokenTransferAuthorization");

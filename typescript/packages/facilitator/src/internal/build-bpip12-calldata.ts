@@ -30,7 +30,7 @@ const TRANSFER_STRATEGY_ID = {
   Permit2: 3,
 } as const;
 
-const META_TX_BPIP12_ABI = parseAbi([
+export const META_TX_BPIP12_ABI = parseAbi([
   "function executeMetaTransactionWithTokenTransferAuthorization(address userAddress, string functionName, bytes functionSignature, uint256 nonce, bytes signature, bytes tokenTransferAuthorization) returns (bytes)",
 ]);
 
