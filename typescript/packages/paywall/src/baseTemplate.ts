@@ -3,9 +3,12 @@
 // blocks into the marked locations, and writes the result as the
 // `EVM_ESCROW_PAYWALL_TEMPLATE` string constant in `src/gen/template.ts`.
 //
-// The `<!--CSS-->` and `<!--JS-->` placeholders are what the build script
+// The `CSS_MARKER` / `JS_MARKER` placeholders are what the build script
 // looks for. Keep them on their own lines so the substitution stays
 // readable in `git diff` of the generated template.
+
+export const CSS_MARKER = "<!--CSS-->";
+export const JS_MARKER = "<!--JS-->";
 
 export const BASE_TEMPLATE = `<!DOCTYPE html>
 <html lang="en">
@@ -13,7 +16,7 @@ export const BASE_TEMPLATE = `<!DOCTYPE html>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Payment required — x402B</title>
-  <style><!--CSS--></style>
+  <style>${CSS_MARKER}</style>
 </head>
 <body>
   <div id="root">
@@ -26,7 +29,7 @@ export const BASE_TEMPLATE = `<!DOCTYPE html>
       or enable JavaScript.
     </noscript>
   </div>
-  <script><!--JS--></script>
+  <script>${JS_MARKER}</script>
 </body>
 </html>
 `;
