@@ -19,6 +19,7 @@
 //    this function, and listens. The binary refuses to start if no
 //    reader can be built from the env (see README).
 
+import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
   createX402bServer,
@@ -95,15 +96,16 @@ export function createResourceServerApp(
   // same signed offer the challenge emitted.
   //
   // We scope that "same signed offer" to a single buyer flow via the
-  // `X-X402-Boson-Session-Id` header `@bosonprotocol/x402-client-fetch`
-  // stamps on both requests of a 402-retry pair. A short per-session
-  // TTL bounds memory and lets the cache invalidate naturally between
-  // unrelated commits (without it, a sequential second commit hits the
-  // cached offer and reverts `OfferSoldOut` on a single-quantity
-  // template). Clients that don't honour the header share the
-  // `FALLBACK_KEY` slot and get the previous time-based behaviour, so
-  // the change is backwards-compatible for non-x402b consumers.
-  const SESSION_ID_HEADER = "x-x402-boson-session-id";
+  // `SESSION_ID_HEADER` `@bosonprotocol/x402-client-fetch` stamps on
+  // both requests of a 402-retry pair (Express's `req.header()` is
+  // case-insensitive, so the canonical mixed-case constant works for
+  // the lookup). A short per-session TTL bounds memory and lets the
+  // cache invalidate naturally between unrelated commits (without it,
+  // a sequential second commit hits the cached offer and reverts
+  // `OfferSoldOut` on a single-quantity template). Clients that don't
+  // honour the header share the `FALLBACK_KEY` slot and get the
+  // previous time-based behaviour, so the change is backwards-
+  // compatible for non-x402b consumers.
   const FALLBACK_KEY = "__no_session__";
   const SESSION_CACHE_TTL_MS = 60_000;
   const MAX_SESSION_ID_LENGTH = 128;

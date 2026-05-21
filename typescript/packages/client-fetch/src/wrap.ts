@@ -28,17 +28,15 @@
 // see distinct offers so a single-quantity offer isn't served to two
 // commits in a row.
 
+import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
 import type { X402bClient } from "@bosonprotocol/x402-client";
 
-const X_PAYMENT_HEADER = "X-PAYMENT";
+// Re-exported below so existing `@bosonprotocol/x402-client-fetch`
+// importers keep working without having to add a direct dep on
+// `@bosonprotocol/x402-core`.
+export { SESSION_ID_HEADER };
 
-/**
- * Custom header the wrapper stamps on both the initial request and the
- * X-PAYMENT retry, scoping the resource server's offer cache to one
- * buyer flow. Resource servers that don't honour the header fall back
- * to whatever cache strategy they implement.
- */
-export const SESSION_ID_HEADER = "X-X402-Boson-Session-Id";
+const X_PAYMENT_HEADER = "X-PAYMENT";
 
 function newSessionId(): string {
   // `globalThis.crypto.randomUUID()` works in modern browsers and Node 19+
