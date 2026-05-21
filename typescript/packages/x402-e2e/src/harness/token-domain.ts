@@ -6,55 +6,15 @@
 // (`name`, `version`), not the escrow's, and the resolver lets the
 // client read those without dragging in a chain-wide config blob.
 //
-// Mirrors the facilitator's `fetchTokenDomain` (which performs the same
-// lookup on the verify path): try EIP-5267's canonical `eip712Domain()`
-// first, fall back to `name()` + `version()` (with the EIP-2612 default
-// of `"1"` if `version()` reverts). The facilitator's copy lives inside
-// the facilitator package and isn't exported for reuse, so the harness
-// keeps its own minimal copy — short, self-contained, and matched
-// against the on-chain protocol's expectations.
+// The on-chain lookup itself (EIP-5267 → ERC-20 `name()` + EIP-2612
+// `version()` fallback) lives in
+// `@bosonprotocol/x402-core/eip712/token-auth`'s `fetchTokenDomain`, so
+// the harness and the facilitator's verify path read the same domain
+// from the same ABI surface — no risk of signing/verification drift.
 
 import type { TokenDomainResolver } from "@bosonprotocol/x402-client";
-import type { TokenEip712Domain } from "@bosonprotocol/x402-core/eip712/token-auth";
-import { ContractFunctionExecutionError, type Address, type Hex, type PublicClient } from "viem";
-
-const EIP5267_ABI = [
-  {
-    type: "function",
-    name: "eip712Domain",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [
-      { name: "fields", type: "bytes1" },
-      { name: "name", type: "string" },
-      { name: "version", type: "string" },
-      { name: "chainId", type: "uint256" },
-      { name: "verifyingContract", type: "address" },
-      { name: "salt", type: "bytes32" },
-      { name: "extensions", type: "uint256[]" },
-    ],
-  },
-] as const;
-
-const NAME_ABI = [
-  {
-    type: "function",
-    name: "name",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "string" }],
-  },
-] as const;
-
-const VERSION_ABI = [
-  {
-    type: "function",
-    name: "version",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "string" }],
-  },
-] as const;
+import { fetchTokenDomain } from "@bosonprotocol/x402-core/eip712/token-auth";
+import type { PublicClient } from "viem";
 
 /**
  * Build a `TokenDomainResolver` backed by an on-chain `PublicClient`.
@@ -65,48 +25,4 @@ const VERSION_ABI = [
  */
 export function createChainTokenDomainResolver(publicClient: PublicClient): TokenDomainResolver {
   return async (asset, chainId) => fetchTokenDomain(publicClient, asset, chainId);
-}
-
-async function fetchTokenDomain(
-  publicClient: PublicClient,
-  token: Address,
-  chainId: number,
-): Promise<TokenEip712Domain> {
-  try {
-    const result = (await publicClient.readContract({
-      address: token,
-      abi: EIP5267_ABI,
-      functionName: "eip712Domain",
-    })) as readonly [Hex, string, string, bigint, Address, Hex, readonly bigint[]];
-    return {
-      name: result[1],
-      version: result[2],
-      chainId: Number(result[3]),
-      verifyingContract: result[4],
-    };
-  } catch (e) {
-    if (!(e instanceof ContractFunctionExecutionError)) {
-      throw e;
-    }
-    // EIP-5267 not implemented — fall back to name() + version().
-  }
-  const name = (await publicClient.readContract({
-    address: token,
-    abi: NAME_ABI,
-    functionName: "name",
-  })) as string;
-  let version = "1";
-  try {
-    version = (await publicClient.readContract({
-      address: token,
-      abi: VERSION_ABI,
-      functionName: "version",
-    })) as string;
-  } catch (e) {
-    if (!(e instanceof ContractFunctionExecutionError)) {
-      throw e;
-    }
-    // version() is optional per EIP-2612 — keep the default "1".
-  }
-  return { name, version, chainId, verifyingContract: token };
 }
