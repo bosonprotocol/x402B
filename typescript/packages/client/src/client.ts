@@ -115,23 +115,38 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
         requirements.escrowAddress as Address,
       );
 
-      // `policy.tokenAuthStrategy === "none"` is the explicit opt-out
-      // path: the buyer has approved the escrow off-band (e.g. a
-      // standing ERC-20 `approve`) and wants the payment to ride the
-      // protocol's `safeTransferFrom` fallback. The dispatcher in
-      // `buildAndSignTokenAuth` doesn't include `"none"` in its
-      // preference order, so without this short-circuit it would
-      // always pick the highest-ranked strategy the server advertises.
+      // `policy.tokenAuthStrategy` forces a specific strategy from the
+      // server's advertised set instead of letting the dispatcher pick
+      // by preference. The forced value must be in
+      // `requirements.tokenAuthStrategies`; otherwise the override is
+      // rejected. `"none"` short-circuits the dispatcher entirely (the
+      // buyer has approved the escrow off-band and the payment rides
+      // the protocol's `safeTransferFrom` fallback); for the other
+      // strategies the dispatcher is invoked with the advertised set
+      // narrowed to a single element so it must pick the requested one.
       let tokenAuth: Awaited<ReturnType<typeof buildAndSignTokenAuth>>["tokenAuth"] | undefined;
       let strategy: Awaited<ReturnType<typeof buildAndSignTokenAuth>>["strategy"];
-      if (config.policy?.tokenAuthStrategy === "none") {
-        if (!requirements.tokenAuthStrategies.includes("none")) {
+      const forcedStrategy = config.policy?.tokenAuthStrategy;
+      if (forcedStrategy !== undefined) {
+        if (!requirements.tokenAuthStrategies.includes(forcedStrategy)) {
           throw new UnsupportedTokenAuthError(
-            `policy.tokenAuthStrategy "none" is not in requirements.tokenAuthStrategies (${requirements.tokenAuthStrategies.join(", ")})`,
+            `policy.tokenAuthStrategy "${forcedStrategy}" is not in requirements.tokenAuthStrategies (${requirements.tokenAuthStrategies.join(", ")})`,
           );
         }
-        strategy = "none";
-        tokenAuth = undefined;
+        if (forcedStrategy === "none") {
+          strategy = "none";
+          tokenAuth = undefined;
+        } else {
+          const built = await buildAndSignTokenAuth({
+            requirements: { ...requirements, tokenAuthStrategies: [forcedStrategy] },
+            buyer,
+            coreSdk,
+            tokenDomainResolver: config.tokenDomainResolver,
+            publicClient: config.publicClients?.[chainId],
+          });
+          strategy = built.strategy;
+          tokenAuth = built.tokenAuth;
+        }
       } else {
         const built = await buildAndSignTokenAuth({
           requirements,
