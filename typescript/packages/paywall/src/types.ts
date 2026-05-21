@@ -32,11 +32,14 @@ export interface PaywallConfig {
   walletConnectProjectId?: string;
   /**
    * Token domain hint used by the buyer SDK when signing ERC-3009 /
-   * EIP-2612 token authorizations. Keyed by token contract address; the
-   * UI passes the requirement's `asset` through and expects the consumer
-   * to return the matching `{ name, version }` it publishes for typed-data
-   * signatures. If omitted, the UI falls back to `{ name: asset, version: "1" }`,
-   * which works for some but not all USD-coin deployments.
+   * EIP-2612 token authorizations. Keyed by token contract address —
+   * **lookup is case-insensitive**, so either lowercased or EIP-55
+   * checksummed keys work and consumers don't need to pre-normalize.
+   * The UI passes the requirement's `asset` through and expects the
+   * consumer to return the matching `{ name, version }` it publishes for
+   * typed-data signatures. If omitted, the UI falls back to
+   * `{ name: asset, version: "1" }`, which works for some but not all
+   * USD-coin deployments.
    */
   tokenDomains?: Record<string, { name: string; version: string }>;
   /** When `true`, the UI surfaces "testnet" badges and skips production-only warnings. */

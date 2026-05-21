@@ -90,7 +90,7 @@ export function EvmEscrowPaywall({ state }: Props) {
     setErrorMessage(undefined);
     try {
       const signer = signerFromWalletClient(walletClient);
-      const tokenDomain = config?.tokenDomains?.[requirements.asset.toLowerCase()];
+      const tokenDomain = lookupTokenDomain(config?.tokenDomains, requirements.asset);
       const client = createX402bClient({
         signer,
         tokenDomainResolver: async (asset, chainId) => ({
@@ -303,6 +303,23 @@ function PaywallFooter({ config }: { config?: PaywallConfig }) {
 function shortAddress(addr: string): string {
   if (!addr.startsWith("0x") || addr.length < 12) return addr;
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+// EVM addresses are case-insensitive on chain (EIP-55 only encodes a
+// checksum), so the `tokenDomains` map should match whether the consumer
+// supplied lowercased, uppercased, or checksummed keys. Walk the entries
+// once and compare on `toLowerCase()` rather than forcing callers to
+// pre-normalize.
+function lookupTokenDomain(
+  map: Record<string, { name: string; version: string }> | undefined,
+  asset: string,
+): { name: string; version: string } | undefined {
+  if (!map) return undefined;
+  const needle = asset.toLowerCase();
+  for (const [key, value] of Object.entries(map)) {
+    if (key.toLowerCase() === needle) return value;
+  }
+  return undefined;
 }
 
 function describe(err: unknown): string {
