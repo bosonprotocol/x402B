@@ -26,6 +26,7 @@ import {
   readXPaymentResponse,
 } from "../../src/harness/index.js";
 
+import { EXPECTED_PRICE, TX_HASH_REGEX } from "./_assertion-constants.js";
 import { createFundedBuyer, ensureBuyerCanPay } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
 import { SEED_WALLETS } from "./_seed-wallets.js";
@@ -77,7 +78,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
     const decoded = readXPaymentResponse(res.headers);
     expect(decoded, "X-PAYMENT-RESPONSE header should decode to a JSON payload").not.toBeNull();
     expect(decoded?.exchangeId).toBe(body.x402b?.exchangeId);
-    expect(decoded?.txHash).toMatch(/^0x[0-9a-fA-F]+$/);
+    expect(decoded?.txHash).toMatch(TX_HASH_REGEX);
 
     // On-chain state — exchange should be `COMMITTED` with seller +
     // exchangeToken + price matching the requirements. The asserter
@@ -87,7 +88,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
       state: ExchangeState.COMMITTED,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc20,
-      price: "1000000",
+      price: EXPECTED_PRICE,
     });
   });
 
@@ -118,7 +119,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
 
     const decoded = readXPaymentResponse(res.headers);
     expect(decoded?.exchangeId).toBe(body.x402b?.exchangeId);
-    expect(decoded?.txHash).toMatch(/^0x[0-9a-fA-F]+$/);
+    expect(decoded?.txHash).toMatch(TX_HASH_REGEX);
 
     // Atomic flow → exchange should land directly in REDEEMED, not
     // COMMITTED. Same seller / exchangeToken / price as A1.
@@ -127,7 +128,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
       state: ExchangeState.REDEEMED,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc20,
-      price: "1000000",
+      price: EXPECTED_PRICE,
     });
   });
 

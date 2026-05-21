@@ -32,6 +32,7 @@ import {
   performCancelVoucher,
 } from "../../src/harness/index.js";
 
+import { EXPECTED_PRICE, TX_HASH_REGEX } from "./_assertion-constants.js";
 import { createFundedBuyer, ensureBuyerCanPay } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
 import { SEED_WALLETS } from "./_seed-wallets.js";
@@ -101,14 +102,14 @@ describe.skipIf(!ENABLED)("@p0 post-commit lifecycle scenarios", () => {
       escrowAddress: ctx.escrowAddress,
       network: ctx.network,
     });
-    expect(result.txHash).toMatch(/^0x[0-9a-fA-F]+$/);
+    expect(result.txHash).toMatch(TX_HASH_REGEX);
     expect(result.newExchangeState).toBe(ExchangeState.REDEEMED);
 
     await ctx.asserter.expect(exchangeId, {
       state: ExchangeState.REDEEMED,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc20,
-      price: "1000000",
+      price: EXPECTED_PRICE,
     });
   });
 
@@ -136,7 +137,7 @@ describe.skipIf(!ENABLED)("@p0 post-commit lifecycle scenarios", () => {
       state: ExchangeState.COMPLETED,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc20,
-      price: "1000000",
+      price: EXPECTED_PRICE,
     });
   });
 
@@ -166,7 +167,7 @@ describe.skipIf(!ENABLED)("@p0 post-commit lifecycle scenarios", () => {
       disputeState: DisputeState.RESOLVING,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc20,
-      price: "1000000",
+      price: EXPECTED_PRICE,
     });
   });
 
@@ -221,7 +222,7 @@ describe.skipIf(!ENABLED)("@p0 post-commit lifecycle scenarios", () => {
       disputeState: DisputeState.RESOLVED,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc20,
-      price: "1000000",
+      price: EXPECTED_PRICE,
     });
   });
 });
@@ -285,7 +286,7 @@ describe.skipIf(!ENABLED)("@p1 post-commit lifecycle scenarios", () => {
       disputeState: DisputeState.RETRACTED,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc20,
-      price: "1000000",
+      price: EXPECTED_PRICE,
     });
   });
 
@@ -310,7 +311,7 @@ describe.skipIf(!ENABLED)("@p1 post-commit lifecycle scenarios", () => {
       state: ExchangeState.CANCELLED,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc20,
-      price: "1000000",
+      price: EXPECTED_PRICE,
     });
   });
 });
