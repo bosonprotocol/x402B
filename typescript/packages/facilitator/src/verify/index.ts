@@ -180,8 +180,9 @@ export async function verify(
       escrowAddress,
       buyer: inner.buyer as `0x${string}`,
       metaTx: inner.metaTx,
+      actionId: inner.action,
       tokenAuthStrategy: inner.tokenAuthStrategy,
-      tokenAuth: inner.tokenAuth,
+      ...(inner.tokenAuth !== undefined ? { tokenAuth: inner.tokenAuth } : {}),
       publicClient: config.publicClient,
       relayerAddress: relayer,
     });

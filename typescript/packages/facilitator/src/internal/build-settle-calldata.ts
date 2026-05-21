@@ -1,35 +1,72 @@
-// Build the outer-envelope calldata via `@bosonprotocol/core-sdk`'s
-// `metaTx.handler` helpers in `returnTxInfo: true` mode.
+// Build the outer-envelope calldata for the simulate / settle paths.
 //
-// Used by the simulate (`eth_call`) pre-flight: we need just the
-// `{ to, data }` pair to drive `publicClient.call(...)`, not a full
-// `coreSdk.executeMetaTransaction(...)` submission. The handler
-// helpers dispatch on whether `transferAuthorizations` is provided —
-// the SDK's `executeMetaTransactionWithTokenTransferAuthorization`
-// is the BPIP-12 variant that consumes a token-transfer-authorization
-// queue alongside the meta-tx.
+// Two envelopes share this helper:
+//   - `executeMetaTransaction(...)` — the `"none"` token-auth path. The
+//     SDK's `metaTx.handler.executeMetaTransaction` returns a viem-
+//     submittable `{ to, data }` pair in `returnTxInfo: true` mode, and
+//     no queue is involved.
+//   - `executeMetaTransactionWithTokenTransferAuthorization(...)` — the
+//     BPIP-12 variant. We build this one via viem directly (see
+//     `build-bpip12-calldata.ts`) because the SDK's
+//     `erc20.handler.encodeTransferAuthorizationQueue` only encodes
+//     strategy-typed entries and can't represent the empty-bytes
+//     fallback slots the protocol expects ahead of the buyer's auth.
 
-import type { BosonMetaTx } from "@bosonprotocol/x402-core/schemes/escrow";
+import type {
+  BosonMetaTx,
+  BosonTokenAuth,
+  TokenAuthStrategy,
+} from "@bosonprotocol/x402-core/schemes/escrow";
 import { metaTx } from "@bosonprotocol/core-sdk";
 import { createCalldataOnlyWeb3LibAdapter } from "@bosonprotocol/x402-evm/adapters";
+import type { Hex } from "viem";
 
-import type { TransferAuthorization } from "./token-auth-lift.js";
+import { buildBpip12Calldata } from "./build-bpip12-calldata.js";
+import { packRsv } from "../verify/meta-tx-signature.js";
 
 const STUB_TAG = "@bosonprotocol/x402-facilitator:build-settle-calldata";
 
 export interface BuildSettleCalldataArgs {
+  /** Boson escrow (Diamond) address — accepts the schema's `Address` (`string`); cast to `0x${string}` inside. */
   escrowAddress: string;
+  /** Buyer EOA from the payload. */
   userAddress: string;
   metaTx: BosonMetaTx;
-  /** Omit or pass an empty array for the `tokenAuthStrategy: "none"` path. */
-  transferAuthorizations?: readonly TransferAuthorization[];
+  /** Action id from `payload.payload.action` — drives the BPIP-12 queue layout. */
+  actionId: string;
+  /** Strategy from `payload.payload.tokenAuthStrategy`. */
+  tokenAuthStrategy: TokenAuthStrategy;
+  /** Required when `tokenAuthStrategy !== "none"`. */
+  tokenAuth?: BosonTokenAuth;
 }
 
 export async function buildSettleCalldata(
   args: BuildSettleCalldataArgs,
-): Promise<{ to: string; data: string }> {
+): Promise<{ to: `0x${string}`; data: Hex }> {
+  if (args.tokenAuthStrategy !== "none") {
+    if (!args.tokenAuth) {
+      throw new Error(
+        `${STUB_TAG}: tokenAuthStrategy "${args.tokenAuthStrategy}" requires args.tokenAuth`,
+      );
+    }
+    return buildBpip12Calldata({
+      escrowAddress: args.escrowAddress as `0x${string}`,
+      userAddress: args.userAddress as `0x${string}`,
+      functionName: args.metaTx.functionName,
+      functionSignature: args.metaTx.functionSignature as Hex,
+      nonce: BigInt(args.metaTx.nonce),
+      signature: packRsv(
+        args.metaTx.sig.r as Hex,
+        args.metaTx.sig.s as Hex,
+        args.metaTx.sig.v,
+      ) as Hex,
+      actionId: args.actionId,
+      tokenAuth: args.tokenAuth,
+    });
+  }
+
   const web3Lib = createCalldataOnlyWeb3LibAdapter(STUB_TAG);
-  const baseArgs = {
+  const tx = await metaTx.handler.executeMetaTransaction({
     contractAddress: args.escrowAddress,
     web3Lib,
     userAddress: args.userAddress,
@@ -39,21 +76,13 @@ export async function buildSettleCalldata(
     sigR: args.metaTx.sig.r,
     sigS: args.metaTx.sig.s,
     sigV: args.metaTx.sig.v,
-    returnTxInfo: true as const,
-  };
-
-  const tx =
-    args.transferAuthorizations && args.transferAuthorizations.length > 0
-      ? await metaTx.handler.executeMetaTransactionWithTokenTransferAuthorization({
-          ...baseArgs,
-          transferAuthorizations: [...args.transferAuthorizations],
-        })
-      : await metaTx.handler.executeMetaTransaction(baseArgs);
+    returnTxInfo: true,
+  });
 
   if (tx.to === undefined || tx.data === undefined) {
     throw new Error(
       `${STUB_TAG}: core-sdk returned an envelope without to/data — core-sdk internals may have changed`,
     );
   }
-  return { to: tx.to, data: tx.data };
+  return { to: tx.to as `0x${string}`, data: tx.data as Hex };
 }

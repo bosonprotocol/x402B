@@ -35,7 +35,7 @@ import {
   type SignedWithdrawFunds,
 } from "./withdraw.js";
 import { buildAndSignTokenAuth } from "./token-auth/index.js";
-import { MaxAmountExceededError } from "./errors.js";
+import { MaxAmountExceededError, UnsupportedTokenAuthError } from "./errors.js";
 import type { ExchangeSummary, X402bClientConfig } from "./types.js";
 
 export interface X402bClient {
@@ -115,13 +115,34 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
         requirements.escrowAddress as Address,
       );
 
-      const { tokenAuth, strategy } = await buildAndSignTokenAuth({
-        requirements,
-        buyer,
-        coreSdk,
-        tokenDomainResolver: config.tokenDomainResolver,
-        publicClient: config.publicClients?.[chainId],
-      });
+      // `policy.tokenAuthStrategy === "none"` is the explicit opt-out
+      // path: the buyer has approved the escrow off-band (e.g. a
+      // standing ERC-20 `approve`) and wants the payment to ride the
+      // protocol's `safeTransferFrom` fallback. The dispatcher in
+      // `buildAndSignTokenAuth` doesn't include `"none"` in its
+      // preference order, so without this short-circuit it would
+      // always pick the highest-ranked strategy the server advertises.
+      let tokenAuth: Awaited<ReturnType<typeof buildAndSignTokenAuth>>["tokenAuth"] | undefined;
+      let strategy: Awaited<ReturnType<typeof buildAndSignTokenAuth>>["strategy"];
+      if (config.policy?.tokenAuthStrategy === "none") {
+        if (!requirements.tokenAuthStrategies.includes("none")) {
+          throw new UnsupportedTokenAuthError(
+            `policy.tokenAuthStrategy "none" is not in requirements.tokenAuthStrategies (${requirements.tokenAuthStrategies.join(", ")})`,
+          );
+        }
+        strategy = "none";
+        tokenAuth = undefined;
+      } else {
+        const built = await buildAndSignTokenAuth({
+          requirements,
+          buyer,
+          coreSdk,
+          tokenDomainResolver: config.tokenDomainResolver,
+          publicClient: config.publicClients?.[chainId],
+        });
+        strategy = built.strategy;
+        tokenAuth = built.tokenAuth;
+      }
 
       // Flow B (boson-createOfferCommitAndRedeem) carries the buyer's
       // delivery data along with the commit-time payload — there's no

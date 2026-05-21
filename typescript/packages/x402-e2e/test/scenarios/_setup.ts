@@ -19,7 +19,7 @@ import {
   fetchProtocolConfig,
   readEnv,
 } from "@bosonprotocol/x402-example-resource-server";
-import type { TokenDomainResolver } from "@bosonprotocol/x402-client";
+import type { Policy, TokenDomainResolver } from "@bosonprotocol/x402-client";
 import type { TokenAuthStrategy } from "@bosonprotocol/x402-core/schemes/escrow";
 import { createServer, type AddressInfo } from "node:net";
 import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
@@ -87,6 +87,14 @@ export interface ScenarioContextArgs {
    * needs no resolver).
    */
   tokenDomainResolver?: TokenDomainResolver;
+  /**
+   * Optional `Policy` override for the BuyerActor. Use this to pin a
+   * specific `tokenAuthStrategy` (e.g. `"none"` so the buyer doesn't
+   * sign a token-auth payload, and the protocol pulls funds via a
+   * standing ERC-20 allowance) or to switch `redeemMode` for atomic
+   * commit-and-redeem scenarios.
+   */
+  buyerPolicy?: Policy;
 }
 
 export interface ScenarioContext {
@@ -220,6 +228,7 @@ export async function createScenarioContext(args: ScenarioContextArgs): Promise<
     ...(args.tokenDomainResolver !== undefined
       ? { tokenDomainResolver: args.tokenDomainResolver }
       : {}),
+    ...(args.buyerPolicy !== undefined ? { policy: args.buyerPolicy } : {}),
   });
   const resolver = createResolverActor({ account: resolverAccount });
 

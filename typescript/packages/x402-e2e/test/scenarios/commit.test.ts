@@ -38,15 +38,26 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
   let buyerAccount: LocalAccount;
 
   beforeAll(async () => {
+    // A1/A2 explicitly exercise the `none` token-auth path: server
+    // advertises only `"none"` and the BuyerActor pins
+    // `policy.tokenAuthStrategy: "none"`. Without the pin, the client
+    // dispatcher would pick the highest-ranked strategy the server
+    // advertises (it never picks `"none"` on its own) — and `none`
+    // would silently slip into a different strategy's queue path,
+    // masking the protocol's behaviour under the test name.
     const publicClient = buildPublicClient();
     const funder = buildWalletClient(SEED_WALLETS.commit.account);
     buyerAccount = await createFundedBuyer({ funder, publicClient });
-    ctx = await createScenarioContext({ slot: "commit", buyerAccount });
-    // Over-provision the buyer for the whole describe — A1 spends 1
-    // USDC, A2's atomic flow spends another, and the to-be-unskipped
-    // A3–A5 each commit one more. Funding the deficit ~10x up-front
-    // keeps each test from re-minting (and matches the post-commit
-    // describe's pattern).
+    ctx = await createScenarioContext({
+      slot: "commit",
+      buyerAccount,
+      tokenAuthStrategies: ["none"],
+      buyerPolicy: { tokenAuthStrategy: "none" },
+    });
+    // `none` strategy requires the buyer to have pre-approved the
+    // escrow — settle just calls `safeTransferFrom`. Top up by ~10x
+    // the per-commit amount so successive tests in the describe don't
+    // need re-approvals.
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,
@@ -105,7 +116,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
     const atomicBuyer = createBuyerActor({
       account: buyerAccount,
       publicClient: ctx.buyer.publicClient,
-      policy: { redeemMode: "commit-and-redeem" },
+      policy: { redeemMode: "commit-and-redeem", tokenAuthStrategy: "none" },
     });
 
     const res = await atomicBuyer.fetch(`${ctx.resourceServerUrl}/resource`);
@@ -158,6 +169,15 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios (ERC-3009)", () => {
       assetAddress: LOCAL_31337_0.contracts.testErc3009,
       tokenAuthStrategies: ["erc3009"],
       tokenDomainResolver: createChainTokenDomainResolver(publicClient),
+      // The local Boson stack mines at 50 ms intervals with `+1 s`
+      // per block → chain time runs ~20× wall-clock and drifts
+      // hours ahead after a few test cycles. The ERC-3009
+      // `validBefore` field is enforced against `block.timestamp`,
+      // so the default 1-hour wall-clock window can already be in
+      // the past by the time settle simulates. Stretch the window
+      // to the protocol's max (24 h wall-clock = up to ~75 min of
+      // useful chain-time validity at 20× drift).
+      maxTimeoutSeconds: 24 * 60 * 60,
     });
     // ERC-3009's `ReceiveWithAuthorization` carries the transfer
     // approval inline — the buyer only needs a balance, no allowance.
