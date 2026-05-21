@@ -185,6 +185,7 @@ export function createResourceServerApp(
           env,
           sellerAddress: seller.address,
           now: now(),
+          sessionId,
           ...(protocolConfig !== undefined ? { protocolConfig } : {}),
         }),
       },
