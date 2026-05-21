@@ -50,6 +50,13 @@ export interface FetchProtocolConfigArgs {
   escrowAddress: Address;
 }
 
+// `getMinDisputePeriod()` returns a `uint256`. Converting straight to
+// `Number` and then multiplying by 1000 would silently lose precision —
+// or overflow — for values past `MAX_SAFE_INTEGER / 1000`. Guard the
+// conversion so misconfigured chains surface a clear error instead of
+// returning a wrong `minDisputePeriodMs`.
+const MAX_DISPUTE_PERIOD_SECONDS = BigInt(Math.floor(Number.MAX_SAFE_INTEGER / 1000));
+
 /**
  * Fetch the two `ConfigHandlerFacet` values the example offer builder
  * needs. Both are `view` calls; one block round-trip total.
@@ -67,7 +74,14 @@ export async function fetchProtocolConfig(args: FetchProtocolConfigArgs): Promis
       functionName: "getMinDisputePeriod",
     }),
   ]);
+  if (minDisputePeriodSeconds > MAX_DISPUTE_PERIOD_SECONDS) {
+    throw new RangeError(
+      `[fetchProtocolConfig] getMinDisputePeriod() returned ${minDisputePeriodSeconds}s, ` +
+        `which exceeds the safe-integer range for ms conversion (max ${MAX_DISPUTE_PERIOD_SECONDS}s)`,
+    );
+  }
   return {
+    // `maxFeeBps` is a `uint16` (max 65535) — `Number(...)` is always safe.
     maxOfferFeeBps: Number(maxFeeBps),
     minDisputePeriodMs: Number(minDisputePeriodSeconds) * 1000,
   };
