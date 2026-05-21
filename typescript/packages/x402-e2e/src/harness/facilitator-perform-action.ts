@@ -18,6 +18,7 @@ import type { ExchangeState, DisputeState } from "@bosonprotocol/x402-actions";
 import type { Address, Hex } from "viem";
 
 import type { BuyerActor } from "./buyer-actor.js";
+import { safeStringify } from "./http-error-utils.js";
 import type { SellerActor } from "./seller-actor.js";
 
 /** Subset of action ids the facilitator's `/perform-action` route exposes that this helper drives. */
@@ -126,12 +127,4 @@ async function postPerformAction(
     throw new FacilitatorPerformError(actionId, res.status, parsed);
   }
   return parsed;
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
 }

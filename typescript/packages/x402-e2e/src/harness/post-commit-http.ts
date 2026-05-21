@@ -21,6 +21,7 @@ import type { ExchangeState, DisputeState } from "@bosonprotocol/x402-actions";
 import type { Address, Hex } from "viem";
 
 import type { BuyerActor } from "./buyer-actor.js";
+import { safeStringify } from "./http-error-utils.js";
 
 /** Buyer-driven post-commit actions the server-express router mounts. */
 export type BuyerPostCommitActionId =
@@ -187,12 +188,4 @@ function flattenServerResponse(
     result.newDisputeState = newDisputeState as DisputeState;
   }
   return result;
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
 }
