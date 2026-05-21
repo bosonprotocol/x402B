@@ -16,7 +16,7 @@ WORKDIR /repo
 # pnpm-lock.yaml or a package.json changes. BuildKit's pnpm-store cache
 # mount reuses tarballs across rebuilds even when install does re-run.
 FROM base AS deps
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY --parents typescript/packages/*/package.json examples/*/package.json ./
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile \
