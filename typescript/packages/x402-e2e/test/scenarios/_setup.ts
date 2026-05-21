@@ -19,6 +19,8 @@ import {
   fetchProtocolConfig,
   readEnv,
 } from "@bosonprotocol/x402-example-resource-server";
+import type { TokenDomainResolver } from "@bosonprotocol/x402-client";
+import type { TokenAuthStrategy } from "@bosonprotocol/x402-core/schemes/escrow";
 import { createServer, type AddressInfo } from "node:net";
 import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 
@@ -70,6 +72,21 @@ export interface ScenarioContextArgs {
   amount?: string;
   /** Override `MAX_TIMEOUT_SECONDS`. Defaults to `3600`. */
   maxTimeoutSeconds?: number;
+  /**
+   * Override the strategies the in-process resource server advertises
+   * in its 402 challenge. Defaults to the full set when omitted (the
+   * example's `DEFAULT_TOKEN_AUTH_STRATEGIES`). Tests that exercise
+   * a specific strategy (A3 ERC-3009, A4 Permit, A5 Permit2) narrow
+   * the list to force the client dispatcher's hand.
+   */
+  tokenAuthStrategies?: readonly TokenAuthStrategy[];
+  /**
+   * Optional `TokenDomainResolver` plumbed into the BuyerActor's
+   * `X402bClient`. Required by the client dispatcher for ERC-3009 and
+   * EIP-2612 Permit; omitted scenarios fall back to Permit2 (which
+   * needs no resolver).
+   */
+  tokenDomainResolver?: TokenDomainResolver;
 }
 
 export interface ScenarioContext {
@@ -183,7 +200,13 @@ export async function createScenarioContext(args: ScenarioContextArgs): Promise<
     escrowAddress: env.escrowAddress,
   });
 
-  const { app } = createResourceServerApp(env, { exchangeReader, protocolConfig });
+  const { app } = createResourceServerApp(env, {
+    exchangeReader,
+    protocolConfig,
+    ...(args.tokenAuthStrategies !== undefined
+      ? { tokenAuthStrategies: args.tokenAuthStrategies }
+      : {}),
+  });
   const httpServer = app.listen(port);
   await new Promise<void>((resolve, reject) => {
     httpServer.once("listening", resolve);
@@ -191,7 +214,13 @@ export async function createScenarioContext(args: ScenarioContextArgs): Promise<
   });
 
   const seller = createSellerActor({ account: sellerAccount });
-  const buyer = createBuyerActor({ account: buyerAccount, publicClient });
+  const buyer = createBuyerActor({
+    account: buyerAccount,
+    publicClient,
+    ...(args.tokenDomainResolver !== undefined
+      ? { tokenDomainResolver: args.tokenDomainResolver }
+      : {}),
+  });
   const resolver = createResolverActor({ account: resolverAccount });
 
   return {

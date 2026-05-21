@@ -23,11 +23,12 @@ import {
   buildPublicClient,
   buildWalletClient,
   createBuyerActor,
+  createChainTokenDomainResolver,
   readXPaymentResponse,
 } from "../../src/harness/index.js";
 
 import { EXPECTED_PRICE, TX_HASH_REGEX } from "./_assertion-constants.js";
-import { createFundedBuyer, ensureBuyerCanPay } from "./_buyer-setup.js";
+import { createFundedBuyer, ensureBuyerCanPay, ensureBuyerHasBalance } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
 import { SEED_WALLETS } from "./_seed-wallets.js";
 import { createScenarioContext, type ScenarioContext } from "./_setup.js";
@@ -132,11 +133,71 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
     });
   });
 
-  // Token-auth strategies. The resource server already advertises
-  // `["none","erc3009","permit","permit2"]`; PR6 follow-up implements
-  // these as their own beforeAll variants (different asset for
-  // erc3009 / permit, different cap for permit2).
-  it.todo("A3 — commit with `erc3009` token-auth (testErc3009)");
+  // Token-auth strategies. Each describe below pins
+  // `tokenAuthStrategies` to a single value so the client dispatcher
+  // can't fall back to a different strategy.
   it.todo("A4 — commit with `permit` token-auth (testErc2612)");
   it.todo("A5 — commit with `permit2` token-auth");
+});
+
+describe.skipIf(!ENABLED)("@p0 commit-time scenarios (ERC-3009)", () => {
+  let ctx: ScenarioContext;
+
+  beforeAll(async () => {
+    // Distinct buyer + describe-scoped context so the resource server
+    // advertises ONLY `erc3009` and the BuyerActor signs against the
+    // testErc3009 token's domain. Shares the file's `commit` seed slot
+    // with the @p0 describe above — vitest serialises describes within
+    // a file, so the slot's seller can handle both back-to-back.
+    const publicClient = buildPublicClient();
+    const funder = buildWalletClient(SEED_WALLETS.commit.account);
+    const buyerAccount = await createFundedBuyer({ funder, publicClient });
+    ctx = await createScenarioContext({
+      slot: "commit",
+      buyerAccount,
+      assetAddress: LOCAL_31337_0.contracts.testErc3009,
+      tokenAuthStrategies: ["erc3009"],
+      tokenDomainResolver: createChainTokenDomainResolver(publicClient),
+    });
+    // ERC-3009's `ReceiveWithAuthorization` carries the transfer
+    // approval inline — the buyer only needs a balance, no allowance.
+    await ensureBuyerHasBalance({
+      walletClient: buildWalletClient(buyerAccount),
+      publicClient,
+      buyerAddress: buyerAccount.address,
+      assetAddress: LOCAL_31337_0.contracts.testErc3009,
+      amount: 10_000_000n,
+    });
+  });
+
+  afterAll(async () => {
+    await ctx?.teardown();
+  });
+
+  it("A3 — commit with `erc3009` token-auth (testErc3009)", async () => {
+    const res = await ctx.buyer.fetch(`${ctx.resourceServerUrl}/resource`);
+    expect(res.status, await res.clone().text()).toBe(200);
+
+    const body = (await res.json()) as {
+      ok?: boolean;
+      x402b?: { exchangeId?: string; txHash?: `0x${string}` };
+    };
+    expect(body.ok).toBe(true);
+    expect(typeof body.x402b?.exchangeId).toBe("string");
+
+    const decoded = readXPaymentResponse(res.headers);
+    expect(decoded?.exchangeId).toBe(body.x402b?.exchangeId);
+    expect(decoded?.txHash).toMatch(TX_HASH_REGEX);
+
+    // Same COMMITTED outcome as A1 — the strategy change is invisible
+    // post-settle, so we assert against the same on-chain shape but
+    // with `testErc3009` as the exchangeToken.
+    const exchangeId = body.x402b!.exchangeId!;
+    await ctx.asserter.expect(exchangeId, {
+      state: ExchangeState.COMMITTED,
+      seller: ctx.seller.address,
+      exchangeToken: LOCAL_31337_0.contracts.testErc3009,
+      price: EXPECTED_PRICE,
+    });
+  });
 });
