@@ -113,6 +113,7 @@ function asHttpUrl(value: string, name: string): string {
 export function readEnv(): ResourceServerEnv {
   const chainId = asInt(optional("CHAIN_ID", "31337"), "CHAIN_ID", { min: 1 });
   const subgraphRaw = process.env.SUBGRAPH_URL;
+  const paywall = readPaywallEnv();
   return {
     publicUrl: asHttpUrl(required("RESOURCE_SERVER_URL"), "RESOURCE_SERVER_URL"),
     rpcNode: asHttpUrl(required("RPC_NODE"), "RPC_NODE"),
@@ -133,7 +134,7 @@ export function readEnv(): ResourceServerEnv {
       ? { subgraphUrl: asHttpUrl(subgraphRaw, "SUBGRAPH_URL") }
       : {}),
     port: asInt(optional("PORT", "4001"), "PORT", { min: 1, max: 65535 }),
-    ...(readPaywallEnv() !== undefined ? { paywall: readPaywallEnv() } : {}),
+    ...(paywall !== undefined ? { paywall } : {}),
   };
 }
 
