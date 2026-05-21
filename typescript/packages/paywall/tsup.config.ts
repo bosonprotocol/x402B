@@ -11,6 +11,12 @@ import { defineConfig } from "tsup";
 // imports.
 const entry = ["src/**/index.ts"];
 
+// The React app is its own thing; do not bundle React into the wrapper.
+// Consumers that import this package server-side never actually load
+// React at runtime — only the inlined IIFE inside the generated HTML
+// does, and that bundle is self-contained.
+const EXTERNAL_DEPENDENCIES = ["react", "react-dom", "wagmi", "@tanstack/react-query"];
+
 export default defineConfig([
   {
     entry,
@@ -22,11 +28,7 @@ export default defineConfig([
     clean: true,
     target: "es2020",
     treeshake: true,
-    // The React app is its own thing; do not bundle React into the
-    // wrapper. Consumers that import this package server-side never
-    // actually load React at runtime — only the inlined IIFE inside the
-    // generated HTML does, and that bundle is self-contained.
-    external: ["react", "react-dom", "wagmi", "@tanstack/react-query"],
+    external: EXTERNAL_DEPENDENCIES,
   },
   {
     entry,
@@ -38,6 +40,6 @@ export default defineConfig([
     clean: false,
     target: "es2020",
     treeshake: true,
-    external: ["react", "react-dom", "wagmi", "@tanstack/react-query"],
+    external: EXTERNAL_DEPENDENCIES,
   },
 ]);
