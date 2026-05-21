@@ -37,9 +37,10 @@ export interface WalletClientLike {
 
 export interface SignerFromWalletClientOptions {
   /**
-   * Address to sign as. Required when the underlying `WalletClient` was
-   * created without a bound `account`; ignored otherwise. Resolves through
-   * viem's `getAddress` to a checksummed form before being passed on.
+   * Address to sign as. When supplied, takes precedence over any bound
+   * `walletClient.account`; required only when no bound account exists.
+   * Resolves through viem's `getAddress` to a checksummed form before
+   * being passed on.
    */
   account?: Address;
 }
