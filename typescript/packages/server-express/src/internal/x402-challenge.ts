@@ -47,12 +47,17 @@ export interface ChallengeOptions {
    * Optional override for the canonical URL embedded in the paywall
    * HTML response as `window.x402b.currentUrl` (the URL the buyer's
    * browser will POST the X-PAYMENT retry to). Use this when deployed
-   * behind a TLS-terminating proxy where `req.protocol` /
-   * `req.get('host')` may not reflect the public origin. If omitted,
-   * falls back to `${req.protocol}://${req.get('host')}${req.originalUrl}`.
-   * With `app.set('trust proxy', ...)`, `req.protocol` may honor
-   * `X-Forwarded-Proto`, but `req.get('host')` reads the `Host` header
-   * and does not consult `X-Forwarded-Host`.
+   * behind a TLS-terminating proxy where the auto-derivation below
+   * cannot reflect the public origin. When omitted, the URL is built
+   * from `req.protocol`, the first non-empty value of `X-Forwarded-Host`
+   * / `Host`, and `req.originalUrl`; if neither host header is present
+   * (e.g. a malformed HTTP/1.0 request) the helper falls back to a
+   * relative URL (`req.originalUrl`) so the paywall form still posts
+   * back to the same origin the buyer is on. With
+   * `app.set('trust proxy', ...)`, `req.protocol` honors
+   * `X-Forwarded-Proto`; `req.get('host')` does not consult
+   * `X-Forwarded-Host`, which is why this helper prefers the forwarded
+   * header explicitly.
    */
   currentUrl?: string | ((req: Request) => string);
 }
@@ -118,6 +123,18 @@ function resolveCurrentUrl(
 ): string {
   if (typeof override === "string") return override;
   if (typeof override === "function") return override(req);
-  const host = req.get("host") ?? "";
+  // Prefer `X-Forwarded-Host` over the raw `Host` header: when the app
+  // is fronted by a reverse proxy and `app.set('trust proxy', ...)` is
+  // enabled, the public origin lives in the forwarded header while
+  // `req.get('host')` still reflects the internal hop. Outside a trusted
+  // proxy the worst case is the buyer's browser posting back to a host
+  // they themselves controlled, which is bounded — they can already
+  // choose not to pay. If neither header is present (e.g. a malformed
+  // HTTP/1.0 request with no `Host`), emit a relative URL so the paywall
+  // form still posts back to the buyer's current origin instead of
+  // producing an invalid `http:///path`.
+  const forwardedHost = req.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || req.get("host");
+  if (!host) return req.originalUrl;
   return `${req.protocol}://${host}${req.originalUrl}`;
 }
