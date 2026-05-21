@@ -146,12 +146,22 @@ export function createResourceServerApp(
     }
   });
 
+  // `paywallConfig` is only forwarded alongside `paywall`: the adapters
+  // ignore `paywallConfig` when no provider is set, and surfacing the
+  // pairing here keeps the example from modelling an ambiguous config.
+  const paywallOptions =
+    options.paywall !== undefined
+      ? {
+          paywall: options.paywall,
+          ...(options.paywallConfig !== undefined ? { paywallConfig: options.paywallConfig } : {}),
+        }
+      : {};
+
   app.get(
     "/resource",
     expressMiddleware(server, {
       resolveRequirements,
-      ...(options.paywall !== undefined ? { paywall: options.paywall } : {}),
-      ...(options.paywallConfig !== undefined ? { paywallConfig: options.paywallConfig } : {}),
+      ...paywallOptions,
     }),
     (_req, res) => {
       res.json({
@@ -165,8 +175,7 @@ export function createResourceServerApp(
   app.use(
     mountX402b(server, {
       resolveRequirements,
-      ...(options.paywall !== undefined ? { paywall: options.paywall } : {}),
-      ...(options.paywallConfig !== undefined ? { paywallConfig: options.paywallConfig } : {}),
+      ...paywallOptions,
     }),
   );
 
