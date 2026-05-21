@@ -43,9 +43,9 @@ export function parseChainIdFromCaip2(network: string): number {
 export function resolveChain(chainId: number): Chain {
   const known = KNOWN_CHAINS[chainId];
   if (known) return known;
-  // Synthetic fallback so wagmi can wire up — the RPC URL is intentionally
-  // a public proxy that won't actually work for unsupported chains; the
-  // UI surfaces this in a warning.
+  // Synthetic fallback so wagmi can wire up for unsupported chains.
+  // This placeholder uses a non-functional RPC URL, so callers still need
+  // to provide a real `Chain` definition / RPC configuration for actual use.
   return {
     id: chainId,
     name: `EVM chain ${chainId}`,
