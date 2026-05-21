@@ -144,10 +144,22 @@ export interface CreateFundedBuyerArgs {
  * cover gas.
  */
 export async function createFundedBuyer(args: CreateFundedBuyerArgs): Promise<LocalAccount> {
+  // `WalletClient` doesn't require `account` / `chain` at the type
+  // level, so unguarded non-null assertions would crash with an opaque
+  // viem error if a caller passed a bare client. Surface a clear
+  // harness-side message instead.
+  const funderAccount = args.funder.account;
+  const funderChain = args.funder.chain;
+  if (funderAccount === undefined || funderChain === undefined) {
+    throw new Error(
+      "[x402-e2e/_buyer-setup] createFundedBuyer requires a WalletClient with both `account` and `chain` set " +
+        "(use `buildWalletClient(SEED_WALLETS.<slot>.account)`)",
+    );
+  }
   const account = privateKeyToAccount(generatePrivateKey());
   const hash = await args.funder.sendTransaction({
-    account: args.funder.account!,
-    chain: args.funder.chain!,
+    account: funderAccount,
+    chain: funderChain,
     to: account.address,
     value: parseEther(args.fundEth ?? "0.5"),
   });
