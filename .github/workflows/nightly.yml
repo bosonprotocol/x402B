@@ -54,8 +54,8 @@ jobs:
           E2E_SEQUENTIAL: "1"
         run: pnpm --filter @bosonprotocol/x402-e2e test
 
-      - name: Dump docker compose logs
-        if: always()
+      - name: Dump docker compose logs on failure
+        if: failure()
         run: |
           cd typescript/packages/x402-e2e
           docker compose -f src/stack/compose.yaml logs --no-color > docker-compose.log || true
