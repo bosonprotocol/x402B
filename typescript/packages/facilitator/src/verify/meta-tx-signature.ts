@@ -240,6 +240,20 @@ const ACTION_ARGS_ABI = parseAbi([
 
 type DecodeFailure = { ok: false; code: "BAD_META_TX_SIGNATURE"; reason: string };
 
+// The exchange-keyed actions whose typed-data carries a single
+// `exchangeId` (`MetaTxExchange` primary type). Used to gate
+// `decodeExchangeIdArg` so a calldata buffer for a different ABI member
+// of `ACTION_ARGS_ABI` (e.g. `withdrawFunds`) can't slip through just
+// because its first argument also happens to be a `uint256`.
+const EXCHANGE_KEYED_FUNCTION_NAMES = new Set<string>([
+  "redeemVoucher",
+  "cancelVoucher",
+  "completeExchange",
+  "raiseDispute",
+  "retractDispute",
+  "escalateDispute",
+]);
+
 function decodeExchangeIdArg(
   functionSignature: string,
 ): { ok: true; value: bigint } | DecodeFailure {
@@ -248,6 +262,13 @@ function decodeExchangeIdArg(
       abi: ACTION_ARGS_ABI,
       data: functionSignature as `0x${string}`,
     });
+    if (!EXCHANGE_KEYED_FUNCTION_NAMES.has(decoded.functionName)) {
+      return {
+        ok: false,
+        code: "BAD_META_TX_SIGNATURE",
+        reason: `expected exchange-keyed action calldata, got "${decoded.functionName}"`,
+      };
+    }
     const exchangeId = decoded.args?.[0];
     if (typeof exchangeId !== "bigint") {
       return {
