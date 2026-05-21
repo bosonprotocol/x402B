@@ -41,7 +41,9 @@ interface Props {
 export function EvmEscrowPaywall({ state }: Props) {
   const { requirements, config } = state;
   const currentUrl =
-    state.currentUrl ?? (typeof window !== "undefined" ? window.location.href : "");
+    state.currentUrl ??
+    config?.currentUrl ??
+    (typeof window !== "undefined" ? window.location.href : "");
   const requiredChainId = useMemo(
     () => parseChainIdFromCaip2(requirements.network),
     [requirements.network],
