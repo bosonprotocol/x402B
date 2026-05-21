@@ -40,10 +40,10 @@ interface Props {
 
 export function EvmEscrowPaywall({ state }: Props) {
   const { requirements, config } = state;
+  // `generateHtml` promotes `config.currentUrl` into `state.currentUrl`, so a
+  // single read here covers both server-side input paths.
   const currentUrl =
-    state.currentUrl ??
-    config?.currentUrl ??
-    (typeof window !== "undefined" ? window.location.href : "");
+    state.currentUrl ?? (typeof window !== "undefined" ? window.location.href : "");
   const requiredChainId = useMemo(
     () => parseChainIdFromCaip2(requirements.network),
     [requirements.network],

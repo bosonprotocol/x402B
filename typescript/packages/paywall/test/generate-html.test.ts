@@ -85,6 +85,26 @@ describe("generateHtml", () => {
     expect(state.currentUrl).toBeUndefined();
   });
 
+  it("promotes `config.currentUrl` to top-level `state.currentUrl` when the payload omits it", () => {
+    const html = generateHtml(
+      { requirements: REQUIREMENTS },
+      { ...config, currentUrl: "https://seller.example/from-config" },
+    );
+    const match = html.match(/window\.x402b = (.*?);<\/script>/);
+    const state = JSON.parse(match![1]);
+    expect(state.currentUrl).toBe("https://seller.example/from-config");
+  });
+
+  it("payload.currentUrl wins when both payload and config carry one", () => {
+    const html = generateHtml(
+      { requirements: REQUIREMENTS, currentUrl: "https://seller.example/from-payload" },
+      { ...config, currentUrl: "https://seller.example/from-config" },
+    );
+    const match = html.match(/window\.x402b = (.*?);<\/script>/);
+    const state = JSON.parse(match![1]);
+    expect(state.currentUrl).toBe("https://seller.example/from-payload");
+  });
+
   it("escapes a literal </script> inside seller-supplied metadata so the inline tag can't be broken out of", () => {
     // The recipientId carries a malicious </script> payload — without the
     // escape, the inline tag closes early and the rest leaks into the
