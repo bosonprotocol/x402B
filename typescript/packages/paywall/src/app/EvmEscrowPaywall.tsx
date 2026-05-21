@@ -40,6 +40,8 @@ interface Props {
 
 export function EvmEscrowPaywall({ state }: Props) {
   const { requirements, config } = state;
+  // `generateHtml` promotes `config.currentUrl` into `state.currentUrl`, so a
+  // single read here covers both server-side input paths.
   const currentUrl =
     state.currentUrl ?? (typeof window !== "undefined" ? window.location.href : "");
   const requiredChainId = useMemo(
@@ -88,7 +90,7 @@ export function EvmEscrowPaywall({ state }: Props) {
     setErrorMessage(undefined);
     try {
       const signer = signerFromWalletClient(walletClient);
-      const tokenDomain = config?.tokenDomains?.[requirements.asset.toLowerCase()];
+      const tokenDomain = lookupTokenDomain(config?.tokenDomains, requirements.asset);
       const client = createX402bClient({
         signer,
         tokenDomainResolver: async (asset, chainId) => ({
@@ -124,10 +126,15 @@ export function EvmEscrowPaywall({ state }: Props) {
         setStatus("success");
         return;
       }
-      // For non-HTML resources, navigate (browser will render JSON / image / etc.
-      // natively). The X-PAYMENT-RESPONSE header isn't carried by this hop —
-      // the resource server already settled — so a direct fetch is fine.
-      window.location.href = currentUrl;
+      // For non-HTML resources we must not re-navigate to `currentUrl` —
+      // the server middleware sees no X-PAYMENT on that second hop and
+      // would loop the buyer right back to the paywall. Instead, stream
+      // the response we already paid for into a Blob and hand the
+      // browser an object URL it can render natively (images, JSON,
+      // PDFs) or download (application/octet-stream, etc.).
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      window.location.replace(objectUrl);
       setStatus("success");
     } catch (err) {
       setStatus("error");
@@ -303,6 +310,23 @@ function shortAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
+// EVM addresses are case-insensitive on chain (EIP-55 only encodes a
+// checksum), so the `tokenDomains` map should match whether the consumer
+// supplied lowercased, uppercased, or checksummed keys. Walk the entries
+// once and compare on `toLowerCase()` rather than forcing callers to
+// pre-normalize.
+function lookupTokenDomain(
+  map: Record<string, { name: string; version: string }> | undefined,
+  asset: string,
+): { name: string; version: string } | undefined {
+  if (!map) return undefined;
+  const needle = asset.toLowerCase();
+  for (const [key, value] of Object.entries(map)) {
+    if (key.toLowerCase() === needle) return value;
+  }
+  return undefined;
+}
+
 function describe(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
@@ -314,12 +338,16 @@ function describe(err: unknown): string {
 }
 
 // Swap the current document with the HTML body of the paid resource.
-// Parse with DOMParser instead of mutating the live DOM with string HTML —
-// the resource came from a server we just paid, so it's trusted, but
-// going through DOMParser keeps the swap a structural operation rather
-// than a string-level one.
+// `document.open() / write() / close()` rather than a DOMParser splice:
+// DOMParser-cloned `<script>` nodes are flagged "already started" and
+// will never execute, leaving any paid HTML that depends on inline or
+// external JS broken. The open/write/close path lets the HTML parser
+// take the string fresh, which handles doctype, head, body, and script
+// execution exactly as a top-level navigation would. The resource came
+// from a server we just paid, so trusting its HTML is the same trust
+// boundary the buyer already crossed.
 function replaceDocument(html: string): void {
-  const parsed = new DOMParser().parseFromString(html, "text/html");
-  const newRoot = document.importNode(parsed.documentElement, true);
-  document.replaceChild(newRoot, document.documentElement);
+  document.open();
+  document.write(html);
+  document.close();
 }

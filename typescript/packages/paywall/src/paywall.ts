@@ -31,9 +31,14 @@ const HEAD_CLOSE = "</head>";
  *   document with no payload).
  */
 export function generateHtml(payload: EscrowPaymentRequired, config?: PaywallConfig): string {
+  // Promote `config.currentUrl` into the top-level `state.currentUrl` when
+  // the payload doesn't carry one of its own. Callers can land the retry
+  // URL on either side; the injected state always exposes it under the
+  // single canonical field the React app reads.
+  const currentUrl = payload.currentUrl ?? config?.currentUrl;
   const state: InjectedPaywallState = {
     requirements: payload.requirements,
-    ...(payload.currentUrl !== undefined ? { currentUrl: payload.currentUrl } : {}),
+    ...(currentUrl !== undefined ? { currentUrl } : {}),
     ...(config !== undefined ? { config } : {}),
   };
   const injection = `<script>window.x402b = ${escapeForScript(JSON.stringify(state))};</script>`;
