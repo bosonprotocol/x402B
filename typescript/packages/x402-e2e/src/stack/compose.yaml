@@ -144,7 +144,7 @@ services:
       - CHAIN_ID=31337
       - ESCROW_ADDRESS=0xa513E6E4b8f2a923D98304ec87F64353C4D5C853
       - FACILITATOR_URL=http://host.docker.internal:8889
-      - ASSET_ADDRESS=0x70e0bA845a1A0F2DA3359C97E0285013525FFC49
+      - ASSET_ADDRESS=0x809d550fca64d94Bd9F66E60752A544199cfAC3D
       - AMOUNT=1000000
       - SUBGRAPH_URL=http://host.docker.internal:8000/subgraphs/name/boson/corecomponents
       - PORT=4001
