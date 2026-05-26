@@ -92,6 +92,19 @@ export interface BuyerSetupArgs extends EnsureBuyerHasBalanceArgs {
  * pull from.
  */
 export async function ensureBuyerHasBalance(args: EnsureBuyerHasBalanceArgs): Promise<void> {
+  // `WalletClient` doesn't require `account` / `chain` at the type
+  // level, so unguarded non-null assertions would crash with an opaque
+  // viem error if a caller passed a bare client. Surface a clear
+  // harness-side message instead.
+  const walletAccount = args.walletClient.account;
+  const walletChain = args.walletClient.chain;
+  if (walletAccount === undefined || walletChain === undefined) {
+    throw new Error(
+      "[x402-e2e/_buyer-setup] ensureBuyerHasBalance requires a WalletClient with both `account` and `chain` set " +
+        "(use `buildWalletClient(account)`)",
+    );
+  }
+
   const balance = (await args.publicClient.readContract({
     address: args.assetAddress,
     abi: ERC20_TEST_ABI,
@@ -105,8 +118,8 @@ export async function ensureBuyerHasBalance(args: EnsureBuyerHasBalanceArgs): Pr
       abi: ERC20_TEST_ABI,
       functionName: "mint",
       args: [args.buyerAddress, args.amount - balance],
-      account: args.walletClient.account!,
-      chain: args.walletClient.chain!,
+      account: walletAccount,
+      chain: walletChain,
     });
     await args.publicClient.waitForTransactionReceipt({ hash: mintHash });
   }
@@ -121,6 +134,15 @@ export async function ensureBuyerHasBalance(args: EnsureBuyerHasBalanceArgs): Pr
  */
 export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
   await ensureBuyerHasBalance(args);
+  // ensureBuyerHasBalance has already validated `account` / `chain`;
+  // re-extract them as locals for the type-narrowed writeContract call
+  // below without re-running the guard.
+  const walletAccount = args.walletClient.account;
+  const walletChain = args.walletClient.chain;
+  if (walletAccount === undefined || walletChain === undefined) {
+    // Unreachable — ensureBuyerHasBalance would have thrown above.
+    return;
+  }
 
   const allowance = (await args.publicClient.readContract({
     address: args.assetAddress,
@@ -137,8 +159,8 @@ export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
       // Approve a generous cap so subsequent scenarios on the same
       // chain state don't need to re-approve; refunds untouched.
       args: [args.escrowAddress, args.amount * 1000n],
-      account: args.walletClient.account!,
-      chain: args.walletClient.chain!,
+      account: walletAccount,
+      chain: walletChain,
     });
     await args.publicClient.waitForTransactionReceipt({ hash: approveHash });
   }
