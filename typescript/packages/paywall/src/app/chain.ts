@@ -8,6 +8,7 @@
 import {
   base,
   baseSepolia,
+  hardhat,
   mainnet,
   optimism,
   optimismSepolia,
@@ -16,6 +17,17 @@ import {
   sepolia,
   type Chain,
 } from "viem/chains";
+
+// Override viem's `hardhat` chain so its default RPC matches the
+// canonical local Boson environment endpoint
+// (`envConfigs.local[0].jsonRpcUrl` in @bosonprotocol/common =
+// `http://127.0.0.1:8545`). Lifted as a constant rather than imported
+// so we don't drag common's 1.5 MB ABI bundle into the browser build —
+// mirrors the pattern in `x402-e2e/src/config/local-31337-0.ts`.
+const localBoson: Chain = {
+  ...hardhat,
+  rpcUrls: { default: { http: ["http://127.0.0.1:8545"] } },
+};
 
 const KNOWN_CHAINS: Record<number, Chain> = {
   [mainnet.id]: mainnet,
@@ -26,6 +38,7 @@ const KNOWN_CHAINS: Record<number, Chain> = {
   [optimismSepolia.id]: optimismSepolia,
   [polygon.id]: polygon,
   [polygonAmoy.id]: polygonAmoy,
+  [localBoson.id]: localBoson,
 };
 
 const CAIP2_PATTERN = /^eip155:(\d+)$/;
