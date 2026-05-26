@@ -10,9 +10,10 @@
 // fetches the resource, the middleware emits a 402, the buyer's
 // `wrapFetchWithPayment` signs and retries with X-PAYMENT, settle
 // commits on-chain, and the response carries `X-PAYMENT-RESPONSE`
-// with the new `exchangeId`. A2–A5 cover the other commit-time
-// dimensions (atomic / token-auth strategies); they're `it.todo`
-// in this PR and land in PR 7.
+// with the new `exchangeId`. A2 covers atomic commit-and-redeem;
+// A3/A4/A5 cover the token-auth strategies (ERC-3009 / EIP-2612
+// Permit / Permit2), each in its own describe that pins the
+// advertised strategy so the client dispatcher can't fall back.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
 import type { LocalAccount } from "viem";
@@ -142,12 +143,6 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
       price: EXPECTED_PRICE,
     });
   });
-
-  // Token-auth strategies. Each describe below pins
-  // `tokenAuthStrategies` to a single value so the client dispatcher
-  // can't fall back to a different strategy.
-  it.todo("A4 — commit with `permit` token-auth (testErc2612)");
-  it.todo("A5 — commit with `permit2` token-auth");
 });
 
 describe.skipIf(!ENABLED)("@p0 commit-time scenarios (ERC-3009)", () => {
@@ -216,6 +211,140 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios (ERC-3009)", () => {
       state: ExchangeState.COMMITTED,
       seller: ctx.seller.address,
       exchangeToken: LOCAL_31337_0.contracts.testErc3009,
+      price: EXPECTED_PRICE,
+    });
+  });
+});
+
+describe.skipIf(!ENABLED)("@p1 commit-time scenarios (Permit / EIP-2612)", () => {
+  let ctx: ScenarioContext;
+
+  beforeAll(async () => {
+    // Distinct buyer + describe-scoped context so the resource server
+    // advertises ONLY `permit` and the BuyerActor signs an EIP-2612
+    // Permit against the testErc2612 token's domain. Shares the file's
+    // `commit` seed slot with the describes above — vitest serialises
+    // describes within a file, so the slot's seller handles them
+    // back-to-back.
+    const publicClient = buildPublicClient();
+    const funder = buildWalletClient(SEED_WALLETS.commit.account);
+    const buyerAccount = await createFundedBuyer({ funder, publicClient });
+    ctx = await createScenarioContext({
+      slot: "commit",
+      buyerAccount,
+      assetAddress: LOCAL_31337_0.contracts.testErc2612,
+      tokenAuthStrategies: ["permit"],
+      tokenDomainResolver: createChainTokenDomainResolver(publicClient),
+      // EIP-2612 `deadline` is enforced against `block.timestamp`. The
+      // local stack mines at ~20× wall-clock, so a 1-hour window can
+      // already be in the past by the time settle simulates. Stretch to
+      // the protocol max — see A3 for the full chain-drift rationale.
+      maxTimeoutSeconds: 24 * 60 * 60,
+    });
+    // EIP-2612 Permit carries the spend approval inline (settle calls
+    // `permit()` then `transferFrom`), so the buyer needs a balance but
+    // no standing escrow allowance.
+    await ensureBuyerHasBalance({
+      walletClient: buildWalletClient(buyerAccount),
+      publicClient,
+      buyerAddress: buyerAccount.address,
+      assetAddress: LOCAL_31337_0.contracts.testErc2612,
+      amount: 10_000_000n,
+    });
+  });
+
+  afterAll(async () => {
+    await ctx?.teardown();
+  });
+
+  it("A4 — commit with `permit` token-auth (testErc2612)", async () => {
+    const res = await ctx.buyer.fetch(`${ctx.resourceServerUrl}/resource`);
+    expect(res.status, await res.clone().text()).toBe(200);
+
+    const body = (await res.json()) as {
+      ok?: boolean;
+      x402b?: { exchangeId?: string; txHash?: `0x${string}` };
+    };
+    expect(body.ok).toBe(true);
+    expect(typeof body.x402b?.exchangeId).toBe("string");
+
+    const decoded = readXPaymentResponse(res.headers);
+    expect(decoded?.exchangeId).toBe(body.x402b?.exchangeId);
+    expect(decoded?.txHash).toMatch(TX_HASH_REGEX);
+
+    const exchangeId = body.x402b!.exchangeId!;
+    await ctx.asserter.expect(exchangeId, {
+      state: ExchangeState.COMMITTED,
+      seller: ctx.seller.address,
+      exchangeToken: LOCAL_31337_0.contracts.testErc2612,
+      price: EXPECTED_PRICE,
+    });
+  });
+});
+
+describe.skipIf(!ENABLED)("@p1 commit-time scenarios (Permit2)", () => {
+  let ctx: ScenarioContext;
+
+  beforeAll(async () => {
+    // Permit2 works with any standard ERC-20 (no token-side EIP-2612 /
+    // EIP-3009 support needed), so this describe pays with the generic
+    // `testErc20`. The client signs a Permit2 `PermitTransferFrom`
+    // against the canonical Permit2 domain — no `tokenDomainResolver`
+    // required. Shares the file's `commit` seed slot with the describes
+    // above; vitest serialises describes within a file.
+    const publicClient = buildPublicClient();
+    const funder = buildWalletClient(SEED_WALLETS.commit.account);
+    const buyerAccount = await createFundedBuyer({ funder, publicClient });
+    ctx = await createScenarioContext({
+      slot: "commit",
+      buyerAccount,
+      assetAddress: LOCAL_31337_0.contracts.testErc20,
+      tokenAuthStrategies: ["permit2"],
+      // Permit2's SignatureTransfer `deadline` is enforced against
+      // `block.timestamp`; stretch the window to the protocol max for
+      // the same chain-time-drift reason as A3 / A4.
+      maxTimeoutSeconds: 24 * 60 * 60,
+    });
+    // Permit2 pulls funds through the canonical Permit2 contract, which
+    // the buyer must have approved once on the ERC-20. Reuse
+    // `ensureBuyerCanPay` but with the Permit2 contract as the approved
+    // spender (not the escrow) — the signed SignatureTransfer names the
+    // escrow as recipient at settle time, while Permit2 itself needs the
+    // standing allowance to pull from the buyer.
+    await ensureBuyerCanPay({
+      walletClient: buildWalletClient(buyerAccount),
+      publicClient,
+      buyerAddress: buyerAccount.address,
+      assetAddress: LOCAL_31337_0.contracts.testErc20,
+      escrowAddress: LOCAL_31337_0.contracts.permit2,
+      amount: 10_000_000n,
+    });
+  });
+
+  afterAll(async () => {
+    await ctx?.teardown();
+  });
+
+  it("A5 — commit with `permit2` token-auth (testErc20)", async () => {
+    const res = await ctx.buyer.fetch(`${ctx.resourceServerUrl}/resource`);
+    expect(res.status, await res.clone().text()).toBe(200);
+
+    const body = (await res.json()) as {
+      ok?: boolean;
+      x402b?: { exchangeId?: string; txHash?: `0x${string}` };
+    };
+    expect(body.ok).toBe(true);
+    expect(typeof body.x402b?.exchangeId).toBe("string");
+
+    const decoded = readXPaymentResponse(res.headers);
+    expect(decoded?.exchangeId).toBe(body.x402b?.exchangeId);
+    expect(decoded?.txHash).toMatch(TX_HASH_REGEX);
+
+    const exchangeId = body.x402b!.exchangeId!;
+    await ctx.asserter.expect(exchangeId, {
+      state: ExchangeState.COMMITTED,
+      seller: ctx.seller.address,
+      exchangeToken: LOCAL_31337_0.contracts.testErc20,
       price: EXPECTED_PRICE,
     });
   });
