@@ -60,8 +60,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@bosonprotocol/common": "1.33.0-alpha.4",
-    "@bosonprotocol/core-sdk": "1.48.0-alpha.3",
+    "@bosonprotocol/common": "1.33.0-alpha.7",
+    "@bosonprotocol/core-sdk": "1.48.0-alpha.6",
     "@bosonprotocol/x402-core": "workspace:^",
     "viem": "^2.39.3"
   },

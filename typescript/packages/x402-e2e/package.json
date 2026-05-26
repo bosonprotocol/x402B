@@ -8,13 +8,14 @@
   "scripts": {
     "build": "tsc --noEmit",
     "test": "vitest run",
+    "test:p0": "vitest run -t @p0",
     "lint": "eslint src test scripts --max-warnings 0",
     "stack:up": "tsx scripts/stack-up.ts",
     "stack:down": "tsx scripts/stack-down.ts",
     "clean": "rm -rf .turbo"
   },
   "dependencies": {
-    "@bosonprotocol/core-sdk": "1.48.0-alpha.3",
+    "@bosonprotocol/core-sdk": "1.48.0-alpha.6",
     "@bosonprotocol/x402-actions": "workspace:^",
     "@bosonprotocol/x402-client": "workspace:^",
     "@bosonprotocol/x402-client-fetch": "workspace:^",
