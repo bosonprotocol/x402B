@@ -148,6 +148,14 @@ services:
       - AMOUNT=1000000
       - SUBGRAPH_URL=http://host.docker.internal:8000/subgraphs/name/boson/corecomponents
       - PORT=4001
+      # Paywall config consumed by `examples/resource-server`'s
+      # `Accept: text/html` branch — turns `GET /resource` into a
+      # working browser demo when a user opens the dockerised host
+      # in a browser. Only the local-testnet flag is set; logo and
+      # WalletConnect project id are intentionally left out (testnet
+      # offers injected + Coinbase Wallet by default).
+      - PAYWALL_APP_NAME=x402B e2e paywall
+      - PAYWALL_TESTNET=1
     depends_on:
       - boson-protocol-node
       - boson-subgraph

@@ -153,7 +153,7 @@ export function EvmEscrowPaywall({ state }: Props) {
   }
 
   return (
-    <div className="x402b-paywall">
+    <div className="x402b-paywall" data-testid="paywall-root" data-paywall-status={status}>
       <header className="x402b-header">
         {config?.appLogo ? <img className="x402b-logo" src={config.appLogo} alt="" /> : null}
         <h1>{config?.appName ?? "Payment required"}</h1>
@@ -206,6 +206,7 @@ export function EvmEscrowPaywall({ state }: Props) {
         <button
           type="button"
           className="x402b-pay"
+          data-testid="paywall-pay"
           disabled={!isConnected || status === "signing" || status === "submitting"}
           onClick={handlePay}
         >
@@ -217,7 +218,11 @@ export function EvmEscrowPaywall({ state }: Props) {
                 ? "Loaded"
                 : "Pay & redeem"}
         </button>
-        {errorMessage ? <p className="x402b-error">{errorMessage}</p> : null}
+        {errorMessage ? (
+          <p className="x402b-error" data-testid="paywall-error">
+            {errorMessage}
+          </p>
+        ) : null}
       </section>
 
       <PaywallFooter config={config} />
@@ -267,6 +272,7 @@ function ConnectorList(props: {
           <button
             type="button"
             className="x402b-connector"
+            data-testid={`paywall-connector-${c.id}`}
             disabled={props.disabled}
             onClick={() => props.onConnect(c.id)}
           >
@@ -287,12 +293,14 @@ function WalletStatus(props: {
   return (
     <div className="x402b-wallet-status">
       {props.wrongNetwork ? (
-        <p className="x402b-warning">
+        <p className="x402b-warning" data-testid="paywall-wrong-network">
           Connected to chain {props.connectedChainId}; the payment requires {props.requiredChainId}.
           The Pay button will request a network switch.
         </p>
       ) : (
-        <p className="x402b-ok">Wallet connected.</p>
+        <p className="x402b-ok" data-testid="paywall-wallet-connected">
+          Wallet connected.
+        </p>
       )}
       <button type="button" className="x402b-disconnect" onClick={props.onDisconnect}>
         Disconnect

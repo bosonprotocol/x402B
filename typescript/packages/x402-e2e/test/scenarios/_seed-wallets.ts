@@ -35,6 +35,7 @@ import {
   ACCOUNT_11,
   ACCOUNT_12,
   ACCOUNT_13,
+  ACCOUNT_14,
 } from "../../src/config/accounts.js";
 
 export interface SeedWalletSlot {
@@ -66,6 +67,8 @@ export const SEED_WALLETS = {
   concurrent: toSlot(ACCOUNT_13),
   /** `operational.test.ts` — F1 / F2 / F4 failure-mode scenarios. */
   operational: toSlot(ACCOUNT_10),
+  /** `browser/paywall.test.ts` — drives the in-browser paywall through Playwright. */
+  browser: toSlot(ACCOUNT_14),
   /** Spare slots for future chain-touching scenario files. */
   spareB: toSlot(ACCOUNT_11),
   spareC: toSlot(ACCOUNT_12),

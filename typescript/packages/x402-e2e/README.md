@@ -164,6 +164,7 @@ with `-t '@p0'`. Priorities:
 | `@p0`    | concurrent commit-and-redeem (E0)             | `concurrent.test.ts`          |
 | `@p0`    | post-commit lifecycle (B1–B4)                 | `post-commit.test.ts`         |
 | `@p0`    | commit-time validations (C1–C5, C8)           | `validation-commit.test.ts`   |
+| `@p0`    | browser paywall (BR1–BR3)                     | `browser/paywall.test.ts`     |
 | `@p1`    | post-commit lifecycle (B6, B7)                | `post-commit.test.ts`         |
 | `@p1`    | operational scenarios (F1)                    | `operational.test.ts`         |
 | `@p2`    | operational scenarios (F2, F4)                | `operational.test.ts`         |
@@ -305,3 +306,47 @@ await asserter.expect(decoded!.exchangeId!, {
   through. See [`src/harness/seed.ts`](./src/harness/seed.ts) header
   for rationale.
 - **No scenario tests yet** — those land in PR 6 alongside CI wiring.
+
+## Browser scenarios
+
+`test/browser/paywall.test.ts` drives a real headless chromium (via
+the `playwright` library, not `@vitest/browser`) through the
+`@bosonprotocol/x402-paywall` HTML 402 flow end-to-end. Three
+scenarios:
+
+- **BR1** (`@p0`) — happy path: server emits the paywall HTML, an
+  injected EIP-1193 mock (backed by a viem private key on the Node
+  side via `BrowserContext.exposeFunction`) signs the X-PAYMENT
+  payload, the buyer's retry settles on-chain, and the on-chain
+  `ExchangeState.COMMITTED` is asserted via the subgraph reader.
+- **BR2** (`@p0`) — the mock wallet rejects `eth_signTypedData_v4`
+  with `code: 4001`; the paywall surfaces the error in
+  `[data-testid="paywall-error"]` and no on-chain commit happens.
+- **BR3** (`@p0`) — the mock wallet reports the wrong chain id and
+  rejects `wallet_switchEthereumChain`; the paywall shows the
+  wrong-network warning, `Pay` surfaces the rejection, no commit.
+
+Slot: `browser` (`SEED_WALLETS.browser` → `ACCOUNT_14`). All three
+scenarios live in one file so they run sequentially against the same
+in-process resource server — the paywall doesn't yet stamp
+`X-Session-Id`, so concurrent flows would race on the
+`FALLBACK_KEY` session slot in the resource server's session cache.
+
+### Local prerequisites
+
+`playwright` ships its own chromium download (~150MB) via its
+postinstall hook. Cached under `PLAYWRIGHT_BROWSERS_PATH` if set;
+otherwise under each install's `node_modules/playwright/.local-browsers`.
+CI should cache that path to avoid re-downloading per job. Set
+`PLAYWRIGHT_SKIP_DOWNLOAD=1` to opt out (browser tests will fail to
+launch).
+
+### Running only the browser file
+
+```sh
+E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:browser
+```
+
+Equivalent to `vitest run test/browser`. Combine with
+`E2E_DOCKER_KEEP_STACK=1` and a manual `pnpm stack:up` for fast inner
+loops.

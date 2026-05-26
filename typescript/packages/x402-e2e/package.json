@@ -9,6 +9,7 @@
     "build": "tsc --noEmit",
     "test": "vitest run",
     "test:p0": "vitest run -t @p0",
+    "test:browser": "vitest run test/browser",
     "lint": "eslint src test scripts --max-warnings 0",
     "stack:up": "tsx scripts/stack-up.ts",
     "stack:down": "tsx scripts/stack-down.ts",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.17.10",
+    "playwright": "^1.49.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }
