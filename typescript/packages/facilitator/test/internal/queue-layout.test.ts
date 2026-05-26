@@ -1,12 +1,11 @@
-import { decodeAbiParameters, decodeFunctionData } from "viem";
+import { abis } from "@bosonprotocol/common";
+import { decodeFunctionData } from "viem";
 import { describe, expect, it } from "vitest";
 
-import {
-  META_TX_BPIP12_ABI,
-  buildBpip12Calldata,
-  buildBpip12QueueBytes,
-} from "../../src/internal/build-bpip12-calldata.js";
+import { buildBpip12Calldata, buildBpip12Queue } from "../../src/internal/build-bpip12-calldata.js";
 import { preBuyerSkipSlots } from "../../src/internal/queue-layout.js";
+
+const META_TX_HANDLER_ABI = abis.IBosonMetaTransactionsHandlerABI as readonly unknown[];
 
 const SAMPLE_ERC3009 = {
   kind: "erc3009" as const,
@@ -43,32 +42,30 @@ describe("preBuyerSkipSlots", () => {
   });
 });
 
-describe("buildBpip12QueueBytes", () => {
+describe("buildBpip12Queue", () => {
   it("prepends one empty entry for createOfferAndCommit and packs the auth at index 1", () => {
-    const queueBytes = buildBpip12QueueBytes({
+    const queue = buildBpip12Queue({
       actionId: "boson-createOfferAndCommit",
       tokenAuth: SAMPLE_ERC3009,
     });
-    const [entries] = decodeAbiParameters([{ type: "bytes[]" }], queueBytes);
-    expect(entries.length).toBe(2);
+    expect(queue.length).toBe(2);
     // Slot 0: empty bytes — the protocol's `discardNext()` advances past
     // this on the zero-amount seller-deposit `transferFundsIn`.
-    expect(entries[0]).toBe("0x");
+    expect(queue[0]).toBe("0x");
     // Slot 1: non-empty strategy-typed entry — the buyer's ERC-3009
     // auth, consumed by the price `transferFundsIn`.
-    expect(entries[1].startsWith("0x")).toBe(true);
-    expect(entries[1].length).toBeGreaterThan(2);
+    expect(queue[1].startsWith("0x")).toBe(true);
+    expect(queue[1].length).toBeGreaterThan(2);
   });
 
   it("places the auth at index 0 for actions with no pre-buyer skip slots", () => {
-    const queueBytes = buildBpip12QueueBytes({
+    const queue = buildBpip12Queue({
       actionId: "boson-redeem",
       tokenAuth: SAMPLE_ERC3009,
     });
-    const [entries] = decodeAbiParameters([{ type: "bytes[]" }], queueBytes);
-    expect(entries.length).toBe(1);
-    expect(entries[0].startsWith("0x")).toBe(true);
-    expect(entries[0].length).toBeGreaterThan(2);
+    expect(queue.length).toBe(1);
+    expect(queue[0].startsWith("0x")).toBe(true);
+    expect(queue[0].length).toBeGreaterThan(2);
   });
 });
 
@@ -92,20 +89,26 @@ describe("buildBpip12Calldata", () => {
     expect(calldata.to).toBe(escrow);
 
     const decoded = decodeFunctionData({
-      abi: META_TX_BPIP12_ABI,
+      abi: META_TX_HANDLER_ABI,
       data: calldata.data,
     });
     expect(decoded.functionName).toBe("executeMetaTransactionWithTokenTransferAuthorization");
-    const [decodedUser, decodedFnName, decodedFnSig, decodedNonce, decodedSig, queueBytes] =
-      decoded.args;
+    const [decodedUser, decodedFnName, decodedFnSig, decodedNonce, decodedSig, queue] =
+      decoded.args as readonly [
+        `0x${string}`,
+        string,
+        `0x${string}`,
+        bigint,
+        `0x${string}`,
+        readonly `0x${string}`[],
+      ];
     expect(decodedUser).toBe(buyer);
     expect(decodedFnName).toBe(functionName);
     expect(decodedFnSig).toBe(functionSignature);
     expect(decodedNonce).toBe(1n);
     expect(decodedSig).toBe(signature);
 
-    const [entries] = decodeAbiParameters([{ type: "bytes[]" }], queueBytes);
-    expect(entries.length).toBe(2);
-    expect(entries[0]).toBe("0x");
+    expect(queue.length).toBe(2);
+    expect(queue[0]).toBe("0x");
   });
 });

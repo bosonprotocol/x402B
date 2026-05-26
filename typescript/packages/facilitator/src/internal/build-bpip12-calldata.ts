@@ -2,21 +2,31 @@
 // `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`,
 // including the action-aware token-transfer authorisation queue.
 //
-// Why not route through `@bosonprotocol/core-sdk`'s
-// `metaTx.handler.executeMetaTransactionWithTokenTransferAuthorization`?
-// The SDK's `erc20.handler.encodeTransferAuthorizationQueue` only knows
-// how to encode strategy-typed entries (`ERC3009` / `EIP2612` / `Permit2`).
-// The deployed protocol additionally accepts an **empty entry** (`0x`) as
-// a shortcut for "no auth, fall back to ERC-20 allowance" — and the
-// commit-time meta-tx requires exactly that shape, with a leading empty
-// slot consumed by the zero-amount seller-deposit `transferFundsIn` call.
-// The SDK has no way to express that, so the facilitator builds the
-// queue and outer calldata directly via viem instead.
+// The outer envelope ABI comes from `@bosonprotocol/common`'s
+// `IBosonMetaTransactionsHandlerABI` — the canonical source kept in
+// lock-step with the deployed protocol.
+//
+// The queue contents are still built locally because core-sdk's
+// `erc20.handler.encodeTransferAuthorizationEntry` is an exhaustive
+// switch over `ERC3009 | EIP2612 | Permit2 | DAIPermit` with no way to
+// emit an **empty entry** (`0x`). On-chain
+// `TokenTransferAuthorizationLib.loadQueue` accepts `0x` as a shortcut
+// for "no auth, fall back to ERC-20 allowance" — and the commit-time
+// meta-tx requires exactly that shape, with a leading run of empty
+// slots consumed by the pre-buyer `transferFundsIn` calls (e.g. the
+// zero-amount seller-deposit slot in `createOfferAndCommit`).
+//
+// Follow-up: once core-sdk supports fallback queue entries, this file
+// can be retired in favour of
+// `metaTx.handler.executeMetaTransactionWithTokenTransferAuthorization({ returnTxInfo: true })`.
 
+import { abis } from "@bosonprotocol/common";
 import type { BosonTokenAuth } from "@bosonprotocol/x402-core/schemes/escrow";
-import { encodeAbiParameters, encodeFunctionData, parseAbi, type Hex } from "viem";
+import { encodeAbiParameters, encodeFunctionData, type Hex } from "viem";
 
 import { preBuyerSkipSlots } from "./queue-layout.js";
+
+const META_TX_HANDLER_ABI = abis.IBosonMetaTransactionsHandlerABI as readonly unknown[];
 
 /**
  * Strategy id matches `BosonTypes.TokenTransferAuthorizationStrategy`
@@ -29,10 +39,6 @@ const TRANSFER_STRATEGY_ID = {
   EIP2612: 2,
   Permit2: 3,
 } as const;
-
-export const META_TX_BPIP12_ABI = parseAbi([
-  "function executeMetaTransactionWithTokenTransferAuthorization(address userAddress, string functionName, bytes functionSignature, uint256 nonce, bytes signature, bytes tokenTransferAuthorization) returns (bytes)",
-]);
 
 const FALLBACK_ENTRY: Hex = "0x";
 
@@ -116,19 +122,19 @@ export interface BuildBpip12QueueArgs {
 }
 
 /**
- * Build the `abi.encode(bytes[] queue)` payload the protocol's
+ * Build the `bytes[]` queue the protocol's
  * `TokenTransferAuthorizationLib.loadQueue` parses, with a leading run
  * of empty entries (one per pre-buyer `transferFundsIn` site) and the
  * buyer's auth at the final index.
  */
-export function buildBpip12QueueBytes(args: BuildBpip12QueueArgs): Hex {
+export function buildBpip12Queue(args: BuildBpip12QueueArgs): Hex[] {
   const skipSlots = preBuyerSkipSlots(args.actionId);
   const entries: Hex[] = [];
   for (let i = 0; i < skipSlots; i++) {
     entries.push(FALLBACK_ENTRY);
   }
   entries.push(encodeAuthEntry(args.tokenAuth));
-  return encodeAbiParameters([{ type: "bytes[]" }], [entries]);
+  return entries;
 }
 
 export interface BuildBpip12CalldataArgs {
@@ -161,9 +167,9 @@ export function buildBpip12Calldata(args: BuildBpip12CalldataArgs): {
   to: `0x${string}`;
   data: Hex;
 } {
-  const queueBytes = buildBpip12QueueBytes({ actionId: args.actionId, tokenAuth: args.tokenAuth });
+  const queue = buildBpip12Queue({ actionId: args.actionId, tokenAuth: args.tokenAuth });
   const data = encodeFunctionData({
-    abi: META_TX_BPIP12_ABI,
+    abi: META_TX_HANDLER_ABI,
     functionName: "executeMetaTransactionWithTokenTransferAuthorization",
     args: [
       args.userAddress,
@@ -171,7 +177,7 @@ export function buildBpip12Calldata(args: BuildBpip12CalldataArgs): {
       args.functionSignature,
       args.nonce,
       args.signature,
-      queueBytes,
+      queue,
     ],
   });
   return { to: args.escrowAddress, data };
