@@ -16,13 +16,16 @@
 // token authorization) happen inside that single call.
 
 import { createX402bClient, signerFromWalletClient } from "@bosonprotocol/x402-client-browser";
+import { fetchTokenDomain } from "@bosonprotocol/x402-core/eip712/token-auth";
 import { useMemo, useRef, useState } from "react";
+import type { Address } from "viem";
 import {
   useAccount,
   useChainId,
   useConnect,
   useConnectors,
   useDisconnect,
+  usePublicClient,
   useSwitchChain,
   useWalletClient,
 } from "wagmi";
@@ -56,6 +59,11 @@ export function EvmEscrowPaywall({ state }: Props) {
   const enabledConnectors = useConnectors();
   const { disconnect } = useDisconnect();
   const { data: walletClient } = useWalletClient();
+  // PublicClient for the required chain (the wagmi Providers tree is
+  // configured with that chain). Used to read the token's EIP-712 domain
+  // on-chain so the buyer signs against the same `{ name, version }` the
+  // facilitator will recover against — see fetchTokenDomain.
+  const publicClient = usePublicClient({ chainId: requiredChainId });
 
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
@@ -96,16 +104,34 @@ export function EvmEscrowPaywall({ state }: Props) {
       setStatus("signing");
       setErrorMessage(undefined);
       try {
+        if (!publicClient) {
+          setStatus("error");
+          setErrorMessage(
+            `No public RPC client is available for chain ${requiredChainId}; cannot resolve the token's EIP-712 domain.`,
+          );
+          return;
+        }
         const signer = signerFromWalletClient(walletClient);
-        const tokenDomain = lookupTokenDomain(config?.tokenDomains, requirements.asset);
+        const tokenDomainOverride = lookupTokenDomain(config?.tokenDomains, requirements.asset);
         const client = createX402bClient({
           signer,
-          tokenDomainResolver: async (asset, chainId) => ({
-            name: tokenDomain?.name ?? asset,
-            version: tokenDomain?.version ?? "1",
-            chainId,
-            verifyingContract: asset,
-          }),
+          // Resolve the token's EIP-712 domain on-chain (EIP-5267 →
+          // name() + version()) so the buyer signs against the same
+          // `{ name, version }` the facilitator will recover against.
+          // `paywallConfig.tokenDomains` remains an explicit override for
+          // tokens whose deployed `name()` differs from the EIP-712 name
+          // they actually sign against.
+          tokenDomainResolver: async (asset, chainId) => {
+            if (tokenDomainOverride) {
+              return {
+                name: tokenDomainOverride.name,
+                version: tokenDomainOverride.version,
+                chainId,
+                verifyingContract: asset,
+              };
+            }
+            return fetchTokenDomain(publicClient, asset as Address, chainId);
+          },
           ...(requirements.fulfillment?.required && selectedFulfillment
             ? { fulfillment: { option: selectedFulfillment, data: null } }
             : {}),
