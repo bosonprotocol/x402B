@@ -102,7 +102,19 @@ describe.skipIf(!ENABLED)("@p1 operational scenarios", () => {
     const publicClient = buildPublicClient();
     const funder = buildWalletClient(SEED_WALLETS.operational.account);
     const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
-    ctx = await createScenarioContext({ slot: "operational", buyerAccount });
+    // Pin the `none` token-auth strategy on both the in-process resource
+    // server and the buyer policy — see the matching note in
+    // `post-commit.test.ts`. Without the pin, the buyer client falls
+    // through to `permit2` (no `tokenDomainResolver` configured) and
+    // the on-chain `transferFrom` reverts with "ERC20: insufficient
+    // allowance" because `ensureBuyerCanPay` only approves the
+    // protocol Diamond — not the canonical Permit2 contract.
+    ctx = await createScenarioContext({
+      slot: "operational",
+      buyerAccount,
+      tokenAuthStrategies: ["none"],
+      buyerPolicy: { tokenAuthStrategy: "none" },
+    });
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,
@@ -202,7 +214,12 @@ describe.skipIf(!ENABLED)("@p2 operational scenarios", () => {
     const publicClient = buildPublicClient();
     const funder = buildWalletClient(SEED_WALLETS.operational.account);
     const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
-    ctx = await createScenarioContext({ slot: "operational", buyerAccount });
+    ctx = await createScenarioContext({
+      slot: "operational",
+      buyerAccount,
+      tokenAuthStrategies: ["none"],
+      buyerPolicy: { tokenAuthStrategy: "none" },
+    });
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,

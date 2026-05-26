@@ -79,9 +79,17 @@ describe.skipIf(!ENABLED)("@p0 concurrent commit-and-redeem scenarios", () => {
     // `seller`, `asserter`, and `teardown` — `ctx.buyer` is unused
     // because the test drives its own 20-buyer fleet. The first
     // buyer account is passed in to satisfy the required arg.
+    //
+    // Pin the `none` token-auth strategy on the in-process resource
+    // server (and below on each BuyerActor's policy). Without it the
+    // buyer client falls through to `permit2` (no `tokenDomainResolver`
+    // is configured) and the on-chain `transferFrom` reverts with
+    // "ERC20: insufficient allowance" — the buyers only approved the
+    // protocol Diamond, not the canonical Permit2 contract.
     ctx = await createScenarioContext({
       slot: "concurrent",
       buyerAccount: buyerAccounts[0]!,
+      tokenAuthStrategies: ["none"],
     });
 
     // Step 3 — assemble 20 BuyerActors that all share a single
@@ -93,7 +101,7 @@ describe.skipIf(!ENABLED)("@p0 concurrent commit-and-redeem scenarios", () => {
       createBuyerActor({
         account,
         publicClient,
-        policy: { redeemMode: "commit-and-redeem" },
+        policy: { redeemMode: "commit-and-redeem", tokenAuthStrategy: "none" },
       }),
     );
   });
