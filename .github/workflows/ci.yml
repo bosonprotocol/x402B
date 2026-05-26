@@ -81,7 +81,13 @@ jobs:
       - name: Run @p0 e2e suite
         env:
           E2E_DOCKER: "1"
-        run: pnpm --filter @bosonprotocol/x402-e2e test -- -t '@p0'
+        # Uses the `test:p0` script (rather than `test -- -t '@p0'`) because
+        # pnpm v10 forwards the `--` separator literally and vitest then
+        # parses `-t @p0` as positional file patterns instead of the
+        # `--testNamePattern` flag, which would re-enable the @p1/@p2
+        # operational chaos tests (they kill the facilitator container
+        # mid-flow and race the chain-touching tests in other files).
+        run: pnpm --filter @bosonprotocol/x402-e2e test:p0
 
       - name: Dump docker compose logs on failure
         if: failure()
