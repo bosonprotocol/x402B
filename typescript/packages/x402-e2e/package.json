@@ -14,7 +14,7 @@
     "clean": "rm -rf .turbo"
   },
   "dependencies": {
-    "@bosonprotocol/core-sdk": "1.48.0-alpha.3",
+    "@bosonprotocol/core-sdk": "1.48.0-alpha.6",
     "@bosonprotocol/x402-actions": "workspace:^",
     "@bosonprotocol/x402-client": "workspace:^",
     "@bosonprotocol/x402-client-fetch": "workspace:^",
