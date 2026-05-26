@@ -150,6 +150,12 @@ services:
       - FACILITATOR_URL=http://host.docker.internal:8889
       - ASSET_ADDRESS=0x809d550fca64d94Bd9F66E60752A544199cfAC3D
       - AMOUNT=1000000
+      # Optional: comma-separated wallet addresses to mint payment
+      # tokens (ASSET_ADDRESS) to on boot, so a browser wallet can pay
+      # the paywall without a separate mint step. Uncomment and set to
+      # your own wallet address(es) when running the browser demo.
+      # - BUYER_WALLETS=0xYourMetaMaskAddress
+      - BUYER_WALLETS=${BUYER_WALLETS}
       - SUBGRAPH_URL=http://host.docker.internal:8000/subgraphs/name/boson/corecomponents
       - PORT=4001
       # Paywall config consumed by `examples/resource-server`'s

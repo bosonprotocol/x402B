@@ -25,7 +25,7 @@
 // no-op lookup.
 
 import { privateKeyToAccount } from "viem/accounts";
-import type { Address, Hex, PublicClient } from "viem";
+import { getAddress, type Address, type Hex, type PublicClient } from "viem";
 
 import {
   createResourceServerApp,
@@ -37,6 +37,7 @@ import {
 import { buildPublicClient, buildWalletClient } from "../harness/clients.js";
 import { buildCreateSellerCallback } from "../harness/create-seller.js";
 import { createSubgraphExchangeReader } from "../harness/exchange-reader.js";
+import { ensureTokenBalance } from "../harness/fund.js";
 import { seedSuite } from "../harness/seed.js";
 
 // `docker compose up --wait` only blocks until each container reports
@@ -58,6 +59,12 @@ import { seedSuite } from "../harness/seed.js";
 // entrypoint can't `docker compose exec` against the protocol node.
 const ESCROW_DEPLOY_TIMEOUT_MS = 10 * 60_000;
 const ESCROW_DEPLOY_POLL_INTERVAL_MS = 2_000;
+
+// Target balance minted to each `BUYER_WALLETS` entry on boot. 100 USDC
+// at 6dp = 100× the default offer price (AMOUNT=1000000), so a browser
+// demo can pay ~100 times before re-funding — well above the "repeat
+// ≥20×" requirement.
+const BUYER_FUND_AMOUNT = 100_000_000n;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -163,6 +170,62 @@ async function ensureSellerEntity(args: {
   return state.seller.id;
 }
 
+/**
+ * Parse the optional `BUYER_WALLETS` env — a comma-separated list of
+ * wallet addresses to fund on boot — into checksummed addresses.
+ * Returns `[]` when unset/empty. Throws a clear, prefixed error on a
+ * malformed entry so a typo surfaces at boot rather than as an opaque
+ * mint revert.
+ */
+function parseBuyerWallets(raw: string | undefined): Address[] {
+  if (raw === undefined) return [];
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      try {
+        return getAddress(entry);
+      } catch {
+        throw new Error(
+          `[x402-e2e/resource-server] BUYER_WALLETS contains an invalid address: ${entry}`,
+        );
+      }
+    });
+}
+
+/**
+ * Mint each listed buyer wallet up to `BUYER_FUND_AMOUNT` of the
+ * payment asset so a human-driven browser wallet can pay the paywall.
+ * Signs the mints with `sellerPk` — the entrypoint's already-funded
+ * account; the mock token's `mint` is public, so any funded signer
+ * works. Sequential to avoid racing the signer's nonce. Idempotent —
+ * a wallet already at the target is skipped.
+ */
+async function fundBuyerWallets(args: {
+  wallets: Address[];
+  assetAddress: Address;
+  sellerPk: Hex;
+  rpcUrl: string;
+  publicClient: PublicClient;
+}): Promise<void> {
+  const walletClient = buildWalletClient(privateKeyToAccount(args.sellerPk), {
+    rpcUrl: args.rpcUrl,
+  });
+  for (const wallet of args.wallets) {
+    console.log(
+      `[x402-e2e/resource-server] funding buyer wallet ${wallet} with ${BUYER_FUND_AMOUNT} of ${args.assetAddress}…`,
+    );
+    await ensureTokenBalance({
+      walletClient,
+      publicClient: args.publicClient,
+      tokenAddress: args.assetAddress,
+      owner: wallet,
+      targetBalance: BUYER_FUND_AMOUNT,
+    });
+  }
+}
+
 async function main(): Promise<void> {
   // The example's `readEnv` flags `SELLER_ID` as required so library
   // operators always pin the on-chain seller id at boot. The harness
@@ -207,6 +270,19 @@ async function main(): Promise<void> {
     chainId: env.chainId,
     subgraphUrl: env.subgraphUrl,
   });
+
+  // Optionally pre-fund human-driven browser wallets so a developer can
+  // connect MetaMask and pay the paywall without a separate mint step.
+  const buyerWallets = parseBuyerWallets(process.env.BUYER_WALLETS);
+  if (buyerWallets.length > 0) {
+    await fundBuyerWallets({
+      wallets: buyerWallets,
+      assetAddress: env.assetAddress,
+      sellerPk: env.sellerPk,
+      rpcUrl: env.rpcNode,
+      publicClient,
+    });
+  }
 
   const exchangeReader = createSubgraphExchangeReader({
     subgraphUrl: env.subgraphUrl,

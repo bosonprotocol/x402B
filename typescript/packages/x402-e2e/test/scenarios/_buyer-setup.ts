@@ -21,46 +21,7 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import { buildWalletClient } from "../../src/harness/clients.js";
-
-const ERC20_TEST_ABI = [
-  {
-    type: "function",
-    name: "mint",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "balanceOf",
-    stateMutability: "view",
-    inputs: [{ name: "owner", type: "address" }],
-    outputs: [{ type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "approve",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ type: "bool" }],
-  },
-  {
-    type: "function",
-    name: "allowance",
-    stateMutability: "view",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
-    ],
-    outputs: [{ type: "uint256" }],
-  },
-] as const;
+import { ERC20_TEST_ABI, ensureTokenBalance } from "../../src/harness/fund.js";
 
 export interface BuyerSetupArgs {
   /** Buyer's viem `WalletClient` (must hold native ETH for gas). */
@@ -83,24 +44,13 @@ export interface BuyerSetupArgs {
  * necessary so re-runs of the same scenario don't burn gas pointlessly.
  */
 export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
-  const balance = (await args.publicClient.readContract({
-    address: args.assetAddress,
-    abi: ERC20_TEST_ABI,
-    functionName: "balanceOf",
-    args: [args.buyerAddress],
-  })) as bigint;
-
-  if (balance < args.amount) {
-    const mintHash = await args.walletClient.writeContract({
-      address: args.assetAddress,
-      abi: ERC20_TEST_ABI,
-      functionName: "mint",
-      args: [args.buyerAddress, args.amount - balance],
-      account: args.walletClient.account!,
-      chain: args.walletClient.chain!,
-    });
-    await args.publicClient.waitForTransactionReceipt({ hash: mintHash });
-  }
+  await ensureTokenBalance({
+    walletClient: args.walletClient,
+    publicClient: args.publicClient,
+    tokenAddress: args.assetAddress,
+    owner: args.buyerAddress,
+    targetBalance: args.amount,
+  });
 
   const allowance = (await args.publicClient.readContract({
     address: args.assetAddress,
