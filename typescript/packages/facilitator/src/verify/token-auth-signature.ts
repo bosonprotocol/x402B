@@ -13,14 +13,15 @@
 // when the token supports it, falling back to `name()` + `version()`
 // with a default `"1"` if `version()` reverts (the EIP-2612 default).
 
-import type { Address, BosonTokenAuth, Hex } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { Address, BosonTokenAuth } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
   type TokenEip712Domain,
+  fetchTokenDomain,
   recoverErc3009Signer,
   recoverPermit2Signer,
   recoverPermitSigner,
 } from "@bosonprotocol/x402-core/eip712/token-auth";
-import { ContractFunctionExecutionError, type PublicClient } from "viem";
+import type { Hex, PublicClient } from "viem";
 
 import { packRsv } from "./meta-tx-signature.js";
 import type { StepResult } from "./structural.js";
@@ -41,107 +42,6 @@ export interface VerifyTokenAuthSignatureArgs {
   tokenAuth: BosonTokenAuth;
   /** Used to look up the token's EIP-712 domain (`name` / `version`) for ERC-3009 and EIP-2612. */
   publicClient: PublicClient;
-}
-
-const EIP5267_ABI = [
-  {
-    type: "function",
-    name: "eip712Domain",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [
-      { name: "fields", type: "bytes1" },
-      { name: "name", type: "string" },
-      { name: "version", type: "string" },
-      { name: "chainId", type: "uint256" },
-      { name: "verifyingContract", type: "address" },
-      { name: "salt", type: "bytes32" },
-      { name: "extensions", type: "uint256[]" },
-    ],
-  },
-] as const;
-
-const NAME_ABI = [
-  {
-    type: "function",
-    name: "name",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "string" }],
-  },
-] as const;
-
-const VERSION_ABI = [
-  {
-    type: "function",
-    name: "version",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "string" }],
-  },
-] as const;
-
-/**
- * Look up the token's EIP-712 domain. Tries EIP-5267 first (one call,
- * canonical); falls back to `name()` + `version()` (with version
- * defaulting to `"1"` per EIP-2612 if `version()` reverts).
- *
- * Error handling: only `ContractFunctionExecutionError` is treated as
- * "method not implemented" and triggers the fallback. RPC / transport
- * failures (HTTP timeouts, JSON-RPC errors) propagate as-is so the
- * caller can distinguish them and surface a clear
- * `INTERNAL_ERROR` rather than a silent fallback that fails again on
- * the next call. `name()` is required by ERC-20 so any failure there
- * is a real error and propagates.
- *
- * Exported so tests can inject a mocked PublicClient and so future
- * caching layers can wrap it.
- */
-export async function fetchTokenDomain(
-  publicClient: PublicClient,
-  token: Address,
-  chainId: number,
-): Promise<TokenEip712Domain> {
-  try {
-    const result = (await publicClient.readContract({
-      address: token as `0x${string}`,
-      abi: EIP5267_ABI,
-      functionName: "eip712Domain",
-    })) as readonly [Hex, string, string, bigint, Address, Hex, readonly bigint[]];
-    return {
-      name: result[1],
-      version: result[2],
-      chainId: Number(result[3]),
-      verifyingContract: result[4] as `0x${string}`,
-    };
-  } catch (e) {
-    if (!(e instanceof ContractFunctionExecutionError)) {
-      // Transport / RPC failure — propagate. EIP-5267-not-implemented
-      // would surface as a ContractFunctionExecutionError; anything
-      // else means we couldn't reach the contract at all.
-      throw e;
-    }
-    // EIP-5267 not implemented — fall back to name() + version().
-  }
-  const name = (await publicClient.readContract({
-    address: token as `0x${string}`,
-    abi: NAME_ABI,
-    functionName: "name",
-  })) as string;
-  let version = "1";
-  try {
-    version = (await publicClient.readContract({
-      address: token as `0x${string}`,
-      abi: VERSION_ABI,
-      functionName: "version",
-    })) as string;
-  } catch (e) {
-    if (!(e instanceof ContractFunctionExecutionError)) {
-      throw e;
-    }
-    // version() is optional per EIP-2612 — keep the default.
-  }
-  return { name, version, chainId, verifyingContract: token as `0x${string}` };
 }
 
 export async function verifyTokenAuthSignature(

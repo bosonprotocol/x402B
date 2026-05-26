@@ -36,7 +36,7 @@ import { EXPECTED_PRICE, TX_HASH_REGEX } from "./_assertion-constants.js";
 import { createFundedBuyer, ensureBuyerCanPay } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
 import { SEED_WALLETS } from "./_seed-wallets.js";
-import { createScenarioContext, type ScenarioContext } from "./_setup.js";
+import { createScenarioContext, NONE_TOKEN_AUTH_SCENARIO, type ScenarioContext } from "./_setup.js";
 
 /**
  * Drive a fresh `/resource` 402 retry → commit and return the
@@ -75,7 +75,21 @@ describe.skipIf(!ENABLED)("@p0 post-commit lifecycle scenarios", () => {
     // give the random buyer enough native ETH to cover all the local
     // mint + approve + transfer fees.
     const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
-    ctx = await createScenarioContext({ slot: "postCommit", buyerAccount });
+    // Pin the `none` token-auth strategy on both the in-process resource
+    // server and the buyer policy. Without this pin, the buyer client
+    // picks `permit2` (its default preference for clients without a
+    // `tokenDomainResolver`) and the on-chain `transferFrom` reverts
+    // with "ERC20: insufficient allowance" because the buyer has only
+    // approved the protocol Diamond — not the canonical Permit2
+    // contract that the Permit2 path transfers through. Post-commit
+    // scenarios just need a committed exchange as a starting state, so
+    // any working strategy is fine; `none` matches the allowance
+    // `ensureBuyerCanPay` sets up below.
+    ctx = await createScenarioContext({
+      slot: "postCommit",
+      buyerAccount,
+      ...NONE_TOKEN_AUTH_SCENARIO,
+    });
     // Over-provision the buyer's allowance by ~10x the per-commit cap
     // so successive commits inside the describe don't need re-approval.
     await ensureBuyerCanPay({
@@ -237,7 +251,11 @@ describe.skipIf(!ENABLED)("@p1 post-commit lifecycle scenarios", () => {
     // and the slot's seller / funder can handle both describes' load.
     const funder = buildWalletClient(SEED_WALLETS.postCommit.account);
     const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
-    ctx = await createScenarioContext({ slot: "postCommit", buyerAccount });
+    ctx = await createScenarioContext({
+      slot: "postCommit",
+      buyerAccount,
+      ...NONE_TOKEN_AUTH_SCENARIO,
+    });
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,

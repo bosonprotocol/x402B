@@ -1,15 +1,19 @@
-// Buyer-side ERC-20 prep for the `none` token-auth strategy.
+// Buyer-side ERC-20 prep for the scenario suite.
 //
-// With `tokenAuthStrategy: "none"`, the buyer must have already
-// approved the escrow for at least `amount` of the payment asset
-// before committing — settle just calls `transferFrom` and reverts on
-// insufficient allowance. The other three strategies bundle their own
-// authorisation in the X-PAYMENT payload and don't need this.
+// Two flavours, picked by the scenario based on its `tokenAuthStrategy`:
 //
-// The local Boson stack ships the `Foreign20` test ERC-20 with a
-// public `mint(to, amount)`, so we mint the buyer enough to cover the
-// scenario amount before approving. Both calls are no-ops when
-// re-run with already-sufficient balance / allowance.
+//   - `ensureBuyerHasBalance` — mint payment tokens to the buyer if
+//     the balance falls short. ERC-3009, Permit, and Permit2 carry
+//     their own authorisation in the X-PAYMENT payload, so no
+//     allowance is needed; balance alone gates the settle.
+//   - `ensureBuyerCanPay` — calls `ensureBuyerHasBalance`, then ensures
+//     the escrow has a generous ERC-20 allowance. Required only for
+//     the `none` strategy, where settle just calls `transferFrom` and
+//     reverts on insufficient allowance.
+//
+// The local Boson stack's test ERC-20 mocks (`Foreign20`,
+// `MockERC3009Token`, `MockERC2612Token`) all expose a public
+// `mint(to, amount)`; both helpers re-use the same minimal ABI.
 
 import {
   parseEther,
@@ -62,27 +66,45 @@ const ERC20_TEST_ABI = [
   },
 ] as const;
 
-export interface BuyerSetupArgs {
+export interface EnsureBuyerHasBalanceArgs {
   /** Buyer's viem `WalletClient` (must hold native ETH for gas). */
   walletClient: WalletClient;
   /** Read-side `PublicClient`. */
   publicClient: PublicClient;
-  /** Payment-asset address (typically `LOCAL_31337_0.contracts.testErc20`). */
+  /** Payment-asset address. */
   assetAddress: Address;
-  /** Escrow address — the `spender` the buyer approves. */
-  escrowAddress: Address;
-  /** Amount the scenario will commit (decimal string of atomic units). */
+  /** Amount the scenario will commit (atomic units). */
   amount: bigint;
   /** Buyer's wallet address. */
   buyerAddress: Address;
 }
 
+export interface BuyerSetupArgs extends EnsureBuyerHasBalanceArgs {
+  /** Escrow address — the `spender` the buyer approves for the `none` strategy. */
+  escrowAddress: Address;
+}
+
 /**
- * Ensure the buyer has at least `amount` balance + allowance against
- * the escrow. Mints the deficit + sends an `approve` only when
- * necessary so re-runs of the same scenario don't burn gas pointlessly.
+ * Mint payment tokens to the buyer until their balance covers `amount`.
+ * Used by token-auth strategies (ERC-3009 / Permit / Permit2) that
+ * carry their own transfer authorisation in the X-PAYMENT payload —
+ * the escrow doesn't need a standing allowance, only a balance to
+ * pull from.
  */
-export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
+export async function ensureBuyerHasBalance(args: EnsureBuyerHasBalanceArgs): Promise<void> {
+  // `WalletClient` doesn't require `account` / `chain` at the type
+  // level, so unguarded non-null assertions would crash with an opaque
+  // viem error if a caller passed a bare client. Surface a clear
+  // harness-side message instead.
+  const walletAccount = args.walletClient.account;
+  const walletChain = args.walletClient.chain;
+  if (walletAccount === undefined || walletChain === undefined) {
+    throw new Error(
+      "[x402-e2e/_buyer-setup] ensureBuyerHasBalance requires a WalletClient with both `account` and `chain` set " +
+        "(use `buildWalletClient(account)`)",
+    );
+  }
+
   const balance = (await args.publicClient.readContract({
     address: args.assetAddress,
     abi: ERC20_TEST_ABI,
@@ -96,10 +118,30 @@ export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
       abi: ERC20_TEST_ABI,
       functionName: "mint",
       args: [args.buyerAddress, args.amount - balance],
-      account: args.walletClient.account!,
-      chain: args.walletClient.chain!,
+      account: walletAccount,
+      chain: walletChain,
     });
     await args.publicClient.waitForTransactionReceipt({ hash: mintHash });
+  }
+}
+
+/**
+ * Ensure the buyer has at least `amount` balance + allowance against
+ * the escrow. Used by the `none` token-auth strategy, where settle
+ * calls `transferFrom` and reverts on insufficient allowance. Both
+ * the mint and the approve are no-ops when re-run with sufficient
+ * balance / allowance.
+ */
+export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
+  await ensureBuyerHasBalance(args);
+  // ensureBuyerHasBalance has already validated `account` / `chain`;
+  // re-extract them as locals for the type-narrowed writeContract call
+  // below without re-running the guard.
+  const walletAccount = args.walletClient.account;
+  const walletChain = args.walletClient.chain;
+  if (walletAccount === undefined || walletChain === undefined) {
+    // Unreachable — ensureBuyerHasBalance would have thrown above.
+    return;
   }
 
   const allowance = (await args.publicClient.readContract({
@@ -117,8 +159,8 @@ export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
       // Approve a generous cap so subsequent scenarios on the same
       // chain state don't need to re-approve; refunds untouched.
       args: [args.escrowAddress, args.amount * 1000n],
-      account: args.walletClient.account!,
-      chain: args.walletClient.chain!,
+      account: walletAccount,
+      chain: walletChain,
     });
     await args.publicClient.waitForTransactionReceipt({ hash: approveHash });
   }

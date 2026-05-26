@@ -4,6 +4,7 @@
 
 import type { ClientState } from "@bosonprotocol/x402-core/state-machine";
 import type { TokenEip712Domain } from "@bosonprotocol/x402-core/eip712/token-auth";
+import type { TokenAuthStrategy } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { Address, Hex, PublicClient, TypedDataDomain, TypedDataParameter } from "viem";
 
 /**
@@ -25,6 +26,20 @@ export interface Policy {
   redeemMode?: RedeemMode;
   /** Atomic-units cap. If set, the client rejects requirements whose `amount` exceeds it. */
   maxAmount?: string;
+  /**
+   * Force a specific token-auth strategy instead of letting the
+   * dispatcher pick from `STRATEGY_PREFERENCE`. The chosen value MUST
+   * be in the server's advertised `tokenAuthStrategies` set;
+   * otherwise `handle402` throws `UnsupportedTokenAuthError`.
+   *
+   * Use `"none"` when the buyer has already approved the escrow off-band
+   * (e.g. via a standing ERC-20 `approve`) and wants the payment to ride
+   * the protocol's `safeTransferFrom` fallback — no token-auth payload is
+   * sent. The dispatcher's normal preference order (`erc3009` →
+   * `permit2` → `permit`) skips `"none"`, so this override is the only
+   * way to opt in.
+   */
+  tokenAuthStrategy?: TokenAuthStrategy;
 }
 
 export interface FulfillmentConfig {

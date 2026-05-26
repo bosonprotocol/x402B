@@ -20,7 +20,10 @@
 //    reader can be built from the env (see README).
 
 import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
-import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
+import type {
+  EscrowPaymentRequirements,
+  TokenAuthStrategy,
+} from "@bosonprotocol/x402-core/schemes/escrow";
 import {
   createX402bServer,
   type ExchangeReader,
@@ -52,6 +55,15 @@ export interface ResourceServerAppOptions {
    * Omitted in unit tests that don't have a live chain.
    */
   protocolConfig?: ProtocolConfig;
+  /**
+   * Token-auth strategies the host advertises in the 402 challenge.
+   * Defaults to the full set `["none", "erc3009", "permit", "permit2"]`
+   * so a forked deployment that pairs the example with a stock buyer
+   * gets the canonical client-preference order. Tests that need to
+   * isolate a single strategy (e.g. assert ERC-3009 is exercised
+   * end-to-end against a specific token mock) pass a narrower list.
+   */
+  tokenAuthStrategies?: readonly TokenAuthStrategy[];
 }
 
 export interface ResourceServerAppBundle {
@@ -77,6 +89,13 @@ function buildServerConfig(
   };
 }
 
+const DEFAULT_TOKEN_AUTH_STRATEGIES: readonly TokenAuthStrategy[] = [
+  "none",
+  "erc3009",
+  "permit",
+  "permit2",
+];
+
 export function createResourceServerApp(
   env: ResourceServerEnv,
   options: ResourceServerAppOptions,
@@ -85,6 +104,7 @@ export function createResourceServerApp(
   const exchangeReader = options.exchangeReader;
   const now = options.now ?? Date.now;
   const protocolConfig = options.protocolConfig;
+  const tokenAuthStrategies = options.tokenAuthStrategies ?? DEFAULT_TOKEN_AUTH_STRATEGIES;
 
   const server = createX402bServer(buildServerConfig(env, seller, exchangeReader));
 
@@ -191,10 +211,12 @@ export function createResourceServerApp(
       },
       asset: env.assetAddress,
       amount: env.amount,
-      // Settle path is end-to-end runnable only for `none` today; the
-      // other strategies are advertised so the buyer can pick one once
-      // the BPIP-12 envelope ships in the facilitator.
-      tokenAuthStrategies: ["none", "erc3009", "permit", "permit2"],
+      // BPIP-12's `executeMetaTransactionWithTokenTransferAuthorization`
+      // has shipped, so any of the four strategies is end-to-end
+      // settle-able when the matching token is in scope. Forks narrow
+      // the advertised set via `ResourceServerAppOptions.tokenAuthStrategies`
+      // when the asset only supports a subset (e.g. a non-EIP-3009 ERC-20).
+      tokenAuthStrategies,
       recipientId: env.sellerId,
       maxTimeoutSeconds: env.maxTimeoutSeconds,
     });

@@ -18,6 +18,7 @@ import {
   createX402bClient,
   type Policy,
   type Signer,
+  type TokenDomainResolver,
   type X402bClient,
 } from "@bosonprotocol/x402-client";
 import { wrapFetchWithPayment } from "@bosonprotocol/x402-client-fetch";
@@ -44,6 +45,16 @@ export interface BuyerActorArgs {
    * instead of the default `auto` (which prefers deferred commit).
    */
   policy?: Policy;
+  /**
+   * Optional `TokenDomainResolver` — required for the ERC-3009 and
+   * EIP-2612 Permit token-auth strategies. Without it, those
+   * strategies fall through to the next preference (typically
+   * Permit2) per the client dispatcher's capability check, so the
+   * default A1 happy path that runs against Permit2 doesn't need it.
+   * Scenarios that exercise ERC-3009 / Permit specifically pass a
+   * `createChainTokenDomainResolver(publicClient)`.
+   */
+  tokenDomainResolver?: TokenDomainResolver;
 }
 
 /** Wrap a viem `LocalAccount` so it satisfies `@bosonprotocol/x402-client`'s `Signer` interface. */
@@ -78,6 +89,9 @@ export function createBuyerActor(args: BuyerActorArgs): BuyerActor {
     subgraphUrls: { [chainId]: args.subgraphUrl ?? LOCAL_31337_0.urls.subgraph },
     publicClients: { [chainId]: publicClient },
     ...(args.policy !== undefined ? { policy: args.policy } : {}),
+    ...(args.tokenDomainResolver !== undefined
+      ? { tokenDomainResolver: args.tokenDomainResolver }
+      : {}),
   });
 
   return {
