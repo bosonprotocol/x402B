@@ -133,11 +133,15 @@ services:
       - "4001:4001"
     environment:
       # ACCOUNT_2 — distinct from facilitator (ACCOUNT_8) and gateway
-      # (ACCOUNT_9). The Boson seller entity behind SELLER_ID is created
-      # at suite seed time (PR5); SELLER_ID=1 is a placeholder until
-      # then — the /resource 402 path doesn't dereference it on chain.
+      # (ACCOUNT_9). The Boson seller entity behind this key is
+      # self-seeded by the entrypoint (`src/bin/resource-server.ts`):
+      # on boot it queries the subgraph for a seller registered to
+      # this assistant address and calls `createSeller` when absent,
+      # then injects the resolved id into the app. `SELLER_ID` is
+      # therefore intentionally omitted here — pinning it statically
+      # is impossible since the on-chain id is only known after the
+      # seed transaction lands.
       - SELLER_PK=0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
-      - SELLER_ID=1
       - DISPUTE_RESOLVER_ID=1
       - RESOURCE_SERVER_URL=http://host.docker.internal:4001
       - RPC_NODE=http://host.docker.internal:8545

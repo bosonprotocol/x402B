@@ -10,8 +10,22 @@
 // The reader's subgraph URL comes from the `SUBGRAPH_URL` env the
 // canonical compose already wires to the in-container subgraph
 // endpoint (`http://host.docker.internal:8000/subgraphs/name/boson/corecomponents`).
+//
+// Seller self-seeding: the example's `readEnv` requires a `SELLER_ID`,
+// but on a fresh devnet stack the seller entity behind the configured
+// `SELLER_PK` doesn't exist yet — and the on-chain numeric id can't be
+// known until `createSeller` has been called. The entrypoint mirrors
+// the harness's `seedSuite` flow: look up the subgraph for a seller
+// whose `assistant` matches `SELLER_PK`'s address, call `createSeller`
+// when absent, then override `env.sellerId` with the resolved id
+// before constructing the app. Without this step, the buyer's
+// `createOfferAndCommit` reverts `NotAssistant()` because the recovered
+// `offer.creator` isn't a registered assistant on chain. Idempotent —
+// a re-boot against a stack where the seller already exists is a
+// no-op lookup.
 
-import type { Address, PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import type { Address, Hex, PublicClient } from "viem";
 
 import {
   createResourceServerApp,
@@ -20,8 +34,10 @@ import {
   type ProtocolConfig,
 } from "@bosonprotocol/x402-example-resource-server";
 
-import { buildPublicClient } from "../harness/clients.js";
+import { buildPublicClient, buildWalletClient } from "../harness/clients.js";
+import { buildCreateSellerCallback } from "../harness/create-seller.js";
 import { createSubgraphExchangeReader } from "../harness/exchange-reader.js";
+import { seedSuite } from "../harness/seed.js";
 
 // `docker compose up --wait` only blocks until each container reports
 // healthy; the contracts inside `boson-protocol-node` are still
@@ -106,12 +122,62 @@ async function waitForProtocolConfigInitialized(args: {
   }
 }
 
+/**
+ * Look up — or create — the Boson seller entity whose assistant is
+ * the address derived from `sellerPk`. Returns the resolved seller id
+ * (decimal string) so the caller can override `env.sellerId` before
+ * handing it to `createResourceServerApp`. Idempotent against an
+ * already-registered seller: the subgraph hit short-circuits before
+ * any on-chain write.
+ */
+async function ensureSellerEntity(args: {
+  sellerPk: Hex;
+  rpcUrl: string;
+  publicClient: PublicClient;
+  escrowAddress: Address;
+  chainId: number;
+  subgraphUrl: string;
+}): Promise<string> {
+  const sellerAccount = privateKeyToAccount(args.sellerPk);
+  console.log(
+    `[x402-e2e/resource-server] ensuring seller entity for assistant ${sellerAccount.address}…`,
+  );
+  const walletClient = buildWalletClient(sellerAccount, { rpcUrl: args.rpcUrl });
+  const createSeller = buildCreateSellerCallback({
+    walletClient,
+    publicClient: args.publicClient,
+    escrowAddress: args.escrowAddress,
+    chainId: args.chainId,
+    subgraphUrl: args.subgraphUrl,
+  });
+  const state = await seedSuite({
+    sellerAddress: sellerAccount.address,
+    subgraphUrl: args.subgraphUrl,
+    escrowAddress: args.escrowAddress,
+    chainId: args.chainId,
+    createSeller,
+  });
+  console.log(
+    `[x402-e2e/resource-server] seller entity ready: id=${state.seller.id}, assistant=${state.seller.assistant}`,
+  );
+  return state.seller.id;
+}
+
 async function main(): Promise<void> {
+  // The example's `readEnv` flags `SELLER_ID` as required so library
+  // operators always pin the on-chain seller id at boot. The harness
+  // can't — the id is only knowable after `createSeller` lands. Inject
+  // a placeholder so `readEnv`'s validator accepts the env, then
+  // overwrite `env.sellerId` further down with the real value resolved
+  // by `ensureSellerEntity`. The placeholder is never observed by the
+  // app because the override happens before `createResourceServerApp`.
+  process.env.SELLER_ID ??= "0";
+
   const env = readEnv();
 
   if (env.subgraphUrl === undefined) {
     throw new Error(
-      "[x402-e2e/resource-server] SUBGRAPH_URL is required so the entrypoint can construct the subgraph-backed ExchangeReader",
+      "[x402-e2e/resource-server] SUBGRAPH_URL is required so the entrypoint can construct the subgraph-backed ExchangeReader and self-seed the seller entity",
     );
   }
 
@@ -133,6 +199,15 @@ async function main(): Promise<void> {
     escrowAddress: env.escrowAddress,
   });
 
+  const sellerId = await ensureSellerEntity({
+    sellerPk: env.sellerPk,
+    rpcUrl: env.rpcNode,
+    publicClient,
+    escrowAddress: env.escrowAddress,
+    chainId: env.chainId,
+    subgraphUrl: env.subgraphUrl,
+  });
+
   const exchangeReader = createSubgraphExchangeReader({
     subgraphUrl: env.subgraphUrl,
     escrowAddress: env.escrowAddress,
@@ -140,7 +215,10 @@ async function main(): Promise<void> {
     publicClient,
   });
 
-  const { app, seller } = createResourceServerApp(env, { exchangeReader, protocolConfig });
+  const { app, seller } = createResourceServerApp(
+    { ...env, sellerId },
+    { exchangeReader, protocolConfig },
+  );
 
   const server = app.listen(env.port, () => {
     console.log(
