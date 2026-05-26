@@ -173,8 +173,11 @@ with `-t '@p0'`. Priorities:
 ### Running a tag subset
 
 ```sh
-# Matches the per-PR CI job — @p0 only.
-E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test -- -t '@p0'
+# Matches the per-PR CI job — @p0 only. Routed through the dedicated
+# `test:p0` script because pnpm v10 forwards `--` literally and vitest
+# would parse `-t @p0` as a positional file pattern (re-running the
+# full @p1 / @p2 breadth instead of filtering).
+E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:p0
 
 # Matches the nightly workflow — full breadth.
 # E2E_SEQUENTIAL=1 disables file-parallelism so the operational
