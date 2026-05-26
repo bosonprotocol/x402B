@@ -21,7 +21,7 @@ import {
   recoverPermit2Signer,
   recoverPermitSigner,
 } from "@bosonprotocol/x402-core/eip712/token-auth";
-import type { PublicClient } from "viem";
+import type { Hex, PublicClient } from "viem";
 
 import { packRsv } from "./meta-tx-signature.js";
 import type { StepResult } from "./structural.js";
