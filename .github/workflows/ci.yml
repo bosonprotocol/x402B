@@ -50,16 +50,20 @@ jobs:
 
       - run: pnpm format:check
 
-  # Runs the @p0 subset of the x402-e2e scenario suite against the real
-  # Docker stack. Always-on per PR. Cold image pulls + stack boot take
-  # 2–5 minutes; the @p0 subset itself completes in ~1–2 minutes. The
-  # full breadth (including @p1 / @p2 operational scenarios) runs in
-  # the nightly workflow.
-  e2e-p0:
-    name: e2e (@p0)
+  # Runs the @p0 + @p1 subset of the x402-e2e scenario suite against the
+  # real Docker stack. Always-on per PR. Cold image pulls + stack boot
+  # take 2–5 minutes. The `operational.test.ts` file is excluded: its F1
+  # chaos scenario kills the facilitator container mid-flight and would
+  # race the chain-touching tests in other files when run in parallel.
+  # Keeping it out lets this job stay parallel (fast); the operational
+  # tier — F1 (@p1), plus F2 / F4 (@p2) — is exercised nightly with
+  # `E2E_SEQUENTIAL=1`. The @p2 tier is also kept out here via the tag
+  # filter.
+  e2e-pr:
+    name: e2e (@p0 + @p1)
     runs-on: ubuntu-latest
     if: ${{ !github.event.pull_request.draft }}
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -78,16 +82,16 @@ jobs:
 
       - run: pnpm build
 
-      - name: Run @p0 e2e suite
+      - name: Run @p0 + @p1 e2e suite
         env:
           E2E_DOCKER: "1"
-        # Uses the `test:p0` script (rather than `test -- -t '@p0'`) because
-        # pnpm v10 forwards the `--` separator literally and vitest then
-        # parses `-t @p0` as positional file patterns instead of the
-        # `--testNamePattern` flag, which would re-enable the @p1/@p2
-        # operational chaos tests (they kill the facilitator container
-        # mid-flow and race the chain-touching tests in other files).
-        run: pnpm --filter @bosonprotocol/x402-e2e test:p0
+        # Uses the `test:pr` script (rather than `test -- -t '@p0|@p1'`)
+        # because pnpm v10 forwards the `--` separator literally and vitest
+        # then parses the flags as positional file patterns instead of the
+        # `--testNamePattern` / `--exclude` options. The script pins the
+        # `@p0|@p1` tag filter and excludes `operational.test.ts` so the
+        # job stays parallel-safe (no chaos tests).
+        run: pnpm --filter @bosonprotocol/x402-e2e test:pr
 
       - name: Dump docker compose logs on failure
         if: failure()
@@ -99,6 +103,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: e2e-p0-logs-${{ github.run_id }}
+          name: e2e-pr-logs-${{ github.run_id }}
           path: typescript/packages/x402-e2e/docker-compose.log
           if-no-files-found: ignore

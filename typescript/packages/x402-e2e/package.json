@@ -9,6 +9,7 @@
     "build": "tsc --noEmit",
     "test": "vitest run",
     "test:p0": "vitest run -t @p0",
+    "test:pr": "vitest run -t '@p0|@p1' --exclude '**/operational.test.ts'",
     "lint": "eslint src test scripts --max-warnings 0",
     "stack:up": "tsx scripts/stack-up.ts",
     "stack:down": "tsx scripts/stack-down.ts",
