@@ -36,7 +36,7 @@ import { EXPECTED_PRICE, TX_HASH_REGEX } from "./_assertion-constants.js";
 import { createFundedBuyer, ensureBuyerCanPay } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
 import { SEED_WALLETS } from "./_seed-wallets.js";
-import { createScenarioContext, type ScenarioContext } from "./_setup.js";
+import { createScenarioContext, NONE_TOKEN_AUTH_SCENARIO, type ScenarioContext } from "./_setup.js";
 
 /**
  * Drive a fresh `/resource` 402 retry → commit and return the
@@ -88,8 +88,7 @@ describe.skipIf(!ENABLED)("@p0 post-commit lifecycle scenarios", () => {
     ctx = await createScenarioContext({
       slot: "postCommit",
       buyerAccount,
-      tokenAuthStrategies: ["none"],
-      buyerPolicy: { tokenAuthStrategy: "none" },
+      ...NONE_TOKEN_AUTH_SCENARIO,
     });
     // Over-provision the buyer's allowance by ~10x the per-commit cap
     // so successive commits inside the describe don't need re-approval.
@@ -255,8 +254,7 @@ describe.skipIf(!ENABLED)("@p1 post-commit lifecycle scenarios", () => {
     ctx = await createScenarioContext({
       slot: "postCommit",
       buyerAccount,
-      tokenAuthStrategies: ["none"],
-      buyerPolicy: { tokenAuthStrategy: "none" },
+      ...NONE_TOKEN_AUTH_SCENARIO,
     });
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),

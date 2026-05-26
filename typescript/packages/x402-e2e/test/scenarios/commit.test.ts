@@ -31,7 +31,7 @@ import { EXPECTED_PRICE, TX_HASH_REGEX } from "./_assertion-constants.js";
 import { createFundedBuyer, ensureBuyerCanPay, ensureBuyerHasBalance } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
 import { SEED_WALLETS } from "./_seed-wallets.js";
-import { createScenarioContext, type ScenarioContext } from "./_setup.js";
+import { createScenarioContext, NONE_TOKEN_AUTH_SCENARIO, type ScenarioContext } from "./_setup.js";
 
 describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
   let ctx: ScenarioContext;
@@ -51,8 +51,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
     ctx = await createScenarioContext({
       slot: "commit",
       buyerAccount,
-      tokenAuthStrategies: ["none"],
-      buyerPolicy: { tokenAuthStrategy: "none" },
+      ...NONE_TOKEN_AUTH_SCENARIO,
     });
     // `none` strategy requires the buyer to have pre-approved the
     // escrow — settle just calls `safeTransferFrom`. Top up by ~10x
@@ -116,7 +115,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
     const atomicBuyer = createBuyerActor({
       account: buyerAccount,
       publicClient: ctx.buyer.publicClient,
-      policy: { redeemMode: "commit-and-redeem", tokenAuthStrategy: "none" },
+      policy: { ...NONE_TOKEN_AUTH_SCENARIO.buyerPolicy, redeemMode: "commit-and-redeem" },
     });
 
     const res = await atomicBuyer.fetch(`${ctx.resourceServerUrl}/resource`);
