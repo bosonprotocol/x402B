@@ -148,6 +148,21 @@ async function allocateFreePort(): Promise<number> {
   return port;
 }
 
+/**
+ * Pin the `none` token-auth strategy on both the in-process resource
+ * server's advertised strategies and the buyer policy. Spread into
+ * `createScenarioContext` for scenarios that don't exercise ERC-3009 /
+ * Permit / Permit2 path-specific behaviour — without the pin, the
+ * buyer client falls through to `permit2` (no `tokenDomainResolver`
+ * configured) and the on-chain `transferFrom` reverts with `ERC20:
+ * insufficient allowance` because `ensureBuyerCanPay` only approves
+ * the protocol Diamond, not the canonical Permit2 contract.
+ */
+export const NONE_TOKEN_AUTH_SCENARIO = {
+  tokenAuthStrategies: ["none"] as const,
+  buyerPolicy: { tokenAuthStrategy: "none" as const },
+} satisfies Pick<ScenarioContextArgs, "tokenAuthStrategies" | "buyerPolicy">;
+
 export async function createScenarioContext(args: ScenarioContextArgs): Promise<ScenarioContext> {
   const slot = SEED_WALLETS[args.slot];
   const sellerPk = slot.privateKey;
