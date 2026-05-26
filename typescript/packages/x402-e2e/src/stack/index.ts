@@ -5,3 +5,10 @@ export { startStack, type StartStackOptions } from "./start.js";
 export { stopStack, type StopStackOptions } from "./stop.js";
 export { waitForStackReady, type WaitForReadyOptions } from "./readiness.js";
 export { COMPOSE_FILE } from "./paths.js";
+export {
+  killService,
+  pauseService,
+  startService,
+  unpauseService,
+  type KillServiceOptions,
+} from "./service-control.js";

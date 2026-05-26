@@ -31,7 +31,8 @@ src/
   stack/
     compose.yaml                  ← canonical Boson stack + 3 x402B services
     ipfs-config.sh                ← volume-mounted into the ipfs container
-    start.ts / stop.ts            ← programmatic docker compose up / down
+    start.ts / stop.ts            ← programmatic docker compose up / down (whole-stack lifecycle)
+    service-control.ts            ← per-service kill / pause / unpause / start (chaos for F1, F2)
     readiness.ts                  ← polls boson-protocol-node + boson-subgraph deploy.done markers
     paths.ts / exec.ts            ← internals
   harness/                          ← PR 5
@@ -56,10 +57,14 @@ test/
     globalSetup.ts                ← boots stack + seeds seller; gated on E2E_DOCKER
   scenarios/                      ← PR 6
     _setup.ts                     ← per-test scaffolding (in-process resource server, actors, asserter)
-    _buyer-setup.ts               ← mint + approve helpers for the `none` strategy
-    _skeletons.test.ts            ← it.todo declarations for PR 7 / PR 8 scenarios
-    commit.test.ts                ← A1 runnable + A2–A5 todo
-    validation-commit.test.ts     ← C1–C5/C8 todo (lands in PR 7)
+    _buyer-setup.ts               ← mint + approve helpers; `createFundedBuyer` + `rotateBuyer` (F4)
+    _seed-wallets.ts              ← per-FILE seed-wallet pool (one Boson seller per slot)
+    _skeletons.test.ts            ← it.todo anchors for unimplemented scenarios
+    commit.test.ts                ← A1, A2 runnable
+    post-commit.test.ts           ← B1–B4 (@p0), B6, B7 (@p1)
+    concurrent.test.ts            ← E0 — 20 parallel atomic commit-and-redeem
+    operational.test.ts           ← F1 (@p1), F2, F4 (@p2) — failure-mode chaos
+    validation-commit.test.ts     ← C1–C5, C8 (commit-time validation negatives)
 ```
 
 ## Bring the stack up
@@ -140,6 +145,71 @@ service's HTTP-level health probe (or root URL), and tears down. Allow
 
 Without `E2E_DOCKER=1`, the suite skips itself so the repo-wide
 `pnpm test` stays fast.
+
+## Scenario inventory
+
+Tests are tagged in the `describe(...)` title so vitest can filter
+with `-t '@p0'`. Priorities:
+
+- **`@p0`** — happy-path commit + post-commit lifecycle. Runs on
+  every PR in CI (see `.github/workflows/ci.yml`'s `e2e-p0` job).
+- **`@p1`** — secondary lifecycle paths + operational scenarios
+  with a tight blast radius. Runs nightly.
+- **`@p2`** — niche failure modes (subgraph lag, buyer key
+  rotation) and lower-impact transitions. Runs nightly.
+
+| Tag(s)   | Describe                                      | File                          |
+|----------|-----------------------------------------------|-------------------------------|
+| `@p0`    | commit-time scenarios (A1, A2)                | `commit.test.ts`              |
+| `@p0`    | concurrent commit-and-redeem (E0)             | `concurrent.test.ts`          |
+| `@p0`    | post-commit lifecycle (B1–B4)                 | `post-commit.test.ts`         |
+| `@p0`    | commit-time validations (C1–C5, C8)           | `validation-commit.test.ts`   |
+| `@p1`    | post-commit lifecycle (B6, B7)                | `post-commit.test.ts`         |
+| `@p1`    | operational scenarios (F1)                    | `operational.test.ts`         |
+| `@p2`    | operational scenarios (F2, F4)                | `operational.test.ts`         |
+| `@p1/@p2`| commit-time fulfillment (A6–A8)               | `_skeletons.test.ts`          |
+| `it.todo`| follow-up scenarios (B5, B8–9, C6–C10, D1–D4, E1–E3) | `_skeletons.test.ts`   |
+
+### Running a tag subset
+
+```sh
+# Matches the per-PR CI job — @p0 only. Routed through the dedicated
+# `test:p0` script because pnpm v10 forwards `--` literally and vitest
+# would parse `-t @p0` as a positional file pattern (re-running the
+# full @p1 / @p2 breadth instead of filtering).
+E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:p0
+
+# Matches the nightly workflow — full breadth.
+# E2E_SEQUENTIAL=1 disables file-parallelism so the operational
+# scenarios (F1 kills the facilitator, F2 pauses the subgraph) can't
+# race the commit / post-commit tests in another worker.
+E2E_DOCKER=1 E2E_SEQUENTIAL=1 pnpm --filter @bosonprotocol/x402-e2e test
+
+# Single file (against a stack you launched manually via `pnpm stack:up`).
+E2E_DOCKER=1 E2E_DOCKER_KEEP_STACK=1 \
+  pnpm --filter @bosonprotocol/x402-e2e test operational
+```
+
+## CI workflows
+
+- **`.github/workflows/ci.yml`** runs on every PR + push to `main`:
+  - `build-test-lint` — Node 22 / 24 matrix; `pnpm build`,
+    `pnpm test`, `pnpm lint`, `pnpm format:check`.
+  - `e2e-p0` — boots the stack and runs the `@p0` scenario subset
+    via `vitest -t '@p0'`. 25-min timeout (cold image pull adds 2–5
+    min). Uploads `docker compose logs` on failure.
+- **`.github/workflows/nightly.yml`** runs daily at 03:00 UTC and on
+  manual `workflow_dispatch`:
+  - `e2e-full` — same stack boot, no tag filter — runs every
+    scenario including the operational failure-mode tests in the
+    `@p1` / `@p2` tiers. 60-min timeout. Uploads `docker compose
+    logs` on failure.
+
+Both workflows pin Node 22 for the e2e job (Docker is the heavy
+dependency, not the Node version) and set
+`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` per repo policy so
+`actions/checkout` / `setup-node` / etc. opt onto Node 24 ahead of
+GitHub's June 2026 forced migration.
 
 ## Conventions
 

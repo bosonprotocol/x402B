@@ -19,7 +19,7 @@ FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY --parents typescript/packages/*/package.json examples/*/package.json ./
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile \
+    pnpm install --frozen-lockfile --include-workspace-root \
     --filter @bosonprotocol/x402-e2e...
 
 # --- Stage 2: build + deploy (invalidated when source changes) ---
@@ -27,10 +27,15 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 # + the exports map points at it). The trailing `...` includes the
 # transitive workspace chain (x402-core, x402-evm, x402-actions,
 # x402-fulfillment, x402-server, x402-server-express, x402-example-resource-server).
+#
+# Invoke turbo (not recursive pnpm) so the .turbo cache mount short-
+# circuits unchanged packages by content hash. `--include-workspace-root`
+# on the install above is what makes `pnpm exec turbo` resolvable here.
 FROM deps AS build
 COPY . .
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm --filter @bosonprotocol/x402-example-resource-server... build
+    --mount=type=cache,id=turbo,target=/repo/.turbo \
+    pnpm exec turbo run build --filter=@bosonprotocol/x402-example-resource-server...
 RUN pnpm --filter @bosonprotocol/x402-e2e deploy --legacy /deploy
 
 # --- Stage 3: runtime ---
