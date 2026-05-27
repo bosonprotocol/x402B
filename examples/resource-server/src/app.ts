@@ -267,12 +267,17 @@ export function createResourceServerApp(
   // facilitator-side callbacks inside the compose network), which the
   // browser running on the host can't resolve.
   const paywallBranch = async (req: Request, res: Response, next: NextFunction) => {
-    // The 402 representation is content-negotiated on `Accept` (HTML
-    // paywall vs JSON), so advertise that to caches/intermediaries to
-    // stop them serving one variant to a client that asked for the
-    // other. Set unconditionally so both the HTML branch below and the
-    // downstream JSON 402 inherit it.
+    // The `/resource` representation varies on two request dimensions:
+    // `Accept` (HTML paywall vs JSON) and the presence/validity of
+    // `X-PAYMENT` (unpaid 402 vs paid 200). Advertise both to
+    // caches/intermediaries so they never serve a paid 200 to an unpaid
+    // request, nor the HTML paywall to a JSON client — and mark the
+    // route `no-store` outright so the payment-gated body is never
+    // cached at all. Set unconditionally so the HTML branch below, the
+    // downstream JSON 402, and the eventual 200 success all inherit it.
     res.vary("Accept");
+    res.vary("X-PAYMENT");
+    res.set("Cache-Control", "no-store");
     if (req.header("X-PAYMENT") !== undefined) {
       next();
       return;
