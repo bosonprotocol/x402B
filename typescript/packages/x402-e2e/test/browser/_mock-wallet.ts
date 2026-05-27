@@ -40,8 +40,10 @@ export interface InstallMockWalletArgs {
    *   - `"normal"` — sign requests as usual, report the configured `chainId`.
    *   - `"reject-sign"` — `eth_signTypedData_v4` throws an EIP-1193
    *     `code: 4001` user-rejected error.
-   *   - `"wrong-chain"` — `eth_chainId` returns mainnet (`0x1`) and
-   *     `wallet_switchEthereumChain` rejects with `code: 4001`.
+   *   - `"wrong-chain"` — `wallet_switchEthereumChain` rejects with
+   *     `code: 4001`. `eth_chainId` always reports the configured
+   *     `chainId`, so callers simulate a mismatched network by passing
+   *     a foreign id (e.g. `1` for mainnet) alongside this mode.
    */
   mode: MockWalletMode;
 }
