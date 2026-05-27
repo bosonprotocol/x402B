@@ -34,8 +34,9 @@ import {
 } from "@bosonprotocol/x402-core/eip712";
 import type { Address, BosonMetaTx, Hex } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
-import { decodeFunctionData, parseAbi, recoverTypedDataAddress } from "viem";
+import { decodeFunctionData, recoverTypedDataAddress } from "viem";
 
+import { BOSON_POST_COMMIT_ACTION_ABI } from "../internal/boson-action-abi.js";
 import type { StepResult } from "./structural.js";
 
 export interface VerifyMetaTxSignatureArgs {
@@ -223,28 +224,14 @@ async function recoverFromTypedData(
   }
 }
 
-// ABI used to decode the action-specific arguments out of
-// `metaTx.functionSignature`. Only the actions that need their args fed
-// into a typed-data builder are listed; commit-time and revoke skip
-// straight to the basic-MetaTransaction path.
-const ACTION_ARGS_ABI = parseAbi([
-  "function redeemVoucher(uint256 exchangeId)",
-  "function cancelVoucher(uint256 exchangeId)",
-  "function completeExchange(uint256 exchangeId)",
-  "function raiseDispute(uint256 exchangeId)",
-  "function retractDispute(uint256 exchangeId)",
-  "function escalateDispute(uint256 exchangeId)",
-  "function resolveDispute(uint256 exchangeId, uint256 buyerPercent, bytes counterpartySig)",
-  "function withdrawFunds(uint256 entityId, address[] tokenList, uint256[] tokenAmounts)",
-]);
-
 type DecodeFailure = { ok: false; code: "BAD_META_TX_SIGNATURE"; reason: string };
 
 // The exchange-keyed actions whose typed-data carries a single
 // `exchangeId` (`MetaTxExchange` primary type). Used to gate
-// `decodeExchangeIdArg` so a calldata buffer for a different ABI member
-// of `ACTION_ARGS_ABI` (e.g. `withdrawFunds`) can't slip through just
-// because its first argument also happens to be a `uint256`.
+// `decodeExchangeIdArg` so a calldata buffer for a different member of
+// `BOSON_POST_COMMIT_ACTION_ABI` (e.g. `withdrawFunds`) can't slip
+// through just because its first argument also happens to be a
+// `uint256`.
 const EXCHANGE_KEYED_FUNCTION_NAMES = new Set<string>([
   "redeemVoucher",
   "cancelVoucher",
@@ -259,7 +246,7 @@ function decodeExchangeIdArg(
 ): { ok: true; value: bigint } | DecodeFailure {
   try {
     const decoded = decodeFunctionData({
-      abi: ACTION_ARGS_ABI,
+      abi: BOSON_POST_COMMIT_ACTION_ABI,
       data: functionSignature as `0x${string}`,
     });
     if (!EXCHANGE_KEYED_FUNCTION_NAMES.has(decoded.functionName)) {
@@ -300,7 +287,7 @@ function decodeResolveDisputeArgs(functionSignature: string):
   | DecodeFailure {
   try {
     const decoded = decodeFunctionData({
-      abi: ACTION_ARGS_ABI,
+      abi: BOSON_POST_COMMIT_ACTION_ABI,
       data: functionSignature as `0x${string}`,
     });
     if (decoded.functionName !== "resolveDispute") {
@@ -343,7 +330,7 @@ function decodeWithdrawFundsArgs(functionSignature: string):
   | DecodeFailure {
   try {
     const decoded = decodeFunctionData({
-      abi: ACTION_ARGS_ABI,
+      abi: BOSON_POST_COMMIT_ACTION_ABI,
       data: functionSignature as `0x${string}`,
     });
     if (decoded.functionName !== "withdrawFunds") {

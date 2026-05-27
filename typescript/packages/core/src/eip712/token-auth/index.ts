@@ -19,6 +19,7 @@
 
 export * from "./domain.js";
 export * from "./erc3009.js";
+export * from "./fetch-token-domain.js";
 export * from "./permit.js";
 export * from "./permit2.js";
 export * from "./approve.js";
