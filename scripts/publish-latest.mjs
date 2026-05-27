@@ -103,7 +103,7 @@ async function main() {
   }
 
   console.log(`Pushing ${newTags.length} new tag(s) to origin...`);
-  await run("git", ["push", "origin", "--tags"]);
+  await run("git", ["push", "origin", ...newTags]);
 
   const pkgs = await readWorkspacePackages();
 
