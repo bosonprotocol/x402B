@@ -9,9 +9,10 @@
 // buyer, the asset and recipient must match the requirements, etc.
 //
 // For ERC-3009 / EIP-2612 we need the token's EIP-712 domain
-// (`name`, `version`). We resolve it via EIP-5267's `eip712Domain()`
-// when the token supports it, falling back to `name()` + `version()`
-// with a default `"1"` if `version()` reverts (the EIP-2612 default).
+// (`name`, `version`). `fetchTokenDomain` (shared with the browser
+// paywall) resolves it via EIP-5267's `eip712Domain()` when the token
+// supports it, falling back to `name()` + `version()` with a default
+// `"1"` if `version()` reverts.
 
 import type { Address, BosonTokenAuth } from "@bosonprotocol/x402-core/schemes/escrow";
 import {

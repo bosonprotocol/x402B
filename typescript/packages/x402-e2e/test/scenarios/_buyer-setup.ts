@@ -30,46 +30,7 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import { buildWalletClient } from "../../src/harness/clients.js";
-
-const ERC20_TEST_ABI = [
-  {
-    type: "function",
-    name: "mint",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "balanceOf",
-    stateMutability: "view",
-    inputs: [{ name: "owner", type: "address" }],
-    outputs: [{ type: "uint256" }],
-  },
-  {
-    type: "function",
-    name: "approve",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ type: "bool" }],
-  },
-  {
-    type: "function",
-    name: "allowance",
-    stateMutability: "view",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
-    ],
-    outputs: [{ type: "uint256" }],
-  },
-] as const;
+import { ERC20_TEST_ABI, ensureTokenBalance } from "../../src/harness/fund.js";
 
 export interface EnsureBuyerHasBalanceArgs {
   /** Buyer's viem `WalletClient` (must hold native ETH for gas). */
@@ -114,24 +75,13 @@ export async function ensureBuyerHasBalance(args: EnsureBuyerHasBalanceArgs): Pr
     );
   }
 
-  const balance = (await args.publicClient.readContract({
-    address: args.assetAddress,
-    abi: ERC20_TEST_ABI,
-    functionName: "balanceOf",
-    args: [args.buyerAddress],
-  })) as bigint;
-
-  if (balance < args.amount) {
-    const mintHash = await args.walletClient.writeContract({
-      address: args.assetAddress,
-      abi: ERC20_TEST_ABI,
-      functionName: "mint",
-      args: [args.buyerAddress, args.amount - balance],
-      account: walletAccount,
-      chain: walletChain,
-    });
-    await args.publicClient.waitForTransactionReceipt({ hash: mintHash });
-  }
+  await ensureTokenBalance({
+    walletClient: args.walletClient,
+    publicClient: args.publicClient,
+    tokenAddress: args.assetAddress,
+    owner: args.buyerAddress,
+    targetBalance: args.amount,
+  });
 }
 
 /**
@@ -144,16 +94,26 @@ export async function ensureBuyerHasBalance(args: EnsureBuyerHasBalanceArgs): Pr
  * allowance.
  */
 export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
-  await ensureBuyerHasBalance(args);
-  // ensureBuyerHasBalance has already validated `account` / `chain`;
-  // re-extract them as locals for the type-narrowed writeContract call
-  // below without re-running the guard.
+  // `WalletClient` doesn't require `account` / `chain` at the type level,
+  // so the `approve` step's non-null assertions would crash with an
+  // opaque viem error if a caller passed a bare client. Surface a clear
+  // harness-side message instead (mirrors `ensureBuyerHasBalance`).
   const walletAccount = args.walletClient.account;
   const walletChain = args.walletClient.chain;
   if (walletAccount === undefined || walletChain === undefined) {
-    // Unreachable — ensureBuyerHasBalance would have thrown above.
-    return;
+    throw new Error(
+      "[x402-e2e/_buyer-setup] ensureBuyerCanPay requires a WalletClient with both `account` and `chain` set " +
+        "(use `buildWalletClient(account)`)",
+    );
   }
+
+  await ensureTokenBalance({
+    walletClient: args.walletClient,
+    publicClient: args.publicClient,
+    tokenAddress: args.assetAddress,
+    owner: args.buyerAddress,
+    targetBalance: args.amount,
+  });
 
   const allowance = (await args.publicClient.readContract({
     address: args.assetAddress,
