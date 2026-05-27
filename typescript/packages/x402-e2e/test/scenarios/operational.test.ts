@@ -112,7 +112,7 @@ describe.skipIf(!ENABLED)("@p1 operational scenarios", () => {
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
-      escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
+      spenderAddress: LOCAL_31337_0.contracts.protocolDiamond,
       amount: 10_000_000n,
     });
   });
@@ -216,7 +216,7 @@ describe.skipIf(!ENABLED)("@p2 operational scenarios", () => {
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
-      escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
+      spenderAddress: LOCAL_31337_0.contracts.protocolDiamond,
       amount: 10_000_000n,
     });
   });
@@ -317,7 +317,7 @@ describe.skipIf(!ENABLED)("@p2 operational scenarios", () => {
       funder: buildWalletClient(SEED_WALLETS.operational.account),
       publicClient,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
-      escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
+      spenderAddress: LOCAL_31337_0.contracts.protocolDiamond,
       amount: 10_000_000n,
       fundEth: "0.5",
     });
