@@ -1,10 +1,12 @@
 name: Nightly e2e
 
-# Runs the full x402-e2e scenario suite (@p0 + @p1 + @p2) against the
-# real Docker stack on a daily schedule. Operational failure-mode
-# scenarios (F1 facilitator restart, F2 subgraph lag, F4 buyer key
-# rotation) live in the @p1 / @p2 tiers so they only exercise here —
-# the per-PR `e2e-p0` job in `ci.yml` skips them by tag filter.
+# Runs the full x402-e2e scenario suite against the real Docker stack on
+# a daily schedule, in two phases that share one stack:
+#   1. the parallel suite — everything EXCEPT the chaos file, and
+#   2. the chaos/operational file (F1 facilitator restart, F2 subgraph
+#      lag, F4 buyer key rotation) on its own, sequentially.
+# The per-PR `e2e-pr` job in `ci.yml` runs only @p0+@p1 and also excludes
+# the chaos file, so the operational scenarios are exercised here.
 
 on:
   schedule:
@@ -53,15 +55,26 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm --filter @bosonprotocol/x402-e2e exec playwright install --with-deps chromium
 
-      - name: Run full e2e suite
+      # Two-phase run sharing one stack. `E2E_DOCKER_KEEP_STACK=1` makes
+      # globalSetup skip its post-suite teardown, so phase 2 reuses the
+      # exact containers phase 1 brought up — no restart in between.
+      #
+      # Phase 1: the full suite MINUS the chaos file, in parallel (fast;
+      # the suite is parallel-safe via per-file seed-wallet slots).
+      - name: Run parallel e2e suite (excludes chaos tests)
         env:
           E2E_DOCKER: "1"
-          # operational.test.ts pauses / kills containers other test
-          # files depend on. `E2E_SEQUENTIAL=1` switches vitest into
-          # `fileParallelism: false` so the chaos in one file can't
-          # race the chain-touching tests in another.
-          E2E_SEQUENTIAL: "1"
+          E2E_DOCKER_KEEP_STACK: "1"
         run: pnpm --filter @bosonprotocol/x402-e2e test
+
+      # Phase 2: only operational.test.ts, sequentially. Its F1 SIGKILLs
+      # the facilitator and F2 pauses the subgraph, so it must run with no
+      # other test file racing the killed/paused containers.
+      - name: Run chaos/operational tests sequentially (reuses stack)
+        env:
+          E2E_DOCKER: "1"
+          E2E_DOCKER_KEEP_STACK: "1"
+        run: pnpm --filter @bosonprotocol/x402-e2e test:chaos
 
       - name: Dump docker compose logs on failure
         if: failure()
@@ -76,3 +89,9 @@ jobs:
           name: nightly-logs-${{ github.run_id }}
           path: typescript/packages/x402-e2e/docker-compose.log
           if-no-files-found: ignore
+
+      # E2E_DOCKER_KEEP_STACK=1 disabled globalSetup's auto-teardown so the
+      # two phases could share the stack — tear it down explicitly now.
+      - name: Tear down stack
+        if: always()
+        run: pnpm --filter @bosonprotocol/x402-e2e stack:down

@@ -56,9 +56,9 @@ jobs:
   # chaos scenario kills the facilitator container mid-flight and would
   # race the chain-touching tests in other files when run in parallel.
   # Keeping it out lets this job stay parallel (fast); the operational
-  # tier — F1 (@p1), plus F2 / F4 (@p2) — is exercised nightly with
-  # `E2E_SEQUENTIAL=1`. The @p2 tier is also kept out here via the tag
-  # filter.
+  # tier — F1 (@p1), plus F2 / F4 (@p2) — is exercised nightly via the
+  # `test:chaos` script (runs operational.test.ts alone, sequentially).
+  # The @p2 tier is also kept out here via the tag filter.
   e2e-pr:
     name: e2e (@p0 + @p1)
     runs-on: ubuntu-latest
