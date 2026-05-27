@@ -16,7 +16,7 @@
 // next call. `name()` is required by ERC-20 so any failure there is a
 // real error and propagates.
 
-import { ContractFunctionExecutionError, type Address, type Hex, type PublicClient } from "viem";
+import { type Address, type Hex, type PublicClient } from "viem";
 
 import type { TokenEip712Domain } from "./domain.js";
 
@@ -58,6 +58,51 @@ export const VERSION_ABI = [
   },
 ] as const;
 
+// EIP-5267 `fields` bitmask: bit i (LSB-first) is set when domain field
+// i — in EIP-712's canonical field order (name, version, chainId,
+// verifyingContract, salt) — is present. We only need the `salt` bit:
+// tokens whose domain includes `salt` computed their domain separator
+// with it, so the signature won't recover unless we carry it through;
+// tokens that omit `salt` return a zero `bytes32` we must drop, or the
+// extra field corrupts the domain we hash against.
+const EIP5267_SALT_BIT = 0x10;
+
+// Duck-type check for viem's `ContractFunctionExecutionError` (and the
+// other `ContractFunction*Error` subclasses it nests as a `cause`).
+// We compare by `.name` rather than `instanceof` because the paywall's
+// browser IIFE bundle ends up with multiple viem class instances
+// (esbuild inlines viem along several import chains —
+// `@bosonprotocol/x402-core`, `@bosonprotocol/x402-client-browser`,
+// wagmi, and direct paywall imports — and class identity is not
+// preserved across them). An `instanceof` check there would falsely
+// re-throw what's really a "method not implemented" revert. Name
+// strings are stable across bundles (viem sets them via
+// `Object.defineProperty(this, "name", ...)`) and plain `Error` from
+// transport failures still falls through to the rethrow path because
+// its `.name` is `"Error"`.
+function isContractFunctionError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return e.name.startsWith("ContractFunction");
+}
+
+/**
+ * Look up the token's EIP-712 domain. Tries EIP-5267 first (one call,
+ * canonical); falls back to `name()` + `version()` (with version
+ * defaulting to `"1"` per EIP-2612 if `version()` reverts).
+ *
+ * Error handling: only contract-level errors (any `ContractFunction*`
+ * class viem throws via `getContractError`) are treated as "method not
+ * implemented" and trigger the fallback. RPC / transport failures
+ * (HTTP timeouts, JSON-RPC errors) propagate as-is so the caller can
+ * distinguish them and surface a clear internal error rather than a
+ * silent fallback that fails again on the next call. `name()` is
+ * required by ERC-20 so any failure there is a real error and
+ * propagates.
+ *
+ * Both the facilitator (recovering a signature) and the browser paywall
+ * (about to sign one) call this against the same chain — keeping the
+ * lookup in one place keeps signer and verifier in lockstep.
+ */
 export async function fetchTokenDomain(
   publicClient: PublicClient,
   token: Address,
@@ -69,14 +114,20 @@ export async function fetchTokenDomain(
       abi: EIP5267_ABI,
       functionName: "eip712Domain",
     })) as readonly [Hex, string, string, bigint, Address, Hex, readonly bigint[]];
+    const hasSalt = (Number(result[0]) & EIP5267_SALT_BIT) !== 0;
     return {
       name: result[1],
       version: result[2],
       chainId: Number(result[3]),
       verifyingContract: result[4],
+      // Only attach `salt` when the bitmask says it's part of the domain
+      // — omit the key entirely rather than emitting `salt: undefined`,
+      // so the object shape matches the optional `salt?` type and
+      // downstream `in` / key checks don't see a phantom field.
+      ...(hasSalt ? { salt: result[5] } : {}),
     };
   } catch (e) {
-    if (!(e instanceof ContractFunctionExecutionError)) {
+    if (!isContractFunctionError(e)) {
       throw e;
     }
     // EIP-5267 not implemented — fall back to name() + version().
@@ -94,10 +145,10 @@ export async function fetchTokenDomain(
       functionName: "version",
     })) as string;
   } catch (e) {
-    if (!(e instanceof ContractFunctionExecutionError)) {
+    if (!isContractFunctionError(e)) {
       throw e;
     }
-    // version() is optional per EIP-2612 — keep the default "1".
+    // version() is optional per EIP-2612 — keep the default.
   }
   return { name, version, chainId, verifyingContract: token };
 }
