@@ -182,6 +182,13 @@ export function EvmEscrowPaywall({ state }: Props) {
         // PDFs) or download (application/octet-stream, etc.).
         const blob = await response.blob();
         const objectUrl = URL.createObjectURL(blob);
+        // Revoke the object URL once this document unloads as the browser
+        // navigates to it — by `pagehide` the navigation has already
+        // resolved the URL, so the resource still renders while we avoid
+        // pinning the (potentially large) blob in memory for the tab's life.
+        window.addEventListener("pagehide", () => URL.revokeObjectURL(objectUrl), {
+          once: true,
+        });
         window.location.replace(objectUrl);
         setStatus("success");
       } catch (err) {
