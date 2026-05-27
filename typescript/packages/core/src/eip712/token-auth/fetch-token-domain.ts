@@ -120,7 +120,11 @@ export async function fetchTokenDomain(
       version: result[2],
       chainId: Number(result[3]),
       verifyingContract: result[4],
-      salt: hasSalt ? result[5] : undefined,
+      // Only attach `salt` when the bitmask says it's part of the domain
+      // — omit the key entirely rather than emitting `salt: undefined`,
+      // so the object shape matches the optional `salt?` type and
+      // downstream `in` / key checks don't see a phantom field.
+      ...(hasSalt ? { salt: result[5] } : {}),
     };
   } catch (e) {
     if (!isContractFunctionError(e)) {
