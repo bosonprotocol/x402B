@@ -14,9 +14,18 @@
 // produced by wagmi. The signer then drives `createX402bClient.handle402`
 // which packs the X-PAYMENT header — two EIP-712 signatures (meta-tx +
 // token authorization) happen inside that single call.
+//
+// Each Pay click mints a fresh `X-X402-Boson-Session-Id` and stamps it on
+// both the challenge re-fetch (which yields the offer we sign) and the
+// X-PAYMENT retry, mirroring `@bosonprotocol/x402-client-fetch`. This
+// scopes the resource server's signed-offer cache to the flow so distinct
+// browser buyers don't collide on its fallback cache slot — see the inline
+// note in `handlePay`.
 
-import { createX402bClient, signerFromWalletClient } from "@bosonprotocol/x402-client-browser";
+import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
 import { fetchTokenDomain } from "@bosonprotocol/x402-core/eip712/token-auth";
+import { findEscrowAccept } from "@bosonprotocol/x402-core/schemes/escrow";
+import { createX402bClient, signerFromWalletClient } from "@bosonprotocol/x402-client-browser";
 import { useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import {
@@ -152,11 +161,41 @@ export function EvmEscrowPaywall({ state }: Props) {
             : {}),
         });
 
-        const headerValue = await client.handle402(requirements);
+        // Mint one session id for this buyer flow and stamp it on BOTH
+        // the challenge re-fetch below and the X-PAYMENT retry, mirroring
+        // `@bosonprotocol/x402-client-fetch`'s `wrapFetchWithPayment`. The
+        // resource server scopes its signed-offer cache to this id, so the
+        // offer we sign here and the offer it re-resolves at settle are the
+        // same one — while distinct buyer flows get distinct offers, so a
+        // single-quantity offer template isn't served to two sequential
+        // commits within the server's cache TTL.
+        //
+        // We re-resolve requirements from the server under this id rather
+        // than signing the navigation-time `requirements` injected into the
+        // page: that injection was built under the server's fallback cache
+        // slot (a top-level browser navigation can't carry the header), so
+        // signing it would make the retry's session-scoped re-resolve
+        // mismatch the payload's offer (the validator deep-equals
+        // `offerRef.fullOffer` / `sellerSig`). The injected `requirements`
+        // still drive the offer summary above — every buyer-visible field
+        // is env-derived and identical across sessions.
+        const sessionId = globalThis.crypto.randomUUID();
+        const challenge = await fetch(currentUrl, {
+          headers: { Accept: "application/json", [SESSION_ID_HEADER]: sessionId },
+        });
+        const escrowEntry = findEscrowAccept(await challenge.json().catch(() => undefined));
+        if (!escrowEntry) {
+          setStatus("error");
+          setErrorMessage(
+            `Server did not return an escrow payment requirement (status ${challenge.status}).`,
+          );
+          return;
+        }
+        const headerValue = await client.handle402(escrowEntry);
 
         setStatus("submitting");
         const response = await fetch(currentUrl, {
-          headers: { [X_PAYMENT_HEADER]: headerValue },
+          headers: { [X_PAYMENT_HEADER]: headerValue, [SESSION_ID_HEADER]: sessionId },
         });
         if (response.status === 402) {
           const body = await response.text();

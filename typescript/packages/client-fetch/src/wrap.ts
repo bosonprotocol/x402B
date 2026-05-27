@@ -29,6 +29,7 @@
 // commits in a row.
 
 import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
+import { findEscrowAccept } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { X402bClient } from "@bosonprotocol/x402-client";
 
 // Re-exported below so existing `@bosonprotocol/x402-client-fetch`
@@ -97,17 +98,5 @@ async function extractEscrowEntry(response: Response): Promise<unknown | undefin
   } catch {
     return undefined;
   }
-  if (typeof body !== "object" || body === null) {
-    return undefined;
-  }
-  const accepts = (body as { accepts?: unknown }).accepts;
-  if (!Array.isArray(accepts)) {
-    return undefined;
-  }
-  return accepts.find(
-    (entry) =>
-      typeof entry === "object" &&
-      entry !== null &&
-      (entry as { scheme?: unknown }).scheme === "escrow",
-  );
+  return findEscrowAccept(body);
 }
