@@ -21,7 +21,6 @@ jobs:
   build-test-lint:
     name: build / test / lint (node ${{ matrix.node }})
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.draft }}
     strategy:
       fail-fast: false
       matrix:
