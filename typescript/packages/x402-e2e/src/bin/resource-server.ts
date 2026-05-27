@@ -27,6 +27,8 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { getAddress, type Address, type Hex, type PublicClient } from "viem";
 
+import { CoreSDK } from "@bosonprotocol/core-sdk";
+import { asCoreSdkReadAdapter } from "@bosonprotocol/x402-server";
 import {
   createResourceServerApp,
   fetchProtocolConfig,
@@ -59,6 +61,36 @@ import { seedSuite } from "../harness/seed.js";
 // entrypoint can't `docker compose exec` against the protocol node.
 const ESCROW_DEPLOY_TIMEOUT_MS = 10 * 60_000;
 const ESCROW_DEPLOY_POLL_INTERVAL_MS = 2_000;
+
+// The `boson-subgraph` (graph-node) container reports healthy long
+// before the `boson/corecomponents` subgraph has been deployed and
+// indexed up to the chain head. Cold subgraph deploys can take a
+// while, so reuse the same generous 10-minute ceiling as the escrow /
+// config gates.
+const SUBGRAPH_READY_TIMEOUT_MS = 10 * 60_000;
+const SUBGRAPH_READY_POLL_INTERVAL_MS = 2_000;
+
+/** CoreSDK exposes `waitForGraphNodeIndexing` via the subgraph mixin; narrow to that surface. */
+interface CoreSdkWithIndexerWait {
+  waitForGraphNodeIndexing(blockNumber?: number): Promise<void>;
+}
+
+/**
+ * Throwing `Web3LibAdapter` stub — read-only paths through CoreSDK
+ * never invoke `web3Lib`, so any access surfaces as a loud error
+ * rather than a silent network call. Mirrors the stubs in
+ * `src/harness/seed.ts` and `src/harness/exchange-reader.ts`.
+ */
+function createReadOnlyWeb3LibStub(): never {
+  const handler: ProxyHandler<object> = {
+    get(_target, prop) {
+      throw new Error(
+        `[x402-e2e/resource-server] read-only CoreSDK should not invoke web3Lib.${String(prop)}`,
+      );
+    },
+  };
+  return new Proxy({}, handler) as never;
+}
 
 // Target balance minted to each `BUYER_WALLETS` entry on boot. 100 USDC
 // at 6dp = 100× the default offer price (AMOUNT=1000000), so a browser
@@ -126,6 +158,68 @@ async function waitForProtocolConfigInitialized(args: {
       );
     }
     await sleep(ESCROW_DEPLOY_POLL_INTERVAL_MS);
+  }
+}
+
+/**
+ * Block until the `boson-subgraph` is ready to serve the seller
+ * lookup — both *responsive* (the `boson/corecomponents` subgraph is
+ * deployed and serving GraphQL) and *caught up* to the current chain
+ * head. A plain `depends_on` only waits for the graph-node container
+ * to start, and the container reports healthy well before the subgraph
+ * is deployed/indexed, so on a cold stack the first
+ * `getSellersByAddress` (in `seedSuite`) would throw and crash boot.
+ *
+ * Gating on indexing-to-head also fixes a latent idempotency bug: on a
+ * re-boot against a stack whose seller already exists, an under-indexed
+ * subgraph reports it absent, which would trigger a spurious
+ * `createSeller` (and an on-chain revert). Waiting for the head
+ * guarantees an already-registered seller is visible before the lookup.
+ *
+ * Builds a read-only CoreSDK with a throwing `web3Lib` stub (mirrors
+ * `seed.ts` / `exchange-reader.ts`) — no on-chain writes happen here.
+ */
+async function waitForSubgraphReady(args: {
+  publicClient: PublicClient;
+  subgraphUrl: string;
+  escrowAddress: Address;
+  chainId: number;
+  sellerAddress: Address;
+}): Promise<void> {
+  const deadline = Date.now() + SUBGRAPH_READY_TIMEOUT_MS;
+  console.log(
+    `[x402-e2e/resource-server] waiting for subgraph ${args.subgraphUrl} to be ready (deployed and indexed to head)…`,
+  );
+  const sdk = new CoreSDK({
+    web3Lib: createReadOnlyWeb3LibStub() as never,
+    subgraphUrl: args.subgraphUrl,
+    protocolDiamond: args.escrowAddress,
+    chainId: args.chainId,
+  });
+  const indexerWait = sdk as unknown as CoreSdkWithIndexerWait;
+  const coreSdkRead = asCoreSdkReadAdapter(sdk);
+  while (true) {
+    try {
+      // `cacheTime: 0` defeats viem's block-number cache so we wait on
+      // the freshest head, not a stale cached one (see exchange-reader.ts).
+      const head = await args.publicClient.getBlockNumber({ cacheTime: 0 });
+      // Resolves only once the subgraph exists and its indexer has
+      // reached `head`; throws while the endpoint isn't serving yet.
+      await indexerWait.waitForGraphNodeIndexing(Number(head));
+      // Final liveness check on the exact query path the seller lookup
+      // uses. Return value is irrelevant — we only care it doesn't throw.
+      await coreSdkRead.getSellersByAddress(args.sellerAddress);
+      console.log(`[x402-e2e/resource-server] subgraph ${args.subgraphUrl} is ready`);
+      return;
+    } catch {
+      // Subgraph not deployed / not yet indexed — keep polling.
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `[x402-e2e/resource-server] timed out after ${SUBGRAPH_READY_TIMEOUT_MS / 1000}s waiting for subgraph ${args.subgraphUrl} to be ready`,
+      );
+    }
+    await sleep(SUBGRAPH_READY_POLL_INTERVAL_MS);
   }
 }
 
@@ -260,6 +354,19 @@ async function main(): Promise<void> {
   const protocolConfig = await waitForProtocolConfigInitialized({
     publicClient,
     escrowAddress: env.escrowAddress,
+  });
+
+  // Gate on the subgraph being deployed and indexed to the chain head
+  // before the seller lookup in `ensureSellerEntity` — on a cold stack
+  // the graph-node container is up but the subgraph isn't serving yet,
+  // which would otherwise crash the first `getSellersByAddress`.
+  const sellerAddress = privateKeyToAccount(env.sellerPk).address;
+  await waitForSubgraphReady({
+    publicClient,
+    subgraphUrl: env.subgraphUrl,
+    escrowAddress: env.escrowAddress,
+    chainId: env.chainId,
+    sellerAddress,
   });
 
   const sellerId = await ensureSellerEntity({
