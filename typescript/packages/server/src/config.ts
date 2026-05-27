@@ -119,6 +119,20 @@ export interface X402bServerConfig {
 }
 
 /**
+ * Result of a channel's `onFulfill` dispatch. Mirrors
+ * `@bosonprotocol/x402-fulfillment`'s `FulfillmentResult` (kept inline so
+ * this SDK doesn't depend on that package — see `RedeemFulfillmentChannel`).
+ *
+ * - `inline` — the resource itself (the server base64-encodes `body` for
+ *   the JSON wire response; see `serializeFulfillmentResult`).
+ * - `async`  — delivered out-of-band; an optional `pointer` (e.g.
+ *   `ipfs://…`, the buyer's webhook `https://…`) is surfaced to the caller.
+ */
+export type FulfillmentResult =
+  | { kind: "inline"; body: Uint8Array; contentType: string }
+  | { kind: "async"; pointer?: string };
+
+/**
  * Minimal structural slice of `FulfillmentChannel` the redeem
  * handler needs. Kept inline so `@bosonprotocol/x402-server` does
  * not depend on `@bosonprotocol/x402-fulfillment` (avoids a hard
@@ -129,6 +143,15 @@ export interface RedeemFulfillmentChannel {
   readonly id: string;
   validate(data: Record<string, unknown> | null): { ok: true } | { ok: false; reason: string };
   onCommit(exchangeId: string, data: Record<string, unknown> | null): Promise<void>;
+  /**
+   * Dispatch delivery once the on-chain release is confirmed (REDEEMED).
+   * Optional: when present, the redeem / atomic-commit-and-redeem handlers
+   * invoke it after `onCommit` persists the buyer's target, and surface
+   * the result on the 200 response. A host that delivers out-of-band via
+   * its own worker can omit it — persistence (`onCommit`) still runs.
+   * Real `@bosonprotocol/x402-fulfillment` channels always implement it.
+   */
+  onFulfill?(exchangeId: string): Promise<FulfillmentResult>;
 }
 
 export interface FulfillmentRecoveryEntry {
@@ -177,6 +200,9 @@ const fulfillmentChannelShallowSchema = z
     id: z.string().min(1),
     validate: z.function(),
     onCommit: z.function(),
+    // Optional delivery dispatch — present on real channels, omitted by
+    // hosts that deliver out-of-band.
+    onFulfill: z.function().optional(),
   })
   .passthrough();
 

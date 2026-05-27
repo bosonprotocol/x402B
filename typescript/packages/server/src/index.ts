@@ -11,10 +11,12 @@ export {
   assertChannelRegistryEscrowMatch,
   x402bServerConfigSchema,
   type FulfillmentRecoveryEntry,
+  type FulfillmentResult,
   type RedeemFulfillmentChannel,
   type SellerSigner,
   type X402bServerConfig,
 } from "./config.js";
+export { type SerializedFulfillmentResult } from "./handlers/fulfillment-result.js";
 export {
   buildPaymentRequirements,
   signFullOffer,
