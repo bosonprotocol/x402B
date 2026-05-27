@@ -69,7 +69,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time validations (none strategy)", () => {
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
-      escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
+      spenderAddress: LOCAL_31337_0.contracts.protocolDiamond,
       amount: 10_000_000n,
     });
   });
