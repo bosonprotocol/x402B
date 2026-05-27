@@ -52,22 +52,22 @@
   "dependencies": {
     "@bosonprotocol/x402-client": "workspace:^",
     "@bosonprotocol/x402-client-browser": "workspace:^",
-    "@bosonprotocol/x402-core": "workspace:^",
-    "@tanstack/react-query": "^5.59.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "viem": "^2.39.3",
-    "wagmi": "^2.14.0"
+    "@bosonprotocol/x402-core": "workspace:^"
   },
   "devDependencies": {
+    "@tanstack/react-query": "^5.59.0",
     "@types/node": "^20.17.10",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "esbuild": "^0.24.0",
     "jsdom": "^25.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "viem": "^2.39.3",
+    "vitest": "^2.1.8",
+    "wagmi": "^2.14.0"
   }
 }
