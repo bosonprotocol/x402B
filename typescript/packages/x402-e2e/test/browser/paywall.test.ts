@@ -13,7 +13,7 @@
 import { ExchangeState } from "@bosonprotocol/x402-actions";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
-import { parseEther, type Hex } from "viem";
+import { parseEther, type Hex, type PublicClient } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import { LOCAL_31337_0 } from "../../src/config/local-31337-0.js";
@@ -64,16 +64,32 @@ describe.skipIf(!ENABLED)("@p0 browser-paywall scenarios", () => {
       value: parseEther("0.5"),
     });
     await publicClient.waitForTransactionReceipt({ hash: fundHash });
+    // The browser paywall builds its own x402b client without a buyer
+    // policy, so it falls through to its default `permit2` strategy.
+    // Permit2 pulls funds through the canonical Permit2 contract, so the
+    // buyer approves THAT (not the protocol Diamond) on the ERC-20 — the
+    // signed SignatureTransfer names the escrow as recipient at settle
+    // time. Pin `permit2` server-side too so the advertised strategy and
+    // the buyer's allowance can't drift apart.
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,
       buyerAddress,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
-      spenderAddress: LOCAL_31337_0.contracts.protocolDiamond,
+      spenderAddress: LOCAL_31337_0.contracts.permit2,
       amount: EXPECTED_PRICE_BIGINT * 10n,
     });
 
-    scenarioCtx = await createScenarioContext({ slot: SLOT, buyerAccount });
+    scenarioCtx = await createScenarioContext({
+      slot: SLOT,
+      buyerAccount,
+      tokenAuthStrategies: ["permit2"],
+      // Permit2's SignatureTransfer `deadline` is checked against
+      // `block.timestamp`; stretch the window to the protocol max so a
+      // long parallel run's chain-time drift can't expire it (same
+      // reason as the node permit2 scenario A5).
+      maxTimeoutSeconds: 24 * 60 * 60,
+    });
     resourceUrl = `${scenarioCtx.resourceServerUrl}/resource`;
   }, 180_000);
 
@@ -151,6 +167,12 @@ describe.skipIf(!ENABLED)("@p0 browser-paywall scenarios", () => {
       await page.getByTestId("paywall-connector-injected").click();
       await page.getByTestId("paywall-wallet-connected").waitFor({ state: "visible" });
 
+      // Snapshot before the pay attempt: this file's scenarios share one
+      // buyer, and BR1 legitimately spends, so assert this test caused no
+      // spend rather than checking an absolute balance floor.
+      const publicClient = buildPublicClient();
+      const balanceBefore = await readErc20Balance(publicClient, buyerAddress);
+
       await page.getByTestId("paywall-pay").click();
 
       // Paywall surfaces the wallet's rejection in the error panel.
@@ -159,23 +181,13 @@ describe.skipIf(!ENABLED)("@p0 browser-paywall scenarios", () => {
       const errorText = await errorLocator.textContent();
       expect(errorText ?? "").toMatch(/reject/i);
 
-      // No exchange should have been committed — the protocol never
-      // received an X-PAYMENT to settle. Give the subgraph a couple
-      // of seconds in case an unrelated commit slipped in (it
-      // shouldn't), then confirm the buyer's balance is still
-      // un-spent.
+      // A rejected signature must not commit — the protocol never
+      // received an X-PAYMENT to settle. Give the subgraph a couple of
+      // seconds in case a commit slipped in (it shouldn't), then confirm
+      // the buyer's balance is unchanged.
       await sleep(NO_COMMIT_POLL_MS);
-      const publicClient = buildPublicClient();
-      const balance = await publicClient.readContract({
-        address: LOCAL_31337_0.contracts.testErc20,
-        abi: ERC20_BALANCE_ABI,
-        functionName: "balanceOf",
-        args: [buyerAddress],
-      });
-      // Initial mint covered 10× the price; if a commit had landed
-      // the balance would be down by EXPECTED_PRICE_BIGINT. Any reduction
-      // would be a regression.
-      expect(balance).toBeGreaterThanOrEqual(EXPECTED_PRICE_BIGINT * 10n);
+      const balanceAfter = await readErc20Balance(publicClient, buyerAddress);
+      expect(balanceAfter).toBe(balanceBefore);
     } finally {
       await context.close();
     }
@@ -202,6 +214,9 @@ describe.skipIf(!ENABLED)("@p0 browser-paywall scenarios", () => {
         .getByTestId("paywall-wrong-network")
         .waitFor({ state: "visible", timeout: 30_000 });
 
+      const publicClient = buildPublicClient();
+      const balanceBefore = await readErc20Balance(publicClient, buyerAddress);
+
       // Clicking Pay triggers `switchChain`, which the mock rejects;
       // the paywall transitions to the error state.
       await page.getByTestId("paywall-pay").click();
@@ -210,20 +225,25 @@ describe.skipIf(!ENABLED)("@p0 browser-paywall scenarios", () => {
       const errorText = await errorLocator.textContent();
       expect(errorText ?? "").toMatch(/chain|switch|network/i);
 
+      // The rejected network switch must not commit anything.
       await sleep(NO_COMMIT_POLL_MS);
-      const publicClient = buildPublicClient();
-      const balance = await publicClient.readContract({
-        address: LOCAL_31337_0.contracts.testErc20,
-        abi: ERC20_BALANCE_ABI,
-        functionName: "balanceOf",
-        args: [buyerAddress],
-      });
-      expect(balance).toBeGreaterThanOrEqual(EXPECTED_PRICE_BIGINT * 10n);
+      const balanceAfter = await readErc20Balance(publicClient, buyerAddress);
+      expect(balanceAfter).toBe(balanceBefore);
     } finally {
       await context.close();
     }
   }, 120_000);
 });
+
+/** Read the buyer's payment-token balance (atomic units). */
+async function readErc20Balance(publicClient: PublicClient, owner: `0x${string}`): Promise<bigint> {
+  return (await publicClient.readContract({
+    address: LOCAL_31337_0.contracts.testErc20,
+    abi: ERC20_BALANCE_ABI,
+    functionName: "balanceOf",
+    args: [owner],
+  })) as bigint;
+}
 
 const ERC20_BALANCE_ABI = [
   {

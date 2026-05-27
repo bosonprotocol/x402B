@@ -21,7 +21,6 @@ import { useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import {
   useAccount,
-  useChainId,
   useConnect,
   useConnectors,
   useDisconnect,
@@ -52,9 +51,21 @@ export function EvmEscrowPaywall({ state }: Props) {
     [requirements.network],
   );
 
-  const { isConnected } = useAccount();
-  const connectedChainId = useChainId();
-  const { switchChain } = useSwitchChain();
+  // `useAccount().chainId` is the chain the connected wallet actually
+  // reports — NOT `useChainId()`, which returns the wagmi config's chain
+  // (the single chain from PaymentRequirements). On a wrong-network
+  // wallet those differ: `useChainId()` would still read the configured
+  // chain and mask the mismatch, so the wrong-network warning never
+  // fires. Reading the connection's own chain id is what lets us detect
+  // it. Undefined until a wallet connects (then `wrongNetwork` is gated
+  // by `isConnected` anyway).
+  const { isConnected, chainId: connectedChainId } = useAccount();
+  // `switchChainAsync` (not `switchChain`): the non-async `switchChain`
+  // is fire-and-forget and never throws, so `await`-ing it wouldn't catch
+  // a wallet that rejects the switch — execution would fall through with
+  // the chain still wrong. The async form rejects, so the catch below can
+  // surface the refusal.
+  const { switchChainAsync } = useSwitchChain();
   const { connect, isPending: connectPending } = useConnect();
   const enabledConnectors = useConnectors();
   const { disconnect } = useDisconnect();
@@ -81,19 +92,23 @@ export function EvmEscrowPaywall({ state }: Props) {
     if (payInFlightRef.current) return;
     payInFlightRef.current = true;
     try {
-      if (!walletClient) {
-        setStatus("error");
-        setErrorMessage("Wallet client is not ready yet — try clicking Pay again.");
-        return;
-      }
+      // Resolve a wrong network FIRST. On a chain the wagmi config
+      // doesn't know about, `useWalletClient()` stays undefined, so the
+      // `!walletClient` guard below would otherwise short-circuit with a
+      // misleading "not ready" message and never prompt the switch.
       if (wrongNetwork) {
         try {
-          await switchChain({ chainId: requiredChainId });
+          await switchChainAsync({ chainId: requiredChainId });
         } catch (err) {
           setStatus("error");
           setErrorMessage(`Wallet refused to switch to chain ${requiredChainId}: ${describe(err)}`);
           return;
         }
+      }
+      if (!walletClient) {
+        setStatus("error");
+        setErrorMessage("Wallet client is not ready yet — try clicking Pay again.");
+        return;
       }
       if (requirements.fulfillment?.required && !selectedFulfillment) {
         setStatus("error");
@@ -313,7 +328,10 @@ function ConnectorList(props: {
 function WalletStatus(props: {
   wrongNetwork: boolean;
   requiredChainId: number;
-  connectedChainId: number;
+  // `useAccount().chainId` is undefined until the connection resolves;
+  // this component only renders once connected, so it's defined in
+  // practice, but the type stays honest.
+  connectedChainId: number | undefined;
   onDisconnect: () => void;
 }) {
   return (
