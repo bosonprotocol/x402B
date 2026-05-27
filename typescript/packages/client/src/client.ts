@@ -35,7 +35,7 @@ import {
   type SignedWithdrawFunds,
 } from "./withdraw.js";
 import { buildAndSignTokenAuth } from "./token-auth/index.js";
-import { MaxAmountExceededError } from "./errors.js";
+import { MaxAmountExceededError, UnsupportedTokenAuthError } from "./errors.js";
 import type { ExchangeSummary, X402bClientConfig } from "./types.js";
 
 export interface X402bClient {
@@ -115,14 +115,55 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
         requirements.escrowAddress as Address,
       );
 
-      const { tokenAuth, strategy } = await buildAndSignTokenAuth({
-        requirements,
-        buyer,
-        coreSdk,
-        tokenDomainResolver: config.tokenDomainResolver,
-        publicClient: config.publicClients?.[chainId],
-      });
+      // `policy.tokenAuthStrategy` forces a specific strategy from the
+      // server's advertised set instead of letting the dispatcher pick
+      // by preference. The forced value must be in
+      // `requirements.tokenAuthStrategies`; otherwise the override is
+      // rejected. `"none"` short-circuits the dispatcher entirely (the
+      // buyer has approved the escrow off-band and the payment rides
+      // the protocol's `safeTransferFrom` fallback); for the other
+      // strategies the dispatcher is invoked with the advertised set
+      // narrowed to a single element so it must pick the requested one.
+      let tokenAuth: Awaited<ReturnType<typeof buildAndSignTokenAuth>>["tokenAuth"] | undefined;
+      let strategy: Awaited<ReturnType<typeof buildAndSignTokenAuth>>["strategy"];
+      const forcedStrategy = config.policy?.tokenAuthStrategy;
+      if (forcedStrategy !== undefined) {
+        if (!requirements.tokenAuthStrategies.includes(forcedStrategy)) {
+          throw new UnsupportedTokenAuthError(
+            `policy.tokenAuthStrategy "${forcedStrategy}" is not in requirements.tokenAuthStrategies (${requirements.tokenAuthStrategies.join(", ")})`,
+          );
+        }
+        if (forcedStrategy === "none") {
+          strategy = "none";
+          tokenAuth = undefined;
+        } else {
+          const built = await buildAndSignTokenAuth({
+            requirements: { ...requirements, tokenAuthStrategies: [forcedStrategy] },
+            buyer,
+            coreSdk,
+            tokenDomainResolver: config.tokenDomainResolver,
+            publicClient: config.publicClients?.[chainId],
+          });
+          strategy = built.strategy;
+          tokenAuth = built.tokenAuth;
+        }
+      } else {
+        const built = await buildAndSignTokenAuth({
+          requirements,
+          buyer,
+          coreSdk,
+          tokenDomainResolver: config.tokenDomainResolver,
+          publicClient: config.publicClients?.[chainId],
+        });
+        strategy = built.strategy;
+        tokenAuth = built.tokenAuth;
+      }
 
+      // Flow B (boson-createOfferCommitAndRedeem) carries the buyer's
+      // delivery data along with the commit-time payload — there's no
+      // later round trip in which to attach it. Flow A defers `data` to
+      // the redeem-time POST body; `assemblePayload` handles the
+      // conditional emission based on `action`.
       const signMetaTx =
         action === "boson-createOfferCommitAndRedeem"
           ? signCreateOfferCommitAndRedeem

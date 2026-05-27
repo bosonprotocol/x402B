@@ -9,8 +9,9 @@ import type {
   ExchangeActionId,
 } from "@bosonprotocol/x402-core/state-machine";
 import { isEntityKeyedAction } from "@bosonprotocol/x402-core/state-machine";
-import { decodeFunctionData, parseAbi } from "viem";
+import { decodeFunctionData } from "viem";
 
+import { BOSON_POST_COMMIT_ACTION_ABI } from "../internal/boson-action-abi.js";
 import type { FacilitatorErrorCode } from "../types.js";
 
 /** Exchange-keyed post-commit actions: a single `exchangeId` argument decides scope. */
@@ -69,18 +70,6 @@ const ENTITY_ACTION_FUNCTIONS: Record<
     signature: "withdrawFunds(uint256,address[],uint256[])",
   },
 };
-
-const POST_COMMIT_ABI = parseAbi([
-  "function redeemVoucher(uint256 exchangeId)",
-  "function cancelVoucher(uint256 exchangeId)",
-  "function revokeVoucher(uint256 exchangeId)",
-  "function completeExchange(uint256 exchangeId)",
-  "function raiseDispute(uint256 exchangeId)",
-  "function resolveDispute(uint256 exchangeId, uint256 buyerPercent, bytes counterpartySig)",
-  "function escalateDispute(uint256 exchangeId)",
-  "function retractDispute(uint256 exchangeId)",
-  "function withdrawFunds(uint256 entityId, address[] tokenList, uint256[] tokenAmounts)",
-]);
 
 const UINT256_MAX = (1n << 256n) - 1n;
 
@@ -298,7 +287,7 @@ type DecodeResult =
 function decodeCalldata(functionSignature: string): DecodeResult {
   try {
     const decoded = decodeFunctionData({
-      abi: POST_COMMIT_ABI,
+      abi: BOSON_POST_COMMIT_ACTION_ABI,
       data: functionSignature as `0x${string}`,
     });
     return { ok: true, functionName: decoded.functionName, args: decoded.args };

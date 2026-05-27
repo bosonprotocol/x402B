@@ -20,6 +20,7 @@ import type { FacilitatorConfig } from "../src/types.js";
 import {
   buildValidPayload,
   buildValidRequirements,
+  buyer,
   CHAIN_ID,
   ESCROW,
   NETWORK,
@@ -192,6 +193,43 @@ describe("settle()", () => {
   it("happy path: verify passes, envelope built, tx submitted, exchangeId extracted", async () => {
     const payload = await buildValidPayload();
     const requirements = buildValidRequirements();
+    const result = await settle(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toEqual({
+      ok: true,
+      exchangeId: EXPECTED_EXCHANGE_ID.toString(),
+      txHash: TX_HASH,
+    });
+  });
+
+  // Regression for x402B#73: settle() calls verify() first, and
+  // verify's `validateMetaTxCalldataMatchesRequirements` used to
+  // trip on the committer slot whenever the real-world shape was in
+  // play — `requirements.offer.fullOffer.committer = 0x0` (server
+  // placeholder) while the buyer's meta-tx calldata splices in
+  // `committer = buyer.address` (mirroring
+  // `@bosonprotocol/x402-client`'s `pre-commit.ts:94`). After the
+  // `verify/structural.ts` fix the splice is mirrored when
+  // rebuilding the expected calldata. Pin the asymmetric fixture
+  // shape + settle-side outcome here so a fixture "cleanup" that
+  // re-aligns the committers can't silently lose this coverage.
+  it("x402B#73 — placeholder offerRef committer + buyer-spliced calldata passes settle()", async () => {
+    const payload = await buildValidPayload();
+    const requirements = buildValidRequirements();
+
+    // Pin the divergent shape: offerRef carries the placeholder…
+    expect(payload.payload.offerRef.fullOffer.committer).toBe(
+      "0x0000000000000000000000000000000000000000",
+    );
+    expect(requirements.offer.fullOffer.committer).toBe(
+      "0x0000000000000000000000000000000000000000",
+    );
+    // …while the meta-tx claims the real buyer.
+    expect(payload.payload.buyer.toLowerCase()).toBe(buyer.address.toLowerCase());
+    expect(payload.payload.metaTx.from.toLowerCase()).toBe(buyer.address.toLowerCase());
+
     const result = await settle(
       { scheme: "escrow", network: NETWORK, payload, requirements },
       buildConfig(),

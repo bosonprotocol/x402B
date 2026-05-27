@@ -33,18 +33,60 @@ A server may advertise multiple options; the buyer picks one.
 
 ## Client side — picking and attaching
 
-The `X-PAYMENT` payload includes:
+The buyer always sends the chosen option at commit time (for capability
+negotiation against the server-advertised set). The buyer's delivery
+data is action-conditional — it goes in `X-PAYMENT` for atomic Flow B
+because there's only one round trip, and in the redeem POST body for
+two-step Flow A because there's a later round trip for it.
+
+### Atomic Flow B — `boson-createOfferCommitAndRedeem`
+
+The commit and the on-chain redeem ship in a single transaction. The
+`X-PAYMENT` payload carries the chosen option *and* its delivery data:
 
 ```jsonc
 "fulfillment": {
   "option": "<chosen channel id>",
-  "data":   { /* validates against the chosen option's schema */ }
+  "data":   { /* validates against the chosen option's schema (or null) */ }
 }
 ```
 
-For channels where data is collected post-commit (e.g. `widget`), `fulfillment.data` is `null` in the X-PAYMENT and the actual collection happens between commit and redeem via the channel itself.
+No separate redeem round trip happens, so there's no later opportunity to
+hand the seller delivery details. The server's commit handler invokes
+`channel.onCommit(exchangeId, data)` immediately after the atomic redeem
+settles on chain.
 
-For the two-step flow (`boson-createOfferAndCommit` followed later by `boson-redeem`), the buyer MAY also re-submit `fulfillment` at redeem time — see [Re-submission at redeem](#re-submission-at-redeem) below.
+### Two-step Flow A — `boson-createOfferAndCommit` then `boson-redeem`
+
+The `X-PAYMENT` payload carries only the chosen option:
+
+```jsonc
+"fulfillment": {
+  "option": "<chosen channel id>"
+}
+```
+
+The buyer attaches `data` later, in the `POST` to the `boson-redeem`
+endpoint advertised in the 200 response's `nextActions`:
+
+```jsonc
+{
+  "exchangeId": "<id>",
+  "signedPayload": "0x...",
+  "fulfillment": {
+    "option": "<chosen channel id>",
+    "data":   { /* validates against the chosen option's schema */ }
+  }
+}
+```
+
+The server's redeem handler invokes `channel.onCommit(exchangeId, data)`
+on receipt. The voucher NFT is transferable, so the wallet that signs
+`boson-redeem` may differ from the wallet that committed — whichever
+wallet redeems is the one whose delivery data the server persists. The
+server still constrains the redeemer's `option` choice to the original
+offer's advertised set so the seller never has to honour a channel they
+didn't sign up for.
 
 ## `FulfillmentChannel` interface (TypeScript)
 
@@ -99,10 +141,10 @@ The registry is open: third parties can ship additional channels as `@bosonproto
 | Channel | Collected at | Why |
 |---|---|---|
 | `inline` | n/a | No data. |
-| `email`, `xmtp`, `webhook`, `ipfs-pointer` | At commit (in X-PAYMENT) | Lightweight, no side-channel needed. |
+| `email`, `xmtp`, `webhook`, `ipfs-pointer` | Atomic Flow B: at commit (in `X-PAYMENT`). Two-step Flow A: at redeem (in the `boson-redeem` POST body). | Lightweight; rides with whichever step is the last buyer round trip. |
 | `widget`, `mcp` | Post-commit, via the channel itself | Heavier UI / agent-driven; not a fit for header-sized data. |
 
-Servers SHOULD advertise at least one "in-payload" fulfillment channel (email/xmtp/webhook) so headless agents can complete in a single round trip.
+Servers SHOULD advertise at least one in-payload-shaped fulfillment channel (email/xmtp/webhook). Headless agents using atomic Flow B complete in one round trip (commit-and-redeem with data); agents using two-step Flow A complete in two (commit, then redeem with data).
 
 ## Privacy considerations
 
@@ -115,33 +157,37 @@ Servers SHOULD advertise at least one "in-payload" fulfillment channel (email/xm
 The `webhook` channel hands the seller a buyer-controlled HTTPS URL — the buyer's endpoint can become a target as soon as the URL is known. The protocol layers three independent protections; the buyer SHOULD use all three:
 
 1. **Server signature (always on).** The seller signs every webhook envelope with the key advertised under `metadata.serverPublicKey`. The envelope MUST include the `exchangeId` and a millisecond `timestamp`. The buyer MUST verify the signature, MUST reject envelopes whose `timestamp` is older than a small freshness window (recommended: ≤ 300 s), and MUST treat repeated deliveries with the same `exchangeId` as idempotent (one logical delivery, dedupe on the buyer's side).
-2. **Bearer token (optional, buyer-published).** When the buyer sets `authToken`, the seller MUST send it as `Authorization: Bearer <authToken>` on every webhook request. This lets the buyer's edge layer reject unauthenticated traffic before any signature work — useful against random POSTers and leaked-URL scanning. The token travels in the X-PAYMENT, so it offers no protection against an attacker who can read the X-PAYMENT itself; pair it with (1) for end-to-end authenticity.
+2. **Bearer token (optional, buyer-published).** When the buyer sets `authToken`, the seller MUST send it as `Authorization: Bearer <authToken>` on every webhook request. This lets the buyer's edge layer reject unauthenticated traffic before any signature work — useful against random POSTers and leaked-URL scanning. The token travels with `fulfillment.data` (atomic `boson-createOfferCommitAndRedeem` Flow B: commit-time `X-PAYMENT`; two-step Flow A: redeem-time POST body), so it offers no protection against an attacker who can read that traffic; pair it with (1) for end-to-end authenticity.
 3. **Encryption to buyer (optional, buyer-published).** When the buyer sets `encryptionPubKey`, the seller MAY encrypt the resource body to that key (cipher specified in `03b-webhook-encryption.md`; not yet implemented). Protects confidentiality against any actor with the URL but without the buyer's private key.
 
 Seller adapters MUST refuse plain `http://` URLs — TLS is mandatory for the transport. Buyers SHOULD also rotate `authToken` per offer / per session if the same endpoint is reused across many exchanges.
 
-## Validation rules (server side, before /verify)
+## Validation rules
 
-1. If `requirements.fulfillment.required === true`, `payload.fulfillment.option` MUST be present and MUST match a registered channel.
-2. The chosen option's `buyerDataSchema` MUST validate `payload.fulfillment.data` (or `null` if schema is `null`).
-3. The server-side instance of the channel MUST be configured (at boot, not per-request).
-4. After commit acceptance, server calls `channel.onCommit(exchangeId, data)` BEFORE returning 200.
+### Commit-time (server, before /verify)
 
-## Re-submission at redeem
+1. If `requirements.fulfillment.required === true`, `payload.fulfillment.option` MUST be present and MUST match an advertised channel id from `requirements.fulfillment.options[].id`.
+2. Action-conditional `payload.fulfillment.data`:
+   - For `payload.action = boson-createOfferCommitAndRedeem` (atomic Flow B): `data` MUST be present. The chosen option's `buyerDataSchema` MUST validate `data` (or `null` when the schema is `null`). The server-side channel instance MUST be configured (at boot, not per-request).
+   - For `payload.action = boson-createOfferAndCommit` (two-step Flow A): `data` MUST be absent — it's reserved for the redeem POST body.
+3. **Flow B only:** after the atomic redeem confirms on chain, the commit handler records a pending fulfillment update and calls `channel.onCommit(exchangeId, data)` to persist the buyer's delivery target. A successful write clears the pending update. A failing channel write leaves the pending update for host-side replay/reconciliation and surfaces a `FULFILLMENT_COMMIT_DEFERRED` warning on the 200 response; the on-chain state is already irreversibly `REDEEMED`.
+4. **Flow A only:** the server persists the *advertised* option ids against the exchange so the redeem-time check below can constrain the buyer's choice when the voucher has been transferred between commit and redeem.
 
-In the two-step flow A (`boson-createOfferAndCommit` followed later by `boson-redeem`) the redeeming wallet is not guaranteed to be the same wallet that committed — the voucher NFT is transferable. The server tracks the committer wallet at commit time and applies the following rule at redeem:
+### Redeem-time (server, on `boson-redeem` POST)
 
-| Stored committer | Redeemer wallet | Buyer `fulfillment` field |
-|---|---|---|
-| `A` | `A` | OPTIONAL — when supplied, replaces previously stored data |
-| `A` | `B` (different) | **REQUIRED** — server rejects with `FULFILLMENT_REQUIRED_ON_WALLET_CHANGE` if absent |
-| absent (legacy / atomic) | any | no-op |
+1. The chosen option's `buyerDataSchema` MUST validate the redeem-time body's `fulfillment.data` (or `null` if schema is `null`).
+2. The server-side instance of the channel MUST be configured (at boot, not per-request).
+3. After redeem confirmation, server calls `channel.onCommit(exchangeId, data)` to persist the buyer's delivery target. A failing channel write surfaces as a `FULFILLMENT_UPDATE_DEFERRED` warning on the 200 response.
 
-When a redeem request carries `fulfillment`, `option` MUST be one of the options advertised in the original 402 for that exchange. The server runs `channel.validate(data)` and then `channel.onCommit(exchangeId, data)` — channels treat `onCommit` as an upsert. The wire shape is identical to the commit-time `fulfillment` envelope: `{ option: string, data: <schema-of-option> | null }`.
+## Voucher transfer between commit and redeem
 
-Because the on-chain redeem is irreversible, servers should record a pending fulfillment update before the post-redeem channel upsert and clear it only after `onCommit` succeeds. If that upsert fails, the redeem response should still report the successful transaction and include a warning such as `FULFILLMENT_UPDATE_DEFERRED`, leaving the pending update for host-side replay/reconciliation.
+In the two-step Flow A (`boson-createOfferAndCommit` followed later by `boson-redeem`) the voucher NFT is transferable, so the wallet that signs `boson-redeem` may differ from the wallet that committed. Because buyer-supplied delivery data flows *only* at redeem time, this is benign: whichever wallet signs the redeem is the wallet whose delivery target the server persists. There's no committer-vs-redeemer rebinding gate — the redeemer just supplies whatever `fulfillment` the seller's advertised set permits.
 
-Flow B (`boson-createOfferCommitAndRedeem`, atomic) is unaffected — the exchange reaches `REDEEMED` in a single transaction; there is no later redeem step.
+When a redeem request carries `fulfillment`, `option` MUST be one of the options advertised in the original 402 for that exchange (the server enforces this against its persisted option-policy entry). The server runs `channel.validate(data)` and then `channel.onCommit(exchangeId, data)` — channels treat `onCommit` as an upsert. The redeem-time wire shape is `{ option: string, data: <schema-of-option> | null }`.
+
+Because the on-chain redeem is irreversible, servers record a pending fulfillment update before the post-redeem channel upsert and clear it only after `onCommit` succeeds. If that upsert fails, the redeem response still reports the successful transaction and includes a warning such as `FULFILLMENT_UPDATE_DEFERRED`, leaving the pending update for host-side replay/reconciliation.
+
+Flow B (`boson-createOfferCommitAndRedeem`, atomic) is symmetric: the buyer's delivery data rides with the commit-time payload (see [Atomic Flow B](#atomic-flow-b--boson-createoffercommitandredeem)) and the commit handler invokes `channel.onCommit` after the on-chain redeem settles. A failing `onCommit` leaves a pending fulfillment update for host-side replay/reconciliation and surfaces as a `FULFILLMENT_COMMIT_DEFERRED` warning on the 200 response.
 
 ## Client-side helper
 

@@ -20,17 +20,6 @@ export class FacilitatorError extends Error {
 }
 
 /**
- * Thrown by every v0.1 stub function. Tests assert on this class so a
- * future swap to a real implementation is detected by failing assertions.
- */
-export class NotImplementedError extends FacilitatorError {
-  constructor(feature: string) {
-    super("NOT_IMPLEMENTED", `${feature} is not implemented yet`);
-    this.name = "NotImplementedError";
-  }
-}
-
-/**
  * Normalize an unknown thrown value into the `{ ok: false, code, reason }`
  * branch of a facilitator result.
  *

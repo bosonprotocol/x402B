@@ -2,7 +2,10 @@
 // FullOffer shape mirrors `core`'s own `eip712/full-offer.test.ts` so
 // the round-trip behaviour is comparable.
 
-import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm";
+import {
+  buildCreateOfferAndCommitCalldata,
+  buildCreateOfferCommitAndRedeemCalldata,
+} from "@bosonprotocol/x402-evm";
 import { metaTransactionTypedData, type UnsignedFullOffer } from "@bosonprotocol/x402-core/eip712";
 import type {
   EscrowPaymentPayload,
@@ -112,8 +115,27 @@ export async function makePaymentFixture(
     chainId: CHAIN_ID,
   });
 
-  const fullOfferWithSig = { ...offerRef.fullOffer, signature: offerRef.sellerSig };
-  const calldata = await buildCreateOfferAndCommitCalldata({
+  // Mirror the real x402-client behaviour: build calldata with
+  // `committer: buyer.address`. `committer` is an outer arg of the
+  // on-chain `createOfferAndCommit(...)`, not a field in the seller's
+  // EIP-712 FullOffer signature — the buyer's client splices in the
+  // buyer address before signing the meta-tx. Rule 7 mirrors the same
+  // splice when rebuilding the expected calldata, so this fixture
+  // reflects what real payloads carry on the wire.
+  const fullOfferWithSig = {
+    ...offerRef.fullOffer,
+    committer: buyer.address,
+    signature: offerRef.sellerSig,
+  };
+  // Build the calldata that matches the requested `action`. Tests that
+  // intentionally cross the wires (e.g. Flow A action with Flow B
+  // calldata) override `payload.metaTx` directly after the fixture
+  // returns.
+  const buildCalldata =
+    action === "boson-createOfferCommitAndRedeem"
+      ? buildCreateOfferCommitAndRedeemCalldata
+      : buildCreateOfferAndCommitCalldata;
+  const calldata = await buildCalldata({
     fullOffer: fullOfferWithSig as Parameters<
       typeof buildCreateOfferAndCommitCalldata
     >[0]["fullOffer"],

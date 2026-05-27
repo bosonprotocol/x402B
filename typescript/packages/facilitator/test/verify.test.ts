@@ -22,6 +22,7 @@ import {
   fullOffer,
   NETWORK,
   relayer,
+  WRONG_BUYER,
 } from "./fixtures.js";
 
 /**
@@ -192,6 +193,61 @@ describe("verify()", () => {
     expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
   });
 
+  // Regression for x402B#73 (positive direction): the canonical
+  // `fullOffer` fixture carries `committer: 0x0` (the placeholder
+  // that real servers stamp into `requirements.offer.fullOffer` at
+  // challenge time), while `buildValidPayload` splices
+  // `committer: buyer.address` into the calldata it signs (mirroring
+  // `@bosonprotocol/x402-client`'s `pre-commit.ts:94`). Before the
+  // `verify/structural.ts` fix this asymmetric shape tripped the
+  // calldata-match check on the committer slot and rejected every
+  // valid payment. Pin the asymmetric fixture shape + happy-path
+  // outcome here so a future fixture "cleanup" that re-aligns the
+  // committers can't silently lose the regression coverage.
+  it("x402B#73 — placeholder offerRef committer + buyer-spliced calldata passes verify()", async () => {
+    const payload = await buildValidPayload();
+    const requirements = buildValidRequirements();
+
+    // Pin the divergent shape: offerRef carries the placeholder…
+    expect(payload.payload.offerRef.fullOffer.committer).toBe(
+      "0x0000000000000000000000000000000000000000",
+    );
+    expect(requirements.offer.fullOffer.committer).toBe(
+      "0x0000000000000000000000000000000000000000",
+    );
+    // …while the meta-tx claims a real buyer.
+    expect(payload.payload.buyer.toLowerCase()).toBe(buyer.address.toLowerCase());
+    expect(payload.payload.metaTx.from.toLowerCase()).toBe(buyer.address.toLowerCase());
+
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  // Regression for x402B#73 (negative direction): the structural
+  // calldata check must still reject when the buyer-side splice and
+  // the calldata-encoded committer disagree.
+  it("rejects when payload.buyer doesn't match the calldata-encoded committer", async () => {
+    const payload = await buildValidPayload();
+    // The fixture's calldata has `committer: buyer.address` from
+    // `buildValidPayload`; clobbering `payload.buyer` to a different
+    // EOA makes the splice mismatch.
+    const wrongBuyer = WRONG_BUYER;
+    payload.payload.buyer = wrongBuyer;
+    payload.payload.metaTx.from = wrongBuyer;
+    const requirements = buildValidRequirements();
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      buildConfig(),
+    );
+    expect(result).toMatchObject({ ok: false, code: "INVALID_PAYLOAD" });
+    expect((result as { ok: false; reason: string }).reason).toMatch(
+      /functionSignature does not encode/i,
+    );
+  });
+
   it("rejects when meta-tx calldata does not encode the required offer", async () => {
     const payload = await buildValidPayload();
     payload.payload.metaTx.functionSignature = "0xdeadbeef";
@@ -205,11 +261,24 @@ describe("verify()", () => {
 
   it("rejects when meta-tx signature was produced by a different signer", async () => {
     const payload = await buildValidPayload();
-    // Pretend a different EOA is the claimed buyer — recovery will then
-    // mismatch the payload.buyer.
-    const wrongBuyer: Address = "0xabcdef1234567890abcdef1234567890abcdef12";
+    // Pretend a different EOA is the claimed buyer — recovery will
+    // then mismatch `payload.buyer`. The calldata-match step (which
+    // mirrors the buyer-side committer splice — x402B#73) runs before
+    // signature recovery, so we also rebuild the meta-tx calldata
+    // with `committer = wrongBuyer` so this test isolates the
+    // BAD_META_TX_SIGNATURE failure. The sig itself stays the one
+    // `buildValidPayload` produced for the real `buyer` account — so
+    // recovery yields `buyer`, not `wrongBuyer`, and step 8 fires.
+    const wrongBuyer = WRONG_BUYER;
+    const { buildCreateOfferAndCommitCalldata } = await import("@bosonprotocol/x402-evm/actions");
+    const reframedCalldata = await buildCreateOfferAndCommitCalldata({
+      fullOffer: { ...fullOffer, committer: wrongBuyer } as Parameters<
+        typeof buildCreateOfferAndCommitCalldata
+      >[0]["fullOffer"],
+    });
     payload.payload.buyer = wrongBuyer;
     payload.payload.metaTx.from = wrongBuyer;
+    payload.payload.metaTx.functionSignature = reframedCalldata.functionSignature;
     const requirements = buildValidRequirements();
     const result = await verify(
       { scheme: "escrow", network: NETWORK, payload, requirements },

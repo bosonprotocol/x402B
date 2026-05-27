@@ -16,8 +16,8 @@ import { handlerErr, handlerOk, type HandlerResult, type HandlerWarning } from "
 import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
 import type {
+  FulfillmentRecoveryEntry,
   RedeemFulfillmentChannel,
-  RedeemFulfillmentUpdate,
   X402bServerConfig,
 } from "../config.js";
 import {
@@ -34,11 +34,11 @@ export interface PerformActionInput {
 }
 
 /**
- * Redeem-time variant of `PerformActionInput`. Carries an optional
- * `fulfillment` update so a redeemer can revise the delivery target
- * between Flow A commit and redeem. Required when the redeeming
- * wallet differs from the committing wallet (voucher transfer);
- * optional when they match.
+ * Redeem-time variant of `PerformActionInput`. Carries the buyer's
+ * `fulfillment` selection for Flow A — `data` is the delivery target
+ * the redeem-time channel adapter persists. Required when the
+ * original 402 advertised `fulfillment.required = true`; omitted
+ * otherwise.
  */
 export interface RedeemHandlerInput extends PerformActionInput {
   fulfillment?: { option: string; data: Record<string, unknown> | null };
@@ -51,9 +51,8 @@ export interface PerformActionContext {
 }
 
 export interface RedeemHandlerContext extends PerformActionContext {
-  exchangeBuyerStore: Map<string, Address>;
   exchangeFulfillmentOptionStore: Map<string, readonly string[]>;
-  redeemFulfillmentUpdateStore: Map<string, RedeemFulfillmentUpdate>;
+  fulfillmentRecoveryStore: Map<string, FulfillmentRecoveryEntry>;
 }
 
 export interface PerformActionOk {
@@ -159,25 +158,16 @@ export async function handlePerformAction(
 }
 
 /**
- * Redeem handler. Before forwarding to the facilitator, runs a
- * wallet-rebinding check against `exchangeBuyerStore`:
- *
- * - If a committer wallet is on file and differs from the recovered
- *   redeemer wallet, the client MUST supply `fulfillment` (so the
- *   new holder's delivery target replaces the original committer's).
- * - If a committer wallet is on file and matches the redeemer, the
- *   client MAY omit `fulfillment` — existing data stays in place.
- * - If no committer record exists (legacy exchange / atomic flow
- *   that never wrote one), the wallet check is skipped.
- *
- * When `fulfillment` is supplied (either branch), the matching
- * channel's `validate` runs up-front; the corresponding
+ * Redeem handler. Validates the buyer's `fulfillment` selection (if
+ * present) against the offer's advertised option set and the host's
+ * channel registry, runs the channel's `validate` up-front, then
+ * forwards to the facilitator. The corresponding
  * `onCommit(exchangeId, data)` upsert is deferred until *after* the
  * facilitator + state verification confirm the exchange reached
  * `REDEEMED`, so a failed redeem leaves the stored delivery target
- * unchanged. On success the committer-wallet entry is also dropped
- * from `exchangeBuyerStore` — the rebinding check is moot once the
- * voucher is burned.
+ * unchanged. The voucher NFT is transferable; whichever wallet signs
+ * `boson-redeem` supplies the delivery data — it's the redeemer's
+ * choice end-to-end.
  */
 export async function handleRedeem(
   input: RedeemHandlerInput,
@@ -194,29 +184,9 @@ export async function handleRedeem(
     );
   }
 
-  const committer = ctx.exchangeBuyerStore.get(input.exchangeId);
-  const walletChanged = committer !== undefined && !addressesEqual(committer, redeemer);
-
-  if (walletChanged && input.fulfillment === undefined) {
-    return handlerErr(
-      400,
-      "FULFILLMENT_REQUIRED_ON_WALLET_CHANGE",
-      "redeemer wallet differs from committer — new fulfillment data is required",
-      { exchangeId: input.exchangeId, committer, redeemer },
-    );
-  }
-
   let resolvedChannel: RedeemFulfillmentChannel | undefined;
   if (input.fulfillment !== undefined) {
     const advertisedOptions = ctx.exchangeFulfillmentOptionStore.get(input.exchangeId);
-    if (committer !== undefined && advertisedOptions === undefined) {
-      return handlerErr(
-        500,
-        "FULFILLMENT_OPTIONS_NOT_TRACKED",
-        "server has a committer record for this exchange but no fulfillment option policy",
-        { exchangeId: input.exchangeId },
-      );
-    }
     if (advertisedOptions !== undefined && !advertisedOptions.includes(input.fulfillment.option)) {
       return handlerErr(
         400,
@@ -268,23 +238,23 @@ export async function handleRedeem(
   // Redeem confirmed REDEEMED on-chain — only now is it safe to
   // upsert the channel's delivery-target store. Record a pending
   // update first so a failing channel write leaves the host with an
-  // explicit recovery item instead of losing the buyer's new target.
+  // explicit recovery item instead of losing the buyer's target.
   let warning: HandlerWarning | undefined;
   if (resolvedChannel !== undefined && input.fulfillment !== undefined) {
-    const pending: RedeemFulfillmentUpdate = {
+    const pending: FulfillmentRecoveryEntry = {
       exchangeId: input.exchangeId,
       option: input.fulfillment.option,
       data: input.fulfillment.data,
       redeemer,
       recordedAt: Date.now(),
     };
-    ctx.redeemFulfillmentUpdateStore.set(input.exchangeId, pending);
+    ctx.fulfillmentRecoveryStore.set(input.exchangeId, pending);
     try {
       await resolvedChannel.onCommit(input.exchangeId, input.fulfillment.data);
-      ctx.redeemFulfillmentUpdateStore.delete(input.exchangeId);
+      ctx.fulfillmentRecoveryStore.delete(input.exchangeId);
     } catch (e) {
       const reason = errorMessage(e);
-      ctx.redeemFulfillmentUpdateStore.set(input.exchangeId, { ...pending, error: reason });
+      ctx.fulfillmentRecoveryStore.set(input.exchangeId, { ...pending, error: reason });
       warning = {
         code: "FULFILLMENT_UPDATE_DEFERRED",
         reason:
@@ -298,9 +268,8 @@ export async function handleRedeem(
     }
   }
 
-  // The exchange is REDEEMED even if the fulfillment write is deferred,
-  // so the wallet-rebinding gate no longer applies to this exchange.
-  ctx.exchangeBuyerStore.delete(input.exchangeId);
+  // The exchange is REDEEMED even if the fulfillment write is deferred;
+  // the per-exchange option-policy entry is no longer consulted.
   ctx.exchangeFulfillmentOptionStore.delete(input.exchangeId);
 
   if (warning !== undefined) {
@@ -314,10 +283,6 @@ export async function handleRedeem(
   }
 
   return result;
-}
-
-function addressesEqual(a: string, b: string): boolean {
-  return a.toLowerCase() === b.toLowerCase();
 }
 
 function errorMessage(e: unknown): string {

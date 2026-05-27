@@ -1,7 +1,7 @@
-// `mountX402b` — Express router exposing the eight convenience
-// handlers as `POST /x402b/*` routes. The router is mountable at any
-// path (default `/x402b`); the trailing path segments are fixed by
-// the spec.
+// `mountX402b` — Express router exposing the convenience handlers under
+// `/x402B/*`. The router is mountable at any path; when no `basePath` is
+// provided it registers both the canonical `/x402B` routes and the legacy
+// `/x402b` aliases.
 
 import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
@@ -22,7 +22,7 @@ import type { Hex } from "viem";
 
 import { respondWithChallenge } from "./internal/x402-challenge.js";
 
-/** Shared error code for malformed `POST /x402b/*` bodies. */
+/** Shared error code for malformed `POST /x402B/*` bodies. */
 export const INVALID_REQUEST_BODY = "INVALID_REQUEST_BODY" as const;
 
 export interface MountX402bOptions {
@@ -34,7 +34,7 @@ export interface MountX402bOptions {
   resolveRequirements: (
     req: Request,
   ) => Promise<EscrowPaymentRequirements> | EscrowPaymentRequirements;
-  /** Optional mount path. Defaults to `/x402b`. */
+  /** Optional mount path. Defaults to both `/x402B` and legacy `/x402b`. */
   basePath?: string;
 }
 
@@ -43,18 +43,20 @@ export interface MountX402bOptions {
  */
 export function mountX402b(server: X402bServer, opts: MountX402bOptions): Router {
   const router = Router();
-  const basePath = opts.basePath ?? "/x402b";
+  const basePaths = opts.basePath === undefined ? ["/x402B", "/x402b"] : [opts.basePath];
 
-  router.post(`${basePath}/commit`, commitRoute(server, opts, "commit"));
-  router.post(`${basePath}/commit-and-redeem`, commitRoute(server, opts, "commit-and-redeem"));
-  router.post(`${basePath}/redeem`, performActionRoute(server, "redeem"));
-  router.post(`${basePath}/complete`, performActionRoute(server, "complete"));
-  router.post(`${basePath}/dispute/raise`, performActionRoute(server, "disputeRaise"));
-  router.post(`${basePath}/dispute/resolve`, performActionRoute(server, "disputeResolve"));
-  router.post(`${basePath}/dispute/retract`, performActionRoute(server, "disputeRetract"));
-  router.post(`${basePath}/dispute/escalate`, performActionRoute(server, "disputeEscalate"));
-  router.post(`${basePath}/withdraw-funds`, withdrawFundsRoute(server));
-  router.get(`${basePath}/available-funds`, availableFundsRoute(server));
+  for (const basePath of basePaths) {
+    router.post(`${basePath}/commit`, commitRoute(server, opts, "commit"));
+    router.post(`${basePath}/commit-and-redeem`, commitRoute(server, opts, "commit-and-redeem"));
+    router.post(`${basePath}/redeem`, performActionRoute(server, "redeem"));
+    router.post(`${basePath}/complete`, performActionRoute(server, "complete"));
+    router.post(`${basePath}/dispute/raise`, performActionRoute(server, "disputeRaise"));
+    router.post(`${basePath}/dispute/resolve`, performActionRoute(server, "disputeResolve"));
+    router.post(`${basePath}/dispute/retract`, performActionRoute(server, "disputeRetract"));
+    router.post(`${basePath}/dispute/escalate`, performActionRoute(server, "disputeEscalate"));
+    router.post(`${basePath}/withdraw-funds`, withdrawFundsRoute(server));
+    router.get(`${basePath}/available-funds`, availableFundsRoute(server));
+  }
 
   return router;
 }

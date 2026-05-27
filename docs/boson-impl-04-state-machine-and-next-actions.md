@@ -133,7 +133,7 @@ Stable string identifiers, one per legal transition that either party (buyer or 
 
 The action-id list and the two transition tables live in `@bosonprotocol/x402-core/state-machine` as a single source of truth. `@bosonprotocol/x402-actions` derives `next[]` from those tables at runtime; servers never hand-code transitions. Clients that don't recognise an action's prefix MUST skip it rather than try to dispatch.
 
-**`boson-redeem` and the voucher-transfer case.** Because the Boson voucher is a transferable NFT, the wallet that signs `boson-redeem` is not necessarily the wallet that committed. Servers that accept the two-step flow MUST treat the redeem step as a fulfillment-data rebinding point: see [§Re-submission at redeem in `03-fulfillment-channels.md`](./boson-impl-03-fulfillment-channels.md#re-submission-at-redeem) for the wallet-vs-fulfillment matrix.
+**`boson-redeem` and the voucher-transfer case.** The Boson voucher is a transferable NFT, so the wallet that signs `boson-redeem` is not necessarily the wallet that committed. The two-step flow handles this trivially: buyer-supplied delivery data flows *only* at redeem time, so whichever wallet redeems supplies its own `fulfillment` — see [§Voucher transfer between commit and redeem in `03-fulfillment-channels.md`](./boson-impl-03-fulfillment-channels.md#voucher-transfer-between-commit-and-redeem).
 
 **Out of scope for `nextActions`:**
 
@@ -154,11 +154,11 @@ A second flavour of action lives alongside the exchange-keyed table above. **Ent
 
 | Action ID | Boson primitive | Side | Key | Server endpoint |
 |---|---|---|---|---|
-| `boson-withdrawFunds` | `FundsHandlerFacet.withdrawFunds(uint256,address[],uint256[])` | client OR server (the protocol enforces "must be an authorised signer for the entity") | `entityId` | `POST /x402b/withdraw-funds` |
+| `boson-withdrawFunds` | `FundsHandlerFacet.withdrawFunds(uint256,address[],uint256[])` | client OR server (the protocol enforces "must be an authorised signer for the entity") | `entityId` | `POST /x402B/withdraw-funds` |
 
 The action id is exported from `@bosonprotocol/x402-core/state-machine` under `ENTITY_ACTION_IDS`; exchange-keyed ids stay accessible under `EXCHANGE_ACTION_IDS`. `ACTION_IDS` is the union of both. `ACTION_POST_STATE` is narrowed to exchange-keyed ids; `ACTION_FACETS` covers both (withdraw maps to `FundsHandlerFacet`). The helper `isEntityKeyedAction(action)` discriminates at runtime.
 
-Read-only sibling: a `GET /x402b/available-funds` endpoint returns the current funds entity for a buyer/seller (sourced from the protocol subgraph via `coreSdk.getFunds`). Both endpoints accept either `entityId` directly or an EVM `address` (with optional `role: "buyer" | "seller"` to disambiguate addresses registered as both). See `docs/boson-impl-05-server-sdk.md` and `docs/boson-impl-07-facilitator.md` for wire-format details.
+Read-only sibling: a `GET /x402B/available-funds` endpoint returns the current funds entity for a buyer/seller (sourced from the protocol subgraph via `coreSdk.getFunds`). Both endpoints accept either `entityId` directly or an EVM `address` (with optional `role: "buyer" | "seller"` to disambiguate addresses registered as both). See `docs/boson-impl-05-server-sdk.md` and `docs/boson-impl-07-facilitator.md` for wire-format details.
 
 Scope cap for v1: the convenience layer signs *all* available funds at once. The on-chain primitive accepts arbitrary `(tokenList, tokenAmounts)` arrays; partial / user-chosen amounts can be added later without a wire-format change.
 

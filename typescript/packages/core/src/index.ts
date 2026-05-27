@@ -1,8 +1,8 @@
 // Public API for @bosonprotocol/x402-core.
 //
-// This package is intentionally empty in the initial skeleton. The escrow
-// scheme types/schemas, EIP-712 builders, and state machine model land in
-// follow-up changes; this stub exists so the workspace, build, and publish
-// pipelines can be exercised end-to-end before any consumer-facing API
-// surface is introduced.
-export {};
+// Shared types, EIP-712 builders, and state machine live under their
+// own subpath exports (`/eip712`, `/schemes/escrow`, `/state-machine`,
+// …); the root entry point exposes only constants that are part of the
+// cross-package wire contract.
+
+export { SESSION_ID_HEADER } from "./headers.js";

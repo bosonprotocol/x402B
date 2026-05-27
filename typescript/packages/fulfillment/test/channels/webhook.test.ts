@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createWebhookChannel, type WebhookBuyerData } from "../../src/channels/webhook/index.js";
 
-const URL_HTTPS = "https://buyer.example.com/x402b/deliver";
+const URL_HTTPS = "https://buyer.example.com/x402B/deliver";
 
 describe("webhook channel", () => {
   it("describes itself with a JSON-Schema-shaped buyer data schema", () => {
@@ -40,14 +40,14 @@ describe("webhook channel", () => {
   it("rejects http (non-tls) endpoints", () => {
     const channel = createWebhookChannel();
     expect(
-      channel.validate({ url: "http://buyer.example.com/x402b/deliver" } as WebhookBuyerData),
+      channel.validate({ url: "http://buyer.example.com/x402B/deliver" } as WebhookBuyerData),
     ).toMatchObject({ ok: false });
   });
 
   it("accepts an uppercase HTTPS scheme (case-insensitive)", () => {
     const channel = createWebhookChannel();
     expect(
-      channel.validate({ url: "HTTPS://buyer.example.com/x402b/deliver" } as WebhookBuyerData),
+      channel.validate({ url: "HTTPS://buyer.example.com/x402B/deliver" } as WebhookBuyerData),
     ).toEqual({ ok: true });
   });
 

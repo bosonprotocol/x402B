@@ -42,12 +42,13 @@
   },
   "scripts": {
     "build": "tsup && node scripts/postbuild.mjs",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "lint": "eslint src test --max-warnings 0",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@bosonprotocol/x402-client": "workspace:^"
+    "@bosonprotocol/x402-client": "workspace:^",
+    "@bosonprotocol/x402-core": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",

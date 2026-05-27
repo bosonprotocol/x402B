@@ -17,7 +17,7 @@
 //    target a Boson account `entityId` (buyer or seller) rather than a
 //    specific exchange. They do not transition the exchange state
 //    machine and are deliberately absent from `next[]`; they expose
-//    their own server endpoints (e.g. `POST /x402b/withdraw-funds`).
+//    their own server endpoints (e.g. `POST /x402B/withdraw-funds`).
 //    See spec doc §"Entity-keyed actions".
 //
 // Scope: actions either the client (buyer) OR the server (seller) can
@@ -143,8 +143,7 @@ export const ACTION_POST_STATE: Record<ExchangeActionId, ActionPostState> = {
  * - `boson-createOfferAndCommit` lives on `ExchangeCommitFacet` (the
  *   deferred-redeem entry point per spec doc 04).
  * - `boson-createOfferCommitAndRedeem` lives on
- *   `OrchestrationHandlerFacet2` (the atomic-redeem entry point added
- *   in boson-protocol-contracts PR #1105).
+ *   `OrchestrationHandlerFacet2` (the atomic-redeem entry point).
  * - `boson-redeem`, `boson-cancelVoucher`, `boson-revokeVoucher`, and
  *   `boson-completeExchange` are exchange-lifecycle methods on
  *   `ExchangeHandlerFacet`.

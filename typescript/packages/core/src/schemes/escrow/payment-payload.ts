@@ -106,13 +106,29 @@ export interface EscrowPaymentPayloadInner {
 /**
  * Wire-format type for the `escrow` PaymentPayload that a client base64's into
  * the `X-PAYMENT` header. See docs/boson-impl-01-escrow-scheme.md §3.
+ *
+ * `fulfillment.option` is always the buyer's pick from the server-advertised
+ * option set (capability negotiation). `fulfillment.data` is action-conditional:
+ *
+ * - For atomic Flow B (`boson-createOfferCommitAndRedeem`), `data` MUST be
+ *   present (or `null` when the option's schema is `null`). Atomic Flow B
+ *   completes the redeem on-chain inside the commit transaction, so there's
+ *   no later round trip in which the buyer could hand the seller delivery
+ *   data — it must travel with `X-PAYMENT`.
+ * - For two-step Flow A (`boson-createOfferAndCommit`), `data` MUST be
+ *   omitted. The buyer attaches it to the redeem-time POST body that
+ *   accompanies `boson-redeem`, after a successful commit. See
+ *   `docs/boson-impl-03-fulfillment-channels.md`.
+ *
+ * The Zod schema parses both shapes structurally; the action-conditional
+ * presence/absence rule is enforced by the server-side validator (rule 13).
  */
 export interface EscrowPaymentPayload {
   x402Version: number;
   scheme: "escrow";
   network: EvmNetwork;
   payload: EscrowPaymentPayloadInner;
-  fulfillment?: { option: string; data: Record<string, unknown> | null };
+  fulfillment?: { option: string; data?: Record<string, unknown> | null };
 }
 
 /**
@@ -144,7 +160,10 @@ export const escrowPaymentPayloadSchema = z
     fulfillment: z
       .object({
         option: z.string().min(1),
-        data: z.union([z.record(z.unknown()), z.null()]),
+        // `data` is action-conditional (Flow B only). The structural
+        // schema accepts both shapes; the server validator enforces
+        // presence vs absence based on `payload.action`.
+        data: z.union([z.record(z.unknown()), z.null()]).optional(),
       })
       .strict()
       .optional(),

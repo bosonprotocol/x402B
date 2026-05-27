@@ -98,7 +98,7 @@ export const validPayloadNone: EscrowPaymentPayload = {
   scheme: "escrow",
   network: "eip155:8453",
   payload: { ...baseInner, tokenAuthStrategy: "none" },
-  fulfillment: { option: "inline", data: null },
+  fulfillment: { option: "inline" },
 };
 
 export const validPayloadErc3009: EscrowPaymentPayload = {
@@ -123,7 +123,7 @@ export const validPayloadErc3009: EscrowPaymentPayload = {
       },
     },
   },
-  fulfillment: { option: "email", data: { email: "buyer@example.com" } },
+  fulfillment: { option: "email" },
 };
 
 export const validPayloadPermit: EscrowPaymentPayload = {

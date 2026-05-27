@@ -65,7 +65,7 @@ Use Flow B when the buyer wants to assert "consider this redeemed now" up front.
 - Asynchronous delivery — the resource takes time to produce (e.g. a generated report) but the buyer is happy to redeem on commit and receive the deliverable later through whichever fulfillment channel they negotiated. The post-200 dispute window is the buyer's protection if delivery never arrives.
 - Pre-staged delivery — the resource is already available off-chain (IPFS, gated URL) and the redeem is just the on-chain proof.
 
-The mechanics are identical regardless of delivery timing — `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` from PR #1105 handles the on-chain side, and the chosen `fulfillment.option` handles the delivery side.
+The mechanics are identical regardless of delivery timing — `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` handles the on-chain side, and the chosen `fulfillment.option` handles the delivery side.
 
 ```mermaid
 sequenceDiagram
@@ -100,7 +100,7 @@ sequenceDiagram
 
 Notes:
 
-- `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (PR #1105) emits `OfferCreated`, `BuyerCommitted`, and `VoucherRedeemed` in a single tx. The committer (and thus the redeemer) is `_msgSender()` — under the meta-tx entrypoint that is the buyer recovered from the meta-tx signature, so no extra redeem signature is needed.
+- `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` emits `OfferCreated`, `BuyerCommitted`, and `VoucherRedeemed` in a single tx. The committer (and thus the redeemer) is `_msgSender()` — under the meta-tx entrypoint that is the buyer recovered from the meta-tx signature, so no extra redeem signature is needed.
 - Dispute window still applies post-redeem; see Flow C.
 
 ## Flow C — Dispute path

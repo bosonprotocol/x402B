@@ -143,7 +143,16 @@ After `tsup`, a `postbuild.mjs` step writes
 JSON schemas under `src/**/schemas/` into `dist/schemas/`.
 
 Tests use **vitest**. The package-level `test` script passes
-`--passWithNoTests` so empty packages don't fail CI.
+`--passWithNoTests` for empty packages, so they don't fail CI.
+
+The `x402-e2e` suite gates on `E2E_DOCKER=1` (drives a real docker
+stack via `pnpm stack:up` / `stack:down`). When iterating on a
+single scenario file against a stack you launched manually, set
+`E2E_DOCKER_KEEP_STACK=1` alongside it — `globalSetup` then skips
+both the defensive pre-start `stopStack()` and the post-suite
+teardown, leaving the stack running so the next invocation reuses
+it (seeders are idempotent; the suite mints fresh buyer EOAs each
+run).
 
 ### CI
 

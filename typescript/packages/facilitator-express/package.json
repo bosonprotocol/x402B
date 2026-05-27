@@ -39,7 +39,7 @@
   },
   "scripts": {
     "build": "tsup && node scripts/postbuild.mjs",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "lint": "eslint src --max-warnings 0",
     "clean": "rm -rf dist .turbo"
   },

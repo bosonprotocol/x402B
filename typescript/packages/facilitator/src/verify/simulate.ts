@@ -33,10 +33,6 @@ import {
 } from "viem";
 
 import { buildSettleCalldata } from "../internal/build-settle-calldata.js";
-import {
-  bosonTokenAuthToTransferAuthorization,
-  type TransferAuthorization,
-} from "../internal/token-auth-lift.js";
 
 import type { StepResult } from "./structural.js";
 
@@ -44,6 +40,8 @@ export interface SimulateExecuteMetaTransactionArgs {
   escrowAddress: Address;
   buyer: Address;
   metaTx: BosonMetaTx;
+  /** Action id from the payload — drives the BPIP-12 queue layout. */
+  actionId: string;
   tokenAuthStrategy: TokenAuthStrategy;
   /** Required when `tokenAuthStrategy !== "none"`. */
   tokenAuth?: BosonTokenAuth;
@@ -55,25 +53,23 @@ export interface SimulateExecuteMetaTransactionArgs {
 export async function simulateExecuteMetaTransaction(
   args: SimulateExecuteMetaTransactionArgs,
 ): Promise<StepResult> {
-  let transferAuthorizations: TransferAuthorization[] | undefined;
-  if (args.tokenAuthStrategy !== "none") {
-    if (!args.tokenAuth) {
-      return {
-        ok: false,
-        code: "INVALID_PAYLOAD",
-        reason: `tokenAuthStrategy "${args.tokenAuthStrategy}" requires payload.tokenAuth but none was provided`,
-      };
-    }
-    transferAuthorizations = [bosonTokenAuthToTransferAuthorization(args.tokenAuth)];
+  if (args.tokenAuthStrategy !== "none" && !args.tokenAuth) {
+    return {
+      ok: false,
+      code: "INVALID_PAYLOAD",
+      reason: `tokenAuthStrategy "${args.tokenAuthStrategy}" requires payload.tokenAuth but none was provided`,
+    };
   }
 
-  let calldata: { to: string; data: string };
+  let calldata: { to: `0x${string}`; data: `0x${string}` };
   try {
     calldata = await buildSettleCalldata({
       escrowAddress: args.escrowAddress,
       userAddress: args.buyer,
       metaTx: args.metaTx,
-      transferAuthorizations,
+      actionId: args.actionId,
+      tokenAuthStrategy: args.tokenAuthStrategy,
+      ...(args.tokenAuth !== undefined ? { tokenAuth: args.tokenAuth } : {}),
     });
   } catch (e) {
     return {
@@ -86,8 +82,8 @@ export async function simulateExecuteMetaTransaction(
   try {
     await args.publicClient.call({
       account: args.relayerAddress as `0x${string}`,
-      to: calldata.to as `0x${string}`,
-      data: calldata.data as `0x${string}`,
+      to: calldata.to,
+      data: calldata.data,
     });
     return { ok: true };
   } catch (e) {

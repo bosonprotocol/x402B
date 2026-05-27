@@ -98,7 +98,7 @@ Trade-off: the `escrow` scheme is not registered with the x402 Foundation (yet).
 | `escrowAddress` | yes | Boson Diamond. The custodian. |
 | `recipientId` | yes | Routing-only. May be a numeric `sellerId`, a `did:boson:seller:N`, or a wallet address. Server uses it to dispatch verify-of-state queries. |
 | `maxTimeoutSeconds` | yes | Upper bound for `validBefore` in payment auth signatures. |
-| `offer.fullOffer` | yes | `BosonTypes.FullOffer` from PR #1105. Used both as the on-chain create payload and to compute `offerHash`. |
+| `offer.fullOffer` | yes | `BosonTypes.FullOffer` (BPIP-10). Used both as the on-chain create payload and to compute `offerHash`. |
 | `offer.sellerSig` | yes | EIP-712 sig over `FullOffer` under the protocol domain. Validated by the protocol's `verifyOffer` (`EIP712Lib.verify`) — supports ECDSA and ERC-1271. |
 | `offer.creator` | yes | The address whose key signed `sellerSig` (seller assistant). |
 | `tokenAuthStrategies` | yes | Subset of `["none", "erc3009", "permit", "permit2"]` ([BPIP-12](https://github.com/zajck/BPIPs/blob/authorized-token-transfer-metaTx/content/BPIP-12.md)). The token-transfer authorization strategies the protocol will accept for this asset. `none` requires the buyer to pre-approve the Diamond. |
@@ -184,11 +184,28 @@ The header value is base64(JSON):
   },
 
   "fulfillment": {
-    "option": "email",
-    "data":   { "email": "buyer@example.com" }
+    "option": "email"
+    // "data" appears here only for atomic Flow B
+    // (boson-createOfferCommitAndRedeem) — see below.
   }
 }
 ```
+
+The commit-time `fulfillment` slot always carries the buyer's chosen
+`option` (capability negotiation against the server-advertised set). The
+`data` sub-field is action-conditional:
+
+- **Atomic Flow B** (`boson-createOfferCommitAndRedeem`) — the buyer's
+  delivery data rides along with the commit-time payload because the
+  on-chain redeem happens inside the commit transaction, leaving no later
+  round trip in which the buyer could hand the seller delivery details.
+  `data` MUST be present (or `null` when the option's `schema` is `null`).
+- **Two-step Flow A** (`boson-createOfferAndCommit`) — the buyer redeems
+  later via `boson-redeem`'s POST body and attaches `data` there. The
+  commit-time payload MUST NOT carry `data` (rule 13 rejects it).
+
+See [03 — Fulfillment Channels](./boson-impl-03-fulfillment-channels.md)
+for the redeem-time wire shape and the channel adapter contract.
 
 ### Field reference (PaymentPayload)
 
@@ -201,13 +218,13 @@ The header value is base64(JSON):
 | `payload.metaTx` | yes | Boson meta-tx envelope authorising execution of `<action>` on behalf of `buyer`. EIP-712 signed under the **protocol Diamond** domain (see §4.2). The single buyer signature for the action itself — independent of `tokenAuthStrategy`. |
 | `payload.tokenAuth` | iff `tokenAuthStrategy ≠ "none"` | Token-transfer authorization for *this exact spend* (see §4.3). The facilitator passes it through `executeMetaTransactionWithTokenTransferAuthorization` as a queued entry the protocol consumes during `transferFundsIn`. |
 | `fulfillment.option` | iff requirements `fulfillment.required = true` | Must be one of `fulfillment.options[].id`. |
-| `fulfillment.data` | per the option's schema | Validated against `fulfillment.options[i].schema`. |
+| `fulfillment.data` | iff `payload.action = boson-createOfferCommitAndRedeem` | Atomic Flow B carries the buyer's delivery data inline (validated against `fulfillment.options[i].schema`). Forbidden on Flow A — that path attaches data to the `boson-redeem` POST body. |
 
 ## 4. Signatures
 
 ### 4.1 Seller — `FullOffer` (protocol EIP-712 domain)
 
-```
+```text
 domain:  { name: "Boson Protocol", version: "V2", salt: bytes32(chainId), verifyingContract: <Diamond> }
 type:    FullOffer(
            Offer offer,
@@ -227,7 +244,7 @@ Nested structs `Offer`, `OfferDates`, `OfferDurations`, `DRParameters`, `Conditi
 
 The buyer signs **one** EIP-712 meta-tx authorising execution of `<action>` on the protocol Diamond. This is the only Boson-side signature required regardless of which token-auth strategy the buyer picks.
 
-```
+```text
 domain:  { name: "Boson Protocol", version: "V2", chainId, verifyingContract: <Diamond> }
 type:    MetaTransaction(
            uint256 nonce,
@@ -241,7 +258,7 @@ type:    MetaTransaction(
 `functionName` is one of:
 
 - `"createOfferAndCommit(BosonTypes.FullOffer,address,bytes,uint256)"` — deferred path (`ExchangeCommitFacet`).
-- `"createOfferCommitAndRedeem(BosonTypes.FullOffer,address,bytes,uint256)"` — atomic path (`OrchestrationHandlerFacet2`, [PR #1105](https://github.com/bosonprotocol/boson-protocol-contracts/pull/1105)).
+- `"createOfferCommitAndRedeem(BosonTypes.FullOffer,address,bytes,uint256)"` — atomic path (`OrchestrationHandlerFacet2`).
 
 `functionSignature` is the ABI encoding of the function parameters — including the `FullOffer` and the seller's signature, which echoes `requirements.offer.fullOffer` and `requirements.offer.sellerSig`.
 
@@ -269,7 +286,7 @@ For `permit`'s "diversion guard" (BPIP-12) — if current allowance already cove
 
 ### 4.4 No separate redeem signature
 
-For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomically inside the protocol call (`OrchestrationHandlerFacet2.createOfferCommitAndRedeem`, [PR #1105](https://github.com/bosonprotocol/boson-protocol-contracts/pull/1105)). The committer is `_msgSender()` of the meta-tx, so the meta-tx signature in §4.2 already authorises the redeem. **No additional buyer signature is needed for atomic on-chain redeem.** Note that this is independent of delivery timing — the resource itself may still be delivered later via the negotiated fulfillment channel.
+For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomically inside the protocol call (`OrchestrationHandlerFacet2.createOfferCommitAndRedeem`). The committer is `_msgSender()` of the meta-tx, so the meta-tx signature in §4.2 already authorises the redeem. **No additional buyer signature is needed for atomic on-chain redeem.** Note that this is independent of delivery timing — the resource itself may still be delivered later via the negotiated fulfillment channel.
 
 ## 5. Validation rules (server side, before forwarding to the facilitator)
 
@@ -285,7 +302,9 @@ For `action = boson-createOfferCommitAndRedeem`, the redeem step happens atomica
 10. For `tokenAuthStrategy = "permit"`: `tokenAuth.data.value === requirements.amount`, `tokenAuth.data.spender === requirements.escrowAddress`, `tokenAuth.data.deadline − now ≤ requirements.maxTimeoutSeconds`.
 11. For `tokenAuthStrategy = "permit2"`: `tokenAuth.data.permitted.amount === requirements.amount`, `tokenAuth.data.permitted.token === requirements.asset`, `tokenAuth.data.spender === requirements.escrowAddress`, `tokenAuth.data.deadline − now ≤ requirements.maxTimeoutSeconds`.
 12. For `tokenAuthStrategy = "none"`: server SHOULD pre-flight `IERC20.allowance(buyer, diamond) ≥ amount` and reject early on insufficient allowance.
-13. If `requirements.fulfillment.required`, `payload.fulfillment.option ∈ requirements.fulfillment.options[].id` and `payload.fulfillment.data` validates against the chosen option's `schema`.
+13. If `requirements.fulfillment.required`, `payload.fulfillment.option ∈ requirements.fulfillment.options[].id`. Plus action-conditional rules on `payload.fulfillment.data`:
+    - For `payload.action = boson-createOfferCommitAndRedeem` (atomic Flow B): `payload.fulfillment.data` MUST be present and MUST validate against the chosen option's `schema` (or be `null` when `schema` is `null`).
+    - For `payload.action = boson-createOfferAndCommit` (two-step Flow A): `payload.fulfillment.data` MUST be absent — the buyer attaches delivery data to the `boson-redeem` POST body instead. See [03 — Fulfillment Channels](./boson-impl-03-fulfillment-channels.md).
 
 A failure on any rule returns `400` with a structured `{ code, field, expected, got }` body. The server does **not** consult the facilitator until §1–§13 pass.
 
@@ -301,7 +320,7 @@ A server may simultaneously advertise an `exact` and an `escrow` accept entry, l
 
 ## 8. Open items
 
-- **Multi-chain offer hashing:** PR #1105's `getOfferHashInternal` is per-chain — confirm the SDK exposes it with the right `chainId` defaulting.
+- **Multi-chain offer hashing:** `OrchestrationHandlerFacet2`'s `getOfferHashInternal` is per-chain — confirm the SDK exposes it with the right `chainId` defaulting.
 - **ERC-1271 sellers:** offer signatures from contract-wallets work on-chain via ERC-1271. The 402 sender side needs the seller's contract address surfaced in `offer.creator` so the verifier knows to call `isValidSignature`.
 - **`expires_at` on the requirements:** consider promoting `maxTimeoutSeconds` to an absolute `expiresAt` to make the 402 cacheable. Not in v0.1.
 - **Exact MetaTransaction type:** verify against `MetaTransactionsHandlerFacet` in the contracts repo — the `MetaTransaction(uint256 nonce, address from, address contractAddress, string functionName, bytes functionSignature)` shape above is BPIP-9 era; confirm it matches the BPIP-12 entrypoint expectations exactly.
