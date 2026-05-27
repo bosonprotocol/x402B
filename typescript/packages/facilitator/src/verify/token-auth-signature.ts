@@ -14,7 +14,7 @@
 // supports it, falling back to `name()` + `version()` with a default
 // `"1"` if `version()` reverts.
 
-import type { Address, BosonTokenAuth, Hex } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { Address, BosonTokenAuth } from "@bosonprotocol/x402-core/schemes/escrow";
 import {
   type TokenEip712Domain,
   fetchTokenDomain,
@@ -22,7 +22,7 @@ import {
   recoverPermit2Signer,
   recoverPermitSigner,
 } from "@bosonprotocol/x402-core/eip712/token-auth";
-import type { PublicClient } from "viem";
+import type { Hex, PublicClient } from "viem";
 
 import { packRsv } from "./meta-tx-signature.js";
 import type { StepResult } from "./structural.js";

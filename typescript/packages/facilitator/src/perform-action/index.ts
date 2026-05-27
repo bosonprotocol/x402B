@@ -242,8 +242,9 @@ export async function performAction(
       escrowAddress,
       buyer: metaTx.from as `0x${string}`,
       metaTx,
+      actionId: input.action,
       tokenAuthStrategy,
-      tokenAuth: input.tokenAuth,
+      ...(input.tokenAuth !== undefined ? { tokenAuth: input.tokenAuth } : {}),
       publicClient: config.publicClient,
       relayerAddress: relayer,
     });

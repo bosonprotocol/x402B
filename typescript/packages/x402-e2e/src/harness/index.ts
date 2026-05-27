@@ -10,6 +10,7 @@ export {
 } from "./exchange-reader.js";
 
 export { createBuyerActor, type BuyerActor, type BuyerActorArgs } from "./buyer-actor.js";
+export { createChainTokenDomainResolver } from "./token-domain.js";
 export { createSellerActor, type SellerActor, type SellerActorArgs } from "./seller-actor.js";
 export {
   createResolverActor,

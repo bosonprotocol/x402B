@@ -19,6 +19,8 @@ import {
   fetchProtocolConfig,
   readEnv,
 } from "@bosonprotocol/x402-example-resource-server";
+import type { Policy, TokenDomainResolver } from "@bosonprotocol/x402-client";
+import type { TokenAuthStrategy } from "@bosonprotocol/x402-core/schemes/escrow";
 import { createServer, type AddressInfo } from "node:net";
 import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 
@@ -70,6 +72,29 @@ export interface ScenarioContextArgs {
   amount?: string;
   /** Override `MAX_TIMEOUT_SECONDS`. Defaults to `3600`. */
   maxTimeoutSeconds?: number;
+  /**
+   * Override the strategies the in-process resource server advertises
+   * in its 402 challenge. Defaults to the full set when omitted (the
+   * example's `DEFAULT_TOKEN_AUTH_STRATEGIES`). Tests that exercise
+   * a specific strategy (A3 ERC-3009, A4 Permit, A5 Permit2) narrow
+   * the list to force the client dispatcher's hand.
+   */
+  tokenAuthStrategies?: readonly TokenAuthStrategy[];
+  /**
+   * Optional `TokenDomainResolver` plumbed into the BuyerActor's
+   * `X402bClient`. Required by the client dispatcher for ERC-3009 and
+   * EIP-2612 Permit; omitted scenarios fall back to Permit2 (which
+   * needs no resolver).
+   */
+  tokenDomainResolver?: TokenDomainResolver;
+  /**
+   * Optional `Policy` override for the BuyerActor. Use this to pin a
+   * specific `tokenAuthStrategy` (e.g. `"none"` so the buyer doesn't
+   * sign a token-auth payload, and the protocol pulls funds via a
+   * standing ERC-20 allowance) or to switch `redeemMode` for atomic
+   * commit-and-redeem scenarios.
+   */
+  buyerPolicy?: Policy;
 }
 
 export interface ScenarioContext {
@@ -122,6 +147,21 @@ async function allocateFreePort(): Promise<number> {
   });
   return port;
 }
+
+/**
+ * Pin the `none` token-auth strategy on both the in-process resource
+ * server's advertised strategies and the buyer policy. Spread into
+ * `createScenarioContext` for scenarios that don't exercise ERC-3009 /
+ * Permit / Permit2 path-specific behaviour — without the pin, the
+ * buyer client falls through to `permit2` (no `tokenDomainResolver`
+ * configured) and the on-chain `transferFrom` reverts with `ERC20:
+ * insufficient allowance` because `ensureBuyerCanPay` only approves
+ * the protocol Diamond, not the canonical Permit2 contract.
+ */
+export const NONE_TOKEN_AUTH_SCENARIO = {
+  tokenAuthStrategies: ["none"] as const,
+  buyerPolicy: { tokenAuthStrategy: "none" as const },
+} satisfies Pick<ScenarioContextArgs, "tokenAuthStrategies" | "buyerPolicy">;
 
 export async function createScenarioContext(args: ScenarioContextArgs): Promise<ScenarioContext> {
   const slot = SEED_WALLETS[args.slot];
@@ -183,7 +223,13 @@ export async function createScenarioContext(args: ScenarioContextArgs): Promise<
     escrowAddress: env.escrowAddress,
   });
 
-  const { app } = createResourceServerApp(env, { exchangeReader, protocolConfig });
+  const { app } = createResourceServerApp(env, {
+    exchangeReader,
+    protocolConfig,
+    ...(args.tokenAuthStrategies !== undefined
+      ? { tokenAuthStrategies: args.tokenAuthStrategies }
+      : {}),
+  });
   const httpServer = app.listen(port);
   await new Promise<void>((resolve, reject) => {
     httpServer.once("listening", resolve);
@@ -191,7 +237,14 @@ export async function createScenarioContext(args: ScenarioContextArgs): Promise<
   });
 
   const seller = createSellerActor({ account: sellerAccount });
-  const buyer = createBuyerActor({ account: buyerAccount, publicClient });
+  const buyer = createBuyerActor({
+    account: buyerAccount,
+    publicClient,
+    ...(args.tokenDomainResolver !== undefined
+      ? { tokenDomainResolver: args.tokenDomainResolver }
+      : {}),
+    ...(args.buyerPolicy !== undefined ? { policy: args.buyerPolicy } : {}),
+  });
   const resolver = createResolverActor({ account: resolverAccount });
 
   return {

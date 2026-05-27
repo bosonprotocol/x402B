@@ -50,7 +50,7 @@ import { EXPECTED_PRICE } from "./_assertion-constants.js";
 import { createFundedBuyer, ensureBuyerCanPay, rotateBuyer } from "./_buyer-setup.js";
 import { ENABLED } from "./_flags.js";
 import { SEED_WALLETS } from "./_seed-wallets.js";
-import { createScenarioContext, type ScenarioContext } from "./_setup.js";
+import { createScenarioContext, NONE_TOKEN_AUTH_SCENARIO, type ScenarioContext } from "./_setup.js";
 
 const FACILITATOR_SERVICE = "x402b-facilitator-http";
 const SUBGRAPH_SERVICE = "boson-subgraph";
@@ -102,7 +102,11 @@ describe.skipIf(!ENABLED)("@p1 operational scenarios", () => {
     const publicClient = buildPublicClient();
     const funder = buildWalletClient(SEED_WALLETS.operational.account);
     const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
-    ctx = await createScenarioContext({ slot: "operational", buyerAccount });
+    ctx = await createScenarioContext({
+      slot: "operational",
+      buyerAccount,
+      ...NONE_TOKEN_AUTH_SCENARIO,
+    });
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,
@@ -202,7 +206,11 @@ describe.skipIf(!ENABLED)("@p2 operational scenarios", () => {
     const publicClient = buildPublicClient();
     const funder = buildWalletClient(SEED_WALLETS.operational.account);
     const buyerAccount = await createFundedBuyer({ funder, publicClient, fundEth: "2" });
-    ctx = await createScenarioContext({ slot: "operational", buyerAccount });
+    ctx = await createScenarioContext({
+      slot: "operational",
+      buyerAccount,
+      ...NONE_TOKEN_AUTH_SCENARIO,
+    });
     await ensureBuyerCanPay({
       walletClient: buildWalletClient(buyerAccount),
       publicClient,
