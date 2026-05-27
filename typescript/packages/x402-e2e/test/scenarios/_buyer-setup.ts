@@ -94,6 +94,19 @@ export async function ensureBuyerHasBalance(args: EnsureBuyerHasBalanceArgs): Pr
  * allowance.
  */
 export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
+  // `WalletClient` doesn't require `account` / `chain` at the type level,
+  // so the `approve` step's non-null assertions would crash with an
+  // opaque viem error if a caller passed a bare client. Surface a clear
+  // harness-side message instead (mirrors `ensureBuyerHasBalance`).
+  const walletAccount = args.walletClient.account;
+  const walletChain = args.walletClient.chain;
+  if (walletAccount === undefined || walletChain === undefined) {
+    throw new Error(
+      "[x402-e2e/_buyer-setup] ensureBuyerCanPay requires a WalletClient with both `account` and `chain` set " +
+        "(use `buildWalletClient(account)`)",
+    );
+  }
+
   await ensureTokenBalance({
     walletClient: args.walletClient,
     publicClient: args.publicClient,
@@ -117,8 +130,8 @@ export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
       // Approve a generous cap so subsequent scenarios on the same
       // chain state don't need to re-approve; refunds untouched.
       args: [args.spenderAddress, args.amount * 1000n],
-      account: args.walletClient.account!,
-      chain: args.walletClient.chain!,
+      account: walletAccount,
+      chain: walletChain,
     });
     await args.publicClient.waitForTransactionReceipt({ hash: approveHash });
   }
