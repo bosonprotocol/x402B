@@ -78,13 +78,26 @@ export async function ensureTokenBalance(args: EnsureTokenBalanceArgs): Promise<
 
   if (balance >= args.targetBalance) return;
 
+  // `WalletClient` doesn't require `account` / `chain` at the type level,
+  // so unguarded non-null assertions would crash with an opaque viem
+  // error if a caller passed a bare client. Surface a clear harness-side
+  // message instead.
+  const walletAccount = args.walletClient.account;
+  const walletChain = args.walletClient.chain;
+  if (walletAccount === undefined || walletChain === undefined) {
+    throw new Error(
+      "[x402-e2e/fund] ensureTokenBalance requires a WalletClient with both `account` and `chain` set " +
+        "(use `buildWalletClient(account)`)",
+    );
+  }
+
   const mintHash = await args.walletClient.writeContract({
     address: args.tokenAddress,
     abi: ERC20_TEST_ABI,
     functionName: "mint",
     args: [args.owner, args.targetBalance - balance],
-    account: args.walletClient.account!,
-    chain: args.walletClient.chain!,
+    account: walletAccount,
+    chain: walletChain,
   });
   await args.publicClient.waitForTransactionReceipt({ hash: mintHash });
 }
