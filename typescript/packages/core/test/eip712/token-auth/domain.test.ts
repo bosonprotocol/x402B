@@ -57,6 +57,36 @@ describe("fetchTokenDomain", () => {
     });
   });
 
+  it("includes salt when the EIP-5267 fields bitmask sets the salt bit (0x10)", async () => {
+    const salt = `0x${"ab".repeat(32)}` as const;
+    const client = buildClient({
+      // 0x1f = name|version|chainId|verifyingContract|salt
+      eip712Domain: () => ["0x1f", "USD Coin", "2", 8453n, TOKEN, salt, []] as const,
+    });
+    expect(await fetchTokenDomain(client, TOKEN, CHAIN_ID)).toEqual({
+      name: "USD Coin",
+      version: "2",
+      chainId: 8453,
+      verifyingContract: TOKEN,
+      salt,
+    });
+  });
+
+  it("drops a non-zero salt when the fields bitmask leaves the salt bit unset", async () => {
+    const client = buildClient({
+      // 0x0f leaves the salt bit (0x10) unset, so the returned salt is
+      // not part of the domain and must not be carried through.
+      eip712Domain: () =>
+        ["0x0f", "USD Coin", "2", 8453n, TOKEN, `0x${"ab".repeat(32)}`, []] as const,
+    });
+    expect(await fetchTokenDomain(client, TOKEN, CHAIN_ID)).toEqual({
+      name: "USD Coin",
+      version: "2",
+      chainId: 8453,
+      verifyingContract: TOKEN,
+    });
+  });
+
   it("falls back to name() + version() when eip712Domain() throws a ContractFunctionExecutionError", async () => {
     const client = buildClient({
       eip712Domain: () => {

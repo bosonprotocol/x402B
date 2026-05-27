@@ -58,6 +58,15 @@ export const VERSION_ABI = [
   },
 ] as const;
 
+// EIP-5267 `fields` bitmask: bit i (LSB-first) is set when domain field
+// i — in EIP-712's canonical field order (name, version, chainId,
+// verifyingContract, salt) — is present. We only need the `salt` bit:
+// tokens whose domain includes `salt` computed their domain separator
+// with it, so the signature won't recover unless we carry it through;
+// tokens that omit `salt` return a zero `bytes32` we must drop, or the
+// extra field corrupts the domain we hash against.
+const EIP5267_SALT_BIT = 0x10;
+
 // Duck-type check for viem's `ContractFunctionExecutionError` (and the
 // other `ContractFunction*Error` subclasses it nests as a `cause`).
 // We compare by `.name` rather than `instanceof` because the paywall's
@@ -105,11 +114,13 @@ export async function fetchTokenDomain(
       abi: EIP5267_ABI,
       functionName: "eip712Domain",
     })) as readonly [Hex, string, string, bigint, Address, Hex, readonly bigint[]];
+    const hasSalt = (Number(result[0]) & EIP5267_SALT_BIT) !== 0;
     return {
       name: result[1],
       version: result[2],
       chainId: Number(result[3]),
       verifyingContract: result[4],
+      salt: hasSalt ? result[5] : undefined,
     };
   } catch (e) {
     if (!isContractFunctionError(e)) {
