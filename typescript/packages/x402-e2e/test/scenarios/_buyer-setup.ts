@@ -145,14 +145,30 @@ export async function ensureBuyerHasBalance(args: EnsureBuyerHasBalanceArgs): Pr
  */
 export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
   await ensureBuyerHasBalance(args);
-  // ensureBuyerHasBalance has already validated `account` / `chain`;
-  // re-extract them as locals for the type-narrowed writeContract call
-  // below without re-running the guard.
+  await ensureBuyerAllowance(args);
+}
+
+/**
+ * Ensure `spenderAddress` holds at least `amount` ERC-20 allowance from
+ * the buyer — the allowance half of `ensureBuyerCanPay`, without the
+ * mint. Split out so a scenario can grant a standing allowance while
+ * deliberately leaving the buyer's balance short: C6 (insufficient
+ * escrow balance) needs the commit to clear the server's pre-flight and
+ * reach the facilitator, where the on-chain `transferFrom` then reverts
+ * on balance rather than allowance, surfacing as `SIMULATION_REVERT`.
+ */
+export async function ensureBuyerAllowance(args: BuyerSetupArgs): Promise<void> {
+  // `WalletClient` doesn't require `account` / `chain` at the type
+  // level, so unguarded non-null assertions would crash with an opaque
+  // viem error if a caller passed a bare client. Surface a clear
+  // harness-side message instead.
   const walletAccount = args.walletClient.account;
   const walletChain = args.walletClient.chain;
   if (walletAccount === undefined || walletChain === undefined) {
-    // Unreachable — ensureBuyerHasBalance would have thrown above.
-    return;
+    throw new Error(
+      "[x402-e2e/_buyer-setup] ensureBuyerAllowance requires a WalletClient with both `account` and `chain` set " +
+        "(use `buildWalletClient(account)`)",
+    );
   }
 
   const allowance = (await args.publicClient.readContract({
