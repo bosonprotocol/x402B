@@ -121,14 +121,6 @@ export async function ensureBuyerAllowance(args: BuyerSetupArgs): Promise<void> 
     );
   }
 
-  await ensureTokenBalance({
-    walletClient: args.walletClient,
-    publicClient: args.publicClient,
-    tokenAddress: args.assetAddress,
-    owner: args.buyerAddress,
-    targetBalance: args.amount,
-  });
-
   const allowance = (await args.publicClient.readContract({
     address: args.assetAddress,
     abi: ERC20_TEST_ABI,
