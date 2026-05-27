@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-client-browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "Apache-2.0",
   "description": "Browser-environment adapters for the Boson Protocol x402 buyer-side SDK — wraps a viem WalletClient or a raw EIP-1193 provider (e.g. window.ethereum) as an X402bClient Signer.",
   "repository": {
