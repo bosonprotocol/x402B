@@ -52,8 +52,12 @@ export interface DecodedXPaymentResponse {
       endpoints?: Record<string, string>;
     }[];
     exchangeId?: string;
-    exchangeState?: number;
-    disputeState?: number;
+    // `ExchangeState` / `DisputeState` are string enums in core-sdk's
+    // subgraph schema (`COMMITTED = "COMMITTED"`, …), so the wire values
+    // are strings — compare against `ExchangeState.*` / `DisputeState.*`
+    // directly.
+    exchangeState?: string;
+    disputeState?: string;
   };
 }
 

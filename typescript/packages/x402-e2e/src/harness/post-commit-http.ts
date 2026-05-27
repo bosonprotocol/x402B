@@ -86,6 +86,13 @@ export interface PostCommitActionResult {
   txHash: Hex;
   newExchangeState: ExchangeState;
   newDisputeState?: DisputeState;
+  /**
+   * The action ids the server advertised in the response's
+   * `nextActions.next[]` envelope, in emitted order. Lets scenarios
+   * assert the post-action transition set on the wire (D1 / D2) without
+   * re-deriving it. Empty when the new state is terminal for the buyer.
+   */
+  nextActionIds: readonly string[];
 }
 
 /**
@@ -172,16 +179,25 @@ function flattenServerResponse(
 ): PostCommitActionResult {
   const raw = body as {
     txHash?: unknown;
-    nextActions?: { exchangeState?: unknown; disputeState?: unknown };
+    nextActions?: {
+      exchangeState?: unknown;
+      disputeState?: unknown;
+      next?: readonly { id?: unknown }[];
+    };
   };
   const txHash = raw.txHash;
   const newExchangeState = raw.nextActions?.exchangeState;
   if (typeof txHash !== "string" || typeof newExchangeState !== "string") {
     throw new PostCommitActionError(actionId, status, body);
   }
+  const nextRaw = raw.nextActions?.next;
+  const nextActionIds = Array.isArray(nextRaw)
+    ? nextRaw.map((entry) => entry?.id).filter((id): id is string => typeof id === "string")
+    : [];
   const result: PostCommitActionResult = {
     txHash: txHash as Hex,
     newExchangeState: newExchangeState as ExchangeState,
+    nextActionIds,
   };
   const newDisputeState = raw.nextActions?.disputeState;
   if (typeof newDisputeState === "string") {

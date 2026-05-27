@@ -33,8 +33,7 @@ describe.skipIf(!ENABLED)("@p2 commit-time validations — PR 7", () => {
 });
 
 describe.skipIf(!ENABLED)("@p0/@p1 nextActions / channel routing — PR 7", () => {
-  it.todo("D1 — post-commit nextActions[] matches ACTION_POST_STATE for the new state");
-  it.todo("D2 — post-redeem nextActions[] shrinks to [completeExchange, raiseDispute]");
+  // D1, D2 moved to `next-actions.test.ts` as runnable scenarios.
   // D3 stays a todo: the client-side channel fallback chain
   // (server → facilitator → onchain on 5xx / network error) isn't
   // implemented today in `x402-client` / `x402-client-fetch`. The
