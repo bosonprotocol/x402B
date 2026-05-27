@@ -63,7 +63,7 @@ describe.skipIf(!ENABLED)("@p0 commit-time scenarios", () => {
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
-      escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
+      spenderAddress: LOCAL_31337_0.contracts.protocolDiamond,
       amount: 10_000_000n,
     });
   });
@@ -316,7 +316,7 @@ describe.skipIf(!ENABLED)("@p1 commit-time scenarios (Permit2)", () => {
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
-      escrowAddress: LOCAL_31337_0.contracts.permit2,
+      spenderAddress: LOCAL_31337_0.contracts.permit2,
       amount: 10_000_000n,
     });
   });

@@ -97,7 +97,7 @@ describe.skipIf(!ENABLED)("@p0 post-commit lifecycle scenarios", () => {
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
-      escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
+      spenderAddress: LOCAL_31337_0.contracts.protocolDiamond,
       amount: 10_000_000n,
     });
   });
@@ -261,7 +261,7 @@ describe.skipIf(!ENABLED)("@p1 post-commit lifecycle scenarios", () => {
       publicClient,
       buyerAddress: buyerAccount.address,
       assetAddress: LOCAL_31337_0.contracts.testErc20,
-      escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
+      spenderAddress: LOCAL_31337_0.contracts.protocolDiamond,
       amount: 10_000_000n,
     });
   });
