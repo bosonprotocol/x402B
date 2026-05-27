@@ -3,13 +3,18 @@
 // Two flavours, picked by the scenario based on its `tokenAuthStrategy`:
 //
 //   - `ensureBuyerHasBalance` — mint payment tokens to the buyer if
-//     the balance falls short. ERC-3009, Permit, and Permit2 carry
-//     their own authorisation in the X-PAYMENT payload, so no
-//     allowance is needed; balance alone gates the settle.
+//     the balance falls short. ERC-3009 and Permit (EIP-2612) carry a
+//     full transfer authorisation in the X-PAYMENT payload, so no
+//     ERC-20 allowance is needed; balance alone gates the settle.
+//     (Permit2 is different — its payload authorises the transfer but
+//     the canonical Permit2 contract still needs a standing ERC-20
+//     allowance, so `permit2` routes through `ensureBuyerCanPay` below.)
 //   - `ensureBuyerCanPay` — calls `ensureBuyerHasBalance`, then ensures
-//     the escrow has a generous ERC-20 allowance. Required only for
-//     the `none` strategy, where settle just calls `transferFrom` and
-//     reverts on insufficient allowance.
+//     a spender has a generous ERC-20 allowance. Required for the
+//     `none` strategy (settle calls `transferFrom` against the escrow
+//     and reverts on insufficient allowance) and for `permit2` (the
+//     canonical Permit2 contract must hold a standing allowance to pull
+//     from the buyer).
 //
 // The local Boson stack's test ERC-20 mocks (`Foreign20`,
 // `MockERC3009Token`, `MockERC2612Token`) all expose a public
@@ -41,8 +46,12 @@ export interface EnsureBuyerHasBalanceArgs {
 }
 
 export interface BuyerSetupArgs extends EnsureBuyerHasBalanceArgs {
-  /** Escrow address — the `spender` the buyer approves for the `none` strategy. */
-  escrowAddress: Address;
+  /**
+   * The `spender` the buyer grants an ERC-20 allowance to. The escrow
+   * for the `none` strategy; the canonical Permit2 contract for the
+   * `permit2` strategy.
+   */
+  spenderAddress: Address;
 }
 
 /**
@@ -77,10 +86,12 @@ export async function ensureBuyerHasBalance(args: EnsureBuyerHasBalanceArgs): Pr
 
 /**
  * Ensure the buyer has at least `amount` balance + allowance against
- * the escrow. Used by the `none` token-auth strategy, where settle
- * calls `transferFrom` and reverts on insufficient allowance. Both
- * the mint and the approve are no-ops when re-run with sufficient
- * balance / allowance.
+ * `spenderAddress`. Used by the `none` token-auth strategy (spender =
+ * escrow, where settle calls `transferFrom` and reverts on insufficient
+ * allowance) and by `permit2` (spender = the canonical Permit2 contract,
+ * which needs a standing allowance to pull from the buyer). Both the
+ * mint and the approve are no-ops when re-run with sufficient balance /
+ * allowance.
  */
 export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
   await ensureTokenBalance({
@@ -95,7 +106,7 @@ export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
     address: args.assetAddress,
     abi: ERC20_TEST_ABI,
     functionName: "allowance",
-    args: [args.buyerAddress, args.escrowAddress],
+    args: [args.buyerAddress, args.spenderAddress],
   })) as bigint;
 
   if (allowance < args.amount) {
@@ -105,7 +116,7 @@ export async function ensureBuyerCanPay(args: BuyerSetupArgs): Promise<void> {
       functionName: "approve",
       // Approve a generous cap so subsequent scenarios on the same
       // chain state don't need to re-approve; refunds untouched.
-      args: [args.escrowAddress, args.amount * 1000n],
+      args: [args.spenderAddress, args.amount * 1000n],
       account: args.walletClient.account!,
       chain: args.walletClient.chain!,
     });
@@ -137,8 +148,8 @@ export interface CreateFundedBuyerArgs {
 export interface RotateBuyerArgs extends CreateFundedBuyerArgs {
   /** Payment-asset address (typically `LOCAL_31337_0.contracts.testErc20`). */
   assetAddress: Address;
-  /** Escrow address — the `spender` the rotated buyer approves. */
-  escrowAddress: Address;
+  /** The `spender` the rotated buyer grants an ERC-20 allowance to. */
+  spenderAddress: Address;
   /** Amount the rotated buyer must be able to pay (atomic units). */
   amount: bigint;
 }
@@ -146,7 +157,7 @@ export interface RotateBuyerArgs extends CreateFundedBuyerArgs {
 /**
  * Generate a fresh buyer EOA, fund it with native ETH from `funder`,
  * and ensure it has at least `amount` of the payment asset both
- * minted and approved against `escrowAddress`. Used by F4 (buyer
+ * minted and approved against `spenderAddress`. Used by F4 (buyer
  * key rotation) where the test needs a SECOND buyer key — fully
  * funded and approved — to attempt a redeem against an exchange
  * committed by the FIRST buyer key.
@@ -162,7 +173,7 @@ export async function rotateBuyer(args: RotateBuyerArgs): Promise<LocalAccount> 
     publicClient: args.publicClient,
     buyerAddress: account.address,
     assetAddress: args.assetAddress,
-    escrowAddress: args.escrowAddress,
+    spenderAddress: args.spenderAddress,
     amount: args.amount,
   });
   return account;

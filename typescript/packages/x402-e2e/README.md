@@ -152,15 +152,20 @@ Tests are tagged in the `describe(...)` title so vitest can filter
 with `-t '@p0'`. Priorities:
 
 - **`@p0`** — happy-path commit + post-commit lifecycle. Runs on
-  every PR in CI (see `.github/workflows/ci.yml`'s `e2e-p0` job).
-- **`@p1`** — secondary lifecycle paths + operational scenarios
-  with a tight blast radius. Runs nightly.
+  every PR in CI (see `.github/workflows/ci.yml`'s `e2e-pr` job).
+- **`@p1`** — secondary lifecycle paths (token-auth strategies,
+  retract / cancel). Runs on every PR alongside `@p0` in the `e2e-pr`
+  job. The one exception is the F1 operational chaos scenario, which
+  is excluded from the per-PR job (it kills a shared container, so it
+  can't run in parallel) and is exercised nightly instead.
 - **`@p2`** — niche failure modes (subgraph lag, buyer key
   rotation) and lower-impact transitions. Runs nightly.
 
 | Tag(s)   | Describe                                      | File                          |
 |----------|-----------------------------------------------|-------------------------------|
 | `@p0`    | commit-time scenarios (A1, A2)                | `commit.test.ts`              |
+| `@p0`    | commit-time scenarios — ERC-3009 (A3)         | `commit.test.ts`              |
+| `@p1`    | commit-time scenarios — Permit / Permit2 (A4, A5) | `commit.test.ts`          |
 | `@p0`    | concurrent commit-and-redeem (E0)             | `concurrent.test.ts`          |
 | `@p0`    | post-commit lifecycle (B1–B4)                 | `post-commit.test.ts`         |
 | `@p0`    | commit-time validations (C1–C5, C8)           | `validation-commit.test.ts`   |
@@ -174,10 +179,14 @@ with `-t '@p0'`. Priorities:
 ### Running a tag subset
 
 ```sh
-# Matches the per-PR CI job — @p0 only. Routed through the dedicated
-# `test:p0` script because pnpm v10 forwards `--` literally and vitest
-# would parse `-t @p0` as a positional file pattern (re-running the
-# full @p1 / @p2 breadth instead of filtering).
+# Matches the per-PR CI job — @p0 + @p1, with `operational.test.ts`
+# excluded so it stays parallel-safe (the F1 chaos test kills a shared
+# container). Routed through the dedicated `test:pr` script because
+# pnpm v10 forwards `--` literally and vitest would parse the flags as
+# positional file patterns instead of `--testNamePattern` / `--exclude`.
+E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:pr
+
+# Just the @p0 subset.
 E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:p0
 
 # Matches the nightly workflow — full breadth.
@@ -196,9 +205,12 @@ E2E_DOCKER=1 E2E_DOCKER_KEEP_STACK=1 \
 - **`.github/workflows/ci.yml`** runs on every PR + push to `main`:
   - `build-test-lint` — Node 22 / 24 matrix; `pnpm build`,
     `pnpm test`, `pnpm lint`, `pnpm format:check`.
-  - `e2e-p0` — boots the stack and runs the `@p0` scenario subset
-    via `vitest -t '@p0'`. 25-min timeout (cold image pull adds 2–5
-    min). Uploads `docker compose logs` on failure.
+  - `e2e-pr` — boots the stack and runs the `@p0 + @p1` scenario
+    subset via `test:pr` (`vitest -t '@p0|@p1' --exclude
+    '**/operational.test.ts'`). The operational file is excluded so
+    the job stays parallel; its F1 chaos scenario runs nightly
+    instead. 30-min timeout (cold image pull adds 2–5 min). Uploads
+    `docker compose logs` on failure.
 - **`.github/workflows/nightly.yml`** runs daily at 03:00 UTC and on
   manual `workflow_dispatch`:
   - `e2e-full` — same stack boot, no tag filter — runs every

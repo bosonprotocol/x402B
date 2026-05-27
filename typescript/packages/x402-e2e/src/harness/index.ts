@@ -48,3 +48,17 @@ export {
   type FacilitatorOnlyActionId,
   type FacilitatorPerformResult,
 } from "./facilitator-perform-action.js";
+
+export {
+  buildValidCommitHeader,
+  decodePaymentHeader,
+  encodePaymentHeader,
+  fetchEscrowChallenge,
+  submitMutatedCommit,
+  submitPaymentHeader,
+  verifyViaFacilitator,
+  type CraftedSubmission,
+  type SubmissionBody,
+  type SubmitMutatedCommitArgs,
+  type VerifyViaFacilitatorArgs,
+} from "./craft-payment.js";

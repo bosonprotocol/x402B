@@ -69,7 +69,7 @@ describe.skipIf(!ENABLED)("@p0 concurrent commit-and-redeem scenarios", () => {
           publicClient,
           buyerAddress: account.address,
           assetAddress: LOCAL_31337_0.contracts.testErc20,
-          escrowAddress: LOCAL_31337_0.contracts.protocolDiamond,
+          spenderAddress: LOCAL_31337_0.contracts.protocolDiamond,
           amount: PER_COMMIT_AMOUNT,
         }),
       ),
