@@ -44,10 +44,12 @@ describe.skipIf(!ENABLED)("@p0/@p1 nextActions / channel routing — PR 7", () =
   );
 });
 
-describe.skipIf(!ENABLED)("@p1/@p2 multi-party — PR 7", () => {
-  it.todo("E1 — two concurrent buyers commit to the same offer → distinct exchangeIds");
+// E1 (concurrent commit) and E3 (dual-sig resolveDispute regression)
+// moved to `multi-party.test.ts` as runnable scenarios. E2 stays here:
+// it needs seller-side `revokeVoucher` meta-tx signing wired through
+// `SellerActor` — the same harness gap that defers B8.
+describe.skipIf(!ENABLED)("@p2 multi-party — PR 7", () => {
   it.todo("E2 — buyer commits, then seller revokeVoucher → buyer refunded");
-  it.todo("E3 — mutual resolveDispute requires both buyer + seller sigs (dual-sig regression)");
 });
 
 describe.skipIf(!ENABLED)("@p1/@p2 commit-time fulfillment — PR 7", () => {
