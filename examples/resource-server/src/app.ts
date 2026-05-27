@@ -22,8 +22,10 @@
 import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
 import type {
   EscrowPaymentRequirements,
+  FulfillmentRequirements,
   TokenAuthStrategy,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { FulfillmentChannel } from "@bosonprotocol/x402-fulfillment";
 import {
   createX402bServer,
   type ExchangeReader,
@@ -64,6 +66,22 @@ export interface ResourceServerAppOptions {
    * end-to-end against a specific token mock) pass a narrower list.
    */
   tokenAuthStrategies?: readonly TokenAuthStrategy[];
+  /**
+   * Fulfillment channels the host offers. Each channel's `describe()`
+   * populates the 402 challenge's `fulfillment.options[]`, and the same
+   * instance is forwarded to the server config so the redeem handler can
+   * `validate()` and persist (`onCommit`) the buyer's delivery data.
+   * Pre-`configure()` each channel (e.g. with its `send` / `upload`
+   * hook) before passing it in. Omitted → no fulfillment options are
+   * advertised and redeem requests carrying `fulfillment` are rejected.
+   */
+  fulfillmentChannels?: readonly FulfillmentChannel[];
+  /**
+   * Whether the buyer MUST select a fulfillment option at commit time
+   * (`fulfillment.required` on the wire). Defaults to `false`. Ignored
+   * when `fulfillmentChannels` is empty / omitted.
+   */
+  fulfillmentRequired?: boolean;
 }
 
 export interface ResourceServerAppBundle {
@@ -76,6 +94,7 @@ function buildServerConfig(
   env: ResourceServerEnv,
   seller: LocalAccount,
   exchangeReader: ExchangeReader,
+  fulfillmentChannels?: readonly FulfillmentChannel[],
 ): X402bServerConfig {
   return {
     network: env.network,
@@ -86,6 +105,12 @@ function buildServerConfig(
     channelRegistry: buildExampleChannelRegistry(env),
     exchangeReader,
     ...(env.subgraphUrl !== undefined ? { subgraphUrl: env.subgraphUrl } : {}),
+    // `FulfillmentChannel` is a structural superset of the redeem
+    // handler's `RedeemFulfillmentChannel` (it adds `describe` /
+    // `onFulfill` / `configure`), so the array is assignable as-is.
+    ...(fulfillmentChannels !== undefined && fulfillmentChannels.length > 0
+      ? { fulfillmentChannels }
+      : {}),
   };
 }
 
@@ -105,8 +130,22 @@ export function createResourceServerApp(
   const now = options.now ?? Date.now;
   const protocolConfig = options.protocolConfig;
   const tokenAuthStrategies = options.tokenAuthStrategies ?? DEFAULT_TOKEN_AUTH_STRATEGIES;
+  const fulfillmentChannels = options.fulfillmentChannels;
 
-  const server = createX402bServer(buildServerConfig(env, seller, exchangeReader));
+  // Channels are fixed for the app's lifetime, so derive the advertised
+  // `fulfillment` block once. Each channel's `describe()` yields the
+  // `FulfillmentOption` the buyer picks from at commit/redeem time.
+  const fulfillment: FulfillmentRequirements | undefined =
+    fulfillmentChannels !== undefined && fulfillmentChannels.length > 0
+      ? {
+          required: options.fulfillmentRequired ?? false,
+          options: fulfillmentChannels.map((channel) => channel.describe()),
+        }
+      : undefined;
+
+  const server = createX402bServer(
+    buildServerConfig(env, seller, exchangeReader, fulfillmentChannels),
+  );
 
   // The Express adapters call `resolveRequirements` twice per buyer
   // commit flow (once for the 402 challenge, once when the buyer
@@ -219,6 +258,7 @@ export function createResourceServerApp(
       tokenAuthStrategies,
       recipientId: env.sellerId,
       maxTimeoutSeconds: env.maxTimeoutSeconds,
+      ...(fulfillment !== undefined ? { fulfillment } : {}),
     });
 
     // Assign before awaiting so a concurrent retry on the same session

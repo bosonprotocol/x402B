@@ -9,6 +9,8 @@
 import { ExchangeState } from "@bosonprotocol/x402-actions";
 import { metaTransactionTypedData } from "@bosonprotocol/x402-core/eip712";
 import { buildCreateOfferAndCommitCalldata } from "@bosonprotocol/x402-evm";
+import { createIpfsPointerChannel } from "@bosonprotocol/x402-fulfillment/channels/ipfs-pointer";
+import { createWebhookChannel } from "@bosonprotocol/x402-fulfillment/channels/webhook";
 import type { ExchangeReader, FetchLike } from "@bosonprotocol/x402-server";
 import supertest from "supertest";
 import { parseSignature } from "viem";
@@ -181,6 +183,52 @@ describe("resource-server example app", () => {
   it("the seller signer address matches the configured private key", () => {
     const { seller } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     expect(seller.address).toBe(privateKeyToAccount(SELLER_PK).address);
+  });
+
+  // Fulfillment-channel wiring: with no channels the 402 omits the
+  // `fulfillment` block entirely (the historical default); with channels
+  // it advertises one option per channel's `describe()`.
+  it("omits fulfillment from the 402 challenge when no channels are configured", async () => {
+    const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
+    const res = await supertest(app).get("/resource");
+    expect(res.status).toBe(402);
+    expect(res.body.accepts[0]).not.toHaveProperty("fulfillment");
+  });
+
+  it("advertises one fulfillment option per configured channel (optional by default)", async () => {
+    const { app } = createResourceServerApp(buildEnv(), {
+      exchangeReader: NULL_READER,
+      fulfillmentChannels: [
+        createWebhookChannel({ send: async () => {} }),
+        createIpfsPointerChannel({ upload: async () => "bafyTestCid" }),
+      ],
+    });
+    const res = await supertest(app).get("/resource");
+    expect(res.status).toBe(402);
+
+    const fulfillment = res.body.accepts[0].fulfillment;
+    expect(fulfillment).toBeDefined();
+    // `required` defaults to false — the buyer MAY pick a channel.
+    expect(fulfillment.required).toBe(false);
+    expect(fulfillment.options.map((o: { id: string }) => o.id)).toEqual([
+      "webhook",
+      "ipfs-pointer",
+    ]);
+    // Each advertised option carries the channel's buyer-data schema slot.
+    for (const option of fulfillment.options) {
+      expect(option).toHaveProperty("schema");
+    }
+  });
+
+  it("marks fulfillment required when fulfillmentRequired is set", async () => {
+    const { app } = createResourceServerApp(buildEnv(), {
+      exchangeReader: NULL_READER,
+      fulfillmentChannels: [createWebhookChannel({ send: async () => {} })],
+      fulfillmentRequired: true,
+    });
+    const res = await supertest(app).get("/resource");
+    expect(res.status).toBe(402);
+    expect(res.body.accepts[0].fulfillment.required).toBe(true);
   });
 
   // Regression: the express adapters call `resolveRequirements` once
