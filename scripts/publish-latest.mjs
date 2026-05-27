@@ -50,7 +50,7 @@ async function readWorkspacePackages() {
     const dir = join(PACKAGES_DIR, e.name);
     try {
       const pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8"));
-      if (pkg.name) out.set(pkg.name, { dir, version: pkg.version });
+      if (pkg.name) out.set(pkg.name, { dir, version: pkg.version, private: pkg.private });
     } catch {
       // ignore missing package.json
     }
@@ -81,11 +81,13 @@ async function extractChangelogSection(dir, version) {
   }
 }
 
-function parseTag(tag) {
-  // Scoped: @scope/name@version  -> last '@' separates name from version
-  const idx = tag.lastIndexOf("@");
-  if (idx <= 0) return null;
-  return { name: tag.slice(0, idx), version: tag.slice(idx + 1) };
+async function releaseExists(tag) {
+  try {
+    await run("gh", ["release", "view", tag], { silent: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function main() {
@@ -97,28 +99,27 @@ async function main() {
   const tagsAfter = await listLocalTags();
   const newTags = [...tagsAfter].filter((t) => !tagsBefore.has(t));
 
-  if (newTags.length === 0) {
-    console.log("No new tags created — nothing published.");
-    return;
+  if (newTags.length > 0) {
+    console.log(`Pushing ${newTags.length} new tag(s) to origin...`);
+    await run("git", ["push", "origin", ...newTags]);
+  } else {
+    console.log("No new tags created — backfilling any missing GitHub Releases.");
   }
 
-  console.log(`Pushing ${newTags.length} new tag(s) to origin...`);
-  await run("git", ["push", "origin", ...newTags]);
-
+  // Ensure a GitHub Release exists for every published workspace package at its
+  // current version. Deriving the target tags from the version set (rather than
+  // only the tags created during this run) keeps release creation idempotent:
+  // a re-run after a partial failure backfills the releases that weren't
+  // created, while skipping the ones that already exist.
   const pkgs = await readWorkspacePackages();
-
-  for (const tag of newTags) {
-    const parsed = parseTag(tag);
-    if (!parsed) {
-      console.log(`Skipping unparseable tag: ${tag}`);
+  for (const [name, pkg] of pkgs) {
+    if (pkg.private || !pkg.version) continue;
+    const tag = `${name}@${pkg.version}`;
+    if (await releaseExists(tag)) {
+      console.log(`GitHub Release already exists for ${tag} — skipping.`);
       continue;
     }
-    const pkg = pkgs.get(parsed.name);
-    if (!pkg) {
-      console.log(`Skipping tag ${tag} — package not found in workspace.`);
-      continue;
-    }
-    const notes = (await extractChangelogSection(pkg.dir, parsed.version)) || `Release ${tag}.`;
+    const notes = (await extractChangelogSection(pkg.dir, pkg.version)) || `Release ${tag}.`;
     console.log(`Creating GitHub Release for ${tag}`);
     await run("gh", ["release", "create", tag, "--title", tag, "--notes", notes]);
   }
