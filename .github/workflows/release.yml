@@ -74,9 +74,13 @@ jobs:
 
       - name: Commit and push version bumps
         if: github.event_name == 'workflow_dispatch'
+        # `[skip ci]` stops the push to main from queuing a redundant alpha run
+        # of this same workflow (the dispatch run is already publishing). It only
+        # affects push/pull_request events, so the active workflow_dispatch run is
+        # unaffected.
         run: |
           git add .
-          git commit -m "chore(release): version packages"
+          git commit -m "chore(release): version packages [skip ci]"
           git push origin HEAD:main
 
       - name: Publish latest + create per-package GitHub Releases
