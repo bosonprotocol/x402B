@@ -3,9 +3,12 @@
 // Two flavours, picked by the scenario based on its `tokenAuthStrategy`:
 //
 //   - `ensureBuyerHasBalance` — mint payment tokens to the buyer if
-//     the balance falls short. ERC-3009, Permit, and Permit2 carry
-//     their own authorisation in the X-PAYMENT payload, so no
-//     allowance is needed; balance alone gates the settle.
+//     the balance falls short. ERC-3009 and Permit (EIP-2612) carry a
+//     full transfer authorisation in the X-PAYMENT payload, so no
+//     ERC-20 allowance is needed; balance alone gates the settle.
+//     (Permit2 is different — its payload authorises the transfer but
+//     the canonical Permit2 contract still needs a standing ERC-20
+//     allowance, so `permit2` routes through `ensureBuyerCanPay` below.)
 //   - `ensureBuyerCanPay` — calls `ensureBuyerHasBalance`, then ensures
 //     a spender has a generous ERC-20 allowance. Required for the
 //     `none` strategy (settle calls `transferFrom` against the escrow
