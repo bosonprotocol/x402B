@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-fulfillment",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "Apache-2.0",
   "description": "Boson Protocol fulfillment channels for x402 — pluggable FulfillmentChannel interface, registry, client-side negotiation helper, and built-in channel implementations.",
   "repository": {
