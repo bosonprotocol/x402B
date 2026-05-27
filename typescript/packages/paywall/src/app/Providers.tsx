@@ -29,6 +29,14 @@ export function Providers({ state, children }: Props) {
     const chain = resolveChain(chainId);
     const appName = state.config?.appName ?? "x402B paywall";
     const wcProjectId = state.config?.walletConnectProjectId;
+    // WalletConnect's dapp metadata expects a real URL — an empty string
+    // can fail the connection or degrade UX in some wallets. The paywall
+    // renders in the browser, so use the live origin; the non-browser
+    // branch (tests/SSR) only needs a syntactically valid non-empty value.
+    const appUrl =
+      typeof window !== "undefined" && window.location.origin
+        ? window.location.origin
+        : "https://localhost";
     const connectors = [
       injected({ shimDisconnect: true }),
       coinbaseWallet({ appName }),
@@ -36,7 +44,7 @@ export function Providers({ state, children }: Props) {
         ? [
             walletConnect({
               projectId: wcProjectId,
-              metadata: { name: appName, description: appName, url: "", icons: [] },
+              metadata: { name: appName, description: appName, url: appUrl, icons: [] },
               showQrModal: true,
             }),
           ]
