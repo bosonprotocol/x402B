@@ -11,6 +11,9 @@ importers:
       '@changesets/cli':
         specifier: ^2.27.10
         version: 2.31.0(@types/node@22.7.5)
+      '@changesets/get-release-plan':
+        specifier: ^4.0.16
+        version: 4.0.16
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.18.0
         version: 8.59.2(@typescript-eslint/parser@8.59.2(eslint@9.39.4)(typescript@5.9.3))(eslint@9.39.4)(typescript@5.9.3)
