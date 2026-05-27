@@ -24,6 +24,7 @@ import type {
   EscrowPaymentRequirements,
   TokenAuthStrategy,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+import { evmEscrowPaywall } from "@bosonprotocol/x402-paywall";
 import {
   createX402bServer,
   type ExchangeReader,
@@ -251,13 +252,60 @@ export function createResourceServerApp(
     }
   });
 
-  app.get("/resource", expressMiddleware(server, { resolveRequirements }), (_req, res) => {
-    res.json({
-      ok: true,
-      x402b: res.locals.x402b,
-      resource: "example resource bytes",
-    });
-  });
+  // Browser paywall branch — emitted only when (a) the buyer hasn't
+  // already signed an X-PAYMENT header for the retry, and (b) the
+  // Accept negotiation explicitly prefers `text/html` over
+  // `application/json`. The `['json', 'html']` argument order means a
+  // missing-or-`*/*` Accept resolves to `'json'`, so non-browser
+  // callers (the e2e harness, raw curl, any client without an Accept
+  // header) keep getting the existing JSON 402 — only browsers that
+  // listed `text/html` ahead of catch-all flip to the HTML body.
+  //
+  // `currentUrl` is derived from the inbound request rather than
+  // `env.publicUrl` so it matches the browser's view of the origin —
+  // `env.publicUrl` may point at `host.docker.internal:4001` (used by
+  // facilitator-side callbacks inside the compose network), which the
+  // browser running on the host can't resolve.
+  const paywallBranch = async (req: Request, res: Response, next: NextFunction) => {
+    // The 402 representation is content-negotiated on `Accept` (HTML
+    // paywall vs JSON), so advertise that to caches/intermediaries to
+    // stop them serving one variant to a client that asked for the
+    // other. Set unconditionally so both the HTML branch below and the
+    // downstream JSON 402 inherit it.
+    res.vary("Accept");
+    if (req.header("X-PAYMENT") !== undefined) {
+      next();
+      return;
+    }
+    if (req.accepts(["json", "html"]) !== "html") {
+      next();
+      return;
+    }
+    try {
+      const requirements = await resolveRequirements(req);
+      const host = req.get("host");
+      const currentUrl = host
+        ? `${req.protocol}://${host}${req.originalUrl}`
+        : env.publicUrl + req.originalUrl;
+      const html = evmEscrowPaywall.generateHtml({ requirements, currentUrl }, env.paywallConfig);
+      res.status(402).type("html").send(html);
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  app.get(
+    "/resource",
+    paywallBranch,
+    expressMiddleware(server, { resolveRequirements }),
+    (_req, res) => {
+      res.json({
+        ok: true,
+        x402b: res.locals.x402b,
+        resource: "example resource bytes",
+      });
+    },
+  );
 
   app.use(mountX402b(server, { resolveRequirements }));
 

@@ -82,6 +82,13 @@ jobs:
 
       - run: pnpm build
 
+      # The browser-paywall scenarios (test/browser/paywall.test.ts) drive a
+      # headless Chromium via Playwright. `pnpm install` fetches the npm
+      # package but not the browser binary, so install it (+ system libs)
+      # explicitly. Only Chromium is used, so skip the other engines.
+      - name: Install Playwright Chromium
+        run: pnpm --filter @bosonprotocol/x402-e2e exec playwright install --with-deps chromium
+
       - name: Run @p0 + @p1 e2e suite
         env:
           E2E_DOCKER: "1"
