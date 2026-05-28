@@ -59,24 +59,26 @@ function postJsonOverSelfSignedTls(url: string, body: unknown): Promise<void> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     const target = new URL(url);
-    const req = https.request(
-      {
-        hostname: target.hostname,
-        port: target.port,
-        path: target.pathname,
-        method: "POST",
-        rejectUnauthorized: false,
-        headers: {
-          "content-type": "application/json",
-          "content-length": Buffer.byteLength(payload),
-        },
+    const requestOptions: https.RequestOptions = {
+      hostname: target.hostname,
+      path: `${target.pathname}${target.search}`,
+      method: "POST",
+      rejectUnauthorized: false,
+      headers: {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(payload),
       },
-      (res) => {
-        res.resume();
-        res.once("end", resolve);
-        res.once("error", reject);
-      },
-    );
+    };
+
+    if (target.port !== "") {
+      requestOptions.port = target.port;
+    }
+
+    const req = https.request(requestOptions, (res) => {
+      res.resume();
+      res.once("end", resolve);
+      res.once("error", reject);
+    });
     req.once("error", reject);
     req.write(payload);
     req.end();
