@@ -257,15 +257,28 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
       if (channel === undefined) {
         const reason = `no channel adapter is registered for option '${entry.option}'`;
         await fulfillmentRecoveryStore.set(exchangeId, { ...entry, error: reason });
+        logger.warn("x402-server: recovery replay failed (no adapter)", {
+          exchangeId,
+          option: entry.option,
+        });
         return { ok: false, reason };
       }
       try {
         await channel.onCommit(exchangeId, entry.data);
         await fulfillmentRecoveryStore.delete(exchangeId);
+        logger.info("x402-server: recovery replay succeeded", {
+          exchangeId,
+          option: entry.option,
+        });
         return { ok: true };
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
         await fulfillmentRecoveryStore.set(exchangeId, { ...entry, error: reason });
+        logger.warn("x402-server: recovery replay failed (channel error)", {
+          exchangeId,
+          option: entry.option,
+          error: reason,
+        });
         return { ok: false, reason };
       }
     },
