@@ -21,6 +21,7 @@ import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
 import type {
   FulfillmentRecoveryEntry,
+  FulfillmentResult,
   RedeemFulfillmentChannel,
   X402bServerConfig,
 } from "../config.js";
@@ -284,7 +285,7 @@ export async function handleRedeem(
     // a non-fatal warning, mirroring the onCommit-deferral path above.
     if (warning === undefined && resolvedChannel.onFulfill !== undefined) {
       delivery = await dispatchFulfillment(
-        resolvedChannel,
+        resolvedChannel.onFulfill.bind(resolvedChannel),
         input.exchangeId,
         input.fulfillment.option,
       ).then(
@@ -316,18 +317,18 @@ export async function handleRedeem(
 }
 
 /**
- * Invoke a channel's `onFulfill` (caller has already checked it exists)
- * and serialise the result for the wire. Rejects with a ready-to-attach
- * `HandlerWarning` on dispatch failure so the redeem still returns 200 —
- * the exchange is irreversibly REDEEMED regardless of delivery.
+ * Invoke the channel's bound `onFulfill` and serialise the result for the
+ * wire. Rejects with a ready-to-attach `HandlerWarning` on dispatch failure
+ * so the redeem still returns 200 — the exchange is irreversibly REDEEMED
+ * regardless of delivery.
  */
 async function dispatchFulfillment(
-  channel: RedeemFulfillmentChannel,
+  onFulfill: (exchangeId: string) => Promise<FulfillmentResult>,
   exchangeId: string,
   option: string,
 ): Promise<SerializedFulfillmentResult> {
   try {
-    return serializeFulfillmentResult(await channel.onFulfill!(exchangeId));
+    return serializeFulfillmentResult(await onFulfill(exchangeId));
   } catch (e) {
     const warning: HandlerWarning = {
       code: "FULFILLMENT_DELIVERY_DEFERRED",
