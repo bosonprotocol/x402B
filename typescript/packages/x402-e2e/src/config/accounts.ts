@@ -91,6 +91,11 @@ export const ACCOUNT_15: TestAccount = {
   privateKey: "0xf7ac2238f7b83f16d7f584c291c495bf75d6a0abe36d3b430d0beb2a145df4fd",
 };
 
+export const ACCOUNT_16: TestAccount = {
+  address: "0x1A6F3E9397A991d8303EAEb2E0c946cBcD446CeD",
+  privateKey: "0xff5845b96ad2374fd06ecd73463f650d8eef8f25d3d55879d5732bbf1442a2fa",
+};
+
 /**
  * Role assignments for the x402B e2e stack. Distinct accounts per role so
  * concurrent meta-tx submissions never share a relayer nonce.

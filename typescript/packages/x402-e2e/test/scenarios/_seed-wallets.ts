@@ -36,6 +36,7 @@ import {
   ACCOUNT_12,
   ACCOUNT_13,
   ACCOUNT_14,
+  ACCOUNT_16,
 } from "../../src/config/accounts.js";
 
 export interface SeedWalletSlot {
@@ -72,7 +73,7 @@ export const SEED_WALLETS = {
   /** `validation-post-commit.test.ts` — C6 / C9 / C10 validation negatives. */
   validationPostCommit: toSlot(ACCOUNT_11),
   /** `next-actions.test.ts` — D1 / D2 post-commit `nextActions` derivation. */
-  nextActions: toSlot(ACCOUNT_14),
+  nextActions: toSlot(ACCOUNT_16),
   /** Spare slot for future chain-touching scenario files. */
   spareC: toSlot(ACCOUNT_12),
 } as const;

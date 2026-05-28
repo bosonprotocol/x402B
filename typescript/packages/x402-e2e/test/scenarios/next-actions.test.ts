@@ -73,7 +73,11 @@ describe.skipIf(!ENABLED)("@p0 nextActions derivation", () => {
     // transitions out of it. `exchangeState` is the string enum value.
     expect(decoded?.nextActions?.exchangeState).toBe(ExchangeState.COMMITTED);
 
-    const emitted = decoded?.nextActions?.next?.map((entry) => entry.id) ?? [];
+    const emitted =
+      decoded?.nextActions?.next?.map((entry) => {
+        expect(typeof entry?.id, "next[] entry missing id").toBe("string");
+        return entry.id;
+      }) ?? [];
     expect(sortedIds(emitted)).toEqual(
       sortedIds(clientLegalActions({ exchange: ExchangeState.COMMITTED })),
     );
@@ -88,13 +92,17 @@ describe.skipIf(!ENABLED)("@p0 nextActions derivation", () => {
     expect(commitRes.status, await commitRes.clone().text()).toBe(200);
     const exchangeId = ((await commitRes.json()) as { x402b?: { exchangeId?: string } }).x402b
       ?.exchangeId;
-    expect(typeof exchangeId).toBe("string");
+    if (typeof exchangeId !== "string") {
+      throw new Error(
+        `Expected commit response x402b.exchangeId to be a string, got ${typeof exchangeId}`,
+      );
+    }
 
     const redeemed = await performBuyerPostCommitAction({
       actionId: "boson-redeem",
       buyer: ctx.buyer,
       resourceServerUrl: ctx.resourceServerUrl,
-      exchangeId: exchangeId!,
+      exchangeId,
       escrowAddress: ctx.escrowAddress,
       network: ctx.network,
     });
