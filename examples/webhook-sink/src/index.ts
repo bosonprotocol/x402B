@@ -9,9 +9,21 @@ if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
 // keeps its plain-HTTP listener for manual smoke testing.
 const tls = process.env.TLS === "1";
 
+function toDisplayUrl(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.hostname === "0.0.0.0") {
+      parsedUrl.hostname = "localhost";
+    }
+    return parsedUrl.toString();
+  } catch {
+    return url;
+  }
+}
+
 startWebhookSink({ port: parsedPort, host: "0.0.0.0", tls })
   .then(({ url }) => {
-    console.log(`[webhook-sink] listening on ${url}`);
+    console.log(`[webhook-sink] listening on ${toDisplayUrl(url)}`);
   })
   .catch((err: unknown) => {
     console.error("[webhook-sink] failed to start:", err);
