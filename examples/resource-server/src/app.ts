@@ -22,8 +22,10 @@
 import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
 import type {
   EscrowPaymentRequirements,
+  FulfillmentRequirements,
   TokenAuthStrategy,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { FulfillmentChannel } from "@bosonprotocol/x402-fulfillment";
 import { evmEscrowPaywall } from "@bosonprotocol/x402-paywall";
 import {
   createX402bServer,
@@ -65,6 +67,30 @@ export interface ResourceServerAppOptions {
    * end-to-end against a specific token mock) pass a narrower list.
    */
   tokenAuthStrategies?: readonly TokenAuthStrategy[];
+  /**
+   * Fulfillment channels the host offers. Each channel's `describe()`
+   * populates the 402 challenge's `fulfillment.options[]`, and the same
+   * instance is forwarded to the server config so the redeem handler can
+   * `validate()` and persist (`onCommit`) the buyer's delivery data.
+   *
+   * Each channel must already carry its server-side configuration (the
+   * `send` / `upload` hook etc.) by the time it's passed in — either via
+   * the factory's `initialCfg` argument
+   * (`createWebhookChannel({ send })`) or by calling `channel.configure(...)`
+   * before mounting the app. Otherwise `onFulfill` throws at redeem time.
+   *
+   * Omitted → no fulfillment options are advertised and redeem requests
+   * carrying `fulfillment` are rejected.
+   */
+  fulfillmentChannels?: readonly FulfillmentChannel[];
+  /**
+   * Whether the buyer MUST select a fulfillment option at commit time
+   * (`fulfillment.required` on the wire). Defaults to `false`. Passing
+   * `true` without any `fulfillmentChannels` is rejected at construction
+   * time — the misconfiguration would otherwise advertise no options
+   * while demanding one, leaving the buyer with no valid choice.
+   */
+  fulfillmentRequired?: boolean;
 }
 
 export interface ResourceServerAppBundle {
@@ -77,6 +103,7 @@ function buildServerConfig(
   env: ResourceServerEnv,
   seller: LocalAccount,
   exchangeReader: ExchangeReader,
+  fulfillmentChannels?: readonly FulfillmentChannel[],
 ): X402bServerConfig {
   return {
     network: env.network,
@@ -87,6 +114,10 @@ function buildServerConfig(
     channelRegistry: buildExampleChannelRegistry(env),
     exchangeReader,
     ...(env.subgraphUrl !== undefined ? { subgraphUrl: env.subgraphUrl } : {}),
+    // `FulfillmentChannel` is a structural superset of the redeem
+    // handler's `RedeemFulfillmentChannel` (it adds `describe` /
+    // `onFulfill` / `configure`), so the array is assignable as-is.
+    ...(fulfillmentChannels !== undefined ? { fulfillmentChannels } : {}),
   };
 }
 
@@ -106,8 +137,35 @@ export function createResourceServerApp(
   const now = options.now ?? Date.now;
   const protocolConfig = options.protocolConfig;
   const tokenAuthStrategies = options.tokenAuthStrategies ?? DEFAULT_TOKEN_AUTH_STRATEGIES;
+  // Normalise once: an empty array is semantically equivalent to
+  // omission for every downstream check, so collapse both into
+  // `undefined` here and pass `activeChannels` everywhere.
+  const activeChannels: readonly FulfillmentChannel[] | undefined =
+    options.fulfillmentChannels !== undefined && options.fulfillmentChannels.length > 0
+      ? options.fulfillmentChannels
+      : undefined;
 
-  const server = createX402bServer(buildServerConfig(env, seller, exchangeReader));
+  // Fail fast on a config that would advertise no options while
+  // demanding the buyer pick one — silently dropping `fulfillmentRequired`
+  // would let the misconfiguration ship to production unnoticed.
+  if (options.fulfillmentRequired === true && activeChannels === undefined) {
+    throw new Error(
+      "createResourceServerApp: `fulfillmentRequired: true` requires at least one entry in `fulfillmentChannels`",
+    );
+  }
+
+  // Channels are fixed for the app's lifetime, so derive the advertised
+  // `fulfillment` block once. Each channel's `describe()` yields the
+  // `FulfillmentOption` the buyer picks from at commit/redeem time.
+  const fulfillment: FulfillmentRequirements | undefined =
+    activeChannels !== undefined
+      ? {
+          required: options.fulfillmentRequired ?? false,
+          options: activeChannels.map((channel) => channel.describe()),
+        }
+      : undefined;
+
+  const server = createX402bServer(buildServerConfig(env, seller, exchangeReader, activeChannels));
 
   // The Express adapters call `resolveRequirements` twice per buyer
   // commit flow (once for the 402 challenge, once when the buyer
@@ -220,6 +278,7 @@ export function createResourceServerApp(
       tokenAuthStrategies,
       recipientId: env.sellerId,
       maxTimeoutSeconds: env.maxTimeoutSeconds,
+      ...(fulfillment !== undefined ? { fulfillment } : {}),
     });
 
     // Assign before awaiting so a concurrent retry on the same session
