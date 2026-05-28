@@ -182,7 +182,7 @@ function flattenServerResponse(
     nextActions?: {
       exchangeState?: unknown;
       disputeState?: unknown;
-      next?: readonly { id?: unknown }[];
+      next?: unknown;
     };
   };
   const txHash = raw.txHash;
@@ -190,10 +190,22 @@ function flattenServerResponse(
   if (typeof txHash !== "string" || typeof newExchangeState !== "string") {
     throw new PostCommitActionError(actionId, status, body);
   }
+  // `EscrowNextActions.next` is required by the wire schema (an empty
+  // array on terminal states, never absent); reject responses that omit
+  // it or stamp a non-array so a server regression can't masquerade as
+  // a terminal post-action transition.
   const nextRaw = raw.nextActions?.next;
-  const nextActionIds = Array.isArray(nextRaw)
-    ? nextRaw.map((entry) => entry?.id).filter((id): id is string => typeof id === "string")
-    : [];
+  if (!Array.isArray(nextRaw)) {
+    throw new PostCommitActionError(actionId, status, body);
+  }
+  const nextActionIds: string[] = [];
+  for (const entry of nextRaw) {
+    const id = (entry as { id?: unknown } | null | undefined)?.id;
+    if (typeof id !== "string") {
+      throw new PostCommitActionError(actionId, status, body);
+    }
+    nextActionIds.push(id);
+  }
   const result: PostCommitActionResult = {
     txHash: txHash as Hex,
     newExchangeState: newExchangeState as ExchangeState,
