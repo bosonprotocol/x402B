@@ -200,6 +200,6 @@ describe.skipIf(!ENABLED)("@p1 post-commit validation — illegal state transiti
       details?: { facilitatorCode?: string };
     };
     expect(body.code).toBe("FACILITATOR_REJECTED");
-    expect(typeof body.details?.facilitatorCode).toBe("string");
+    expect(body.details?.facilitatorCode).toBe("SIMULATION_REVERT");
   });
 });
