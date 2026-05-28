@@ -288,16 +288,31 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
       ),
     async healthCheck() {
       // GET /healthz — body is ignored. Any 2xx is healthy; anything
-      // else (network error, non-2xx) raises FacilitatorHttpError so
-      // the `createHealthCheck` helper maps to "down".
+      // else (network error, timeout, non-2xx) raises FacilitatorHttpError
+      // so the `createHealthCheck` helper maps to "down". The abort
+      // timer mirrors `postOnce` so a stuck connection can't hang the
+      // host's /healthz route indefinitely.
+      const controller = new AbortController();
+      const timer = setTimeoutImpl(() => controller.abort(), timeoutMs);
       let res: Awaited<ReturnType<FetchLike>>;
       try {
-        res = await fetchImpl(`${baseUrl}/healthz`, { method: "GET" });
-      } catch (cause) {
-        throw new FacilitatorHttpError("facilitator network error (/healthz)", {
-          code: "NETWORK_ERROR",
-          cause,
+        res = await fetchImpl(`${baseUrl}/healthz`, {
+          method: "GET",
+          signal: controller.signal,
         });
+      } catch (cause) {
+        const aborted = controller.signal.aborted;
+        throw new FacilitatorHttpError(
+          aborted
+            ? `facilitator request timed out after ${timeoutMs}ms (/healthz)`
+            : "facilitator network error (/healthz)",
+          {
+            code: aborted ? "TIMEOUT" : "NETWORK_ERROR",
+            cause,
+          },
+        );
+      } finally {
+        clearTimeoutImpl(timer);
       }
       if (!res.ok) {
         throw new FacilitatorHttpError(`facilitator HTTP ${res.status} (/healthz)`, {
