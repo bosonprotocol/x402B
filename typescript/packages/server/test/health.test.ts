@@ -5,7 +5,13 @@
 import { describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { createX402bServer, type CoreSdkReadAdapter, type FetchLike } from "../src/index.js";
+import {
+  createHealthCheck,
+  createX402bServer,
+  type CoreSdkReadAdapter,
+  type FacilitatorClient,
+  type FetchLike,
+} from "../src/index.js";
 
 const NETWORK = "eip155:8453" as const;
 const CHAIN_ID = 8453;
@@ -108,6 +114,27 @@ describe("server.healthCheck()", () => {
       coreSdkRead: downSubgraph(),
     });
     expect(await server.healthCheck()).toEqual({ facilitator: "down", subgraph: "down" });
+  });
+
+  it("reports subgraph down when the coreSdkRead factory throws synchronously", async () => {
+    // A lazy initializer (e.g. one that can't reach its subgraph URL)
+    // throwing on construction must surface as `"down"` — not reject
+    // the whole health-check call.
+    const facilitator: FacilitatorClient = {
+      verify: async () => ({ ok: true }),
+      settle: async () => ({ ok: true, exchangeId: "0", txHash: "0x" }),
+      performAction: async () => ({ ok: true, txHash: "0x" }),
+      async healthCheck() {
+        // ok
+      },
+    };
+    const healthCheck = createHealthCheck({
+      facilitator,
+      coreSdkRead: () => {
+        throw new Error("subgraph URL unreachable");
+      },
+    });
+    expect(await healthCheck()).toEqual({ facilitator: "ok", subgraph: "down" });
   });
 
   it("returns non-2xx as down on the facilitator probe", async () => {

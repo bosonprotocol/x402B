@@ -32,10 +32,26 @@ export function createHealthCheck(deps: {
       ? "ok"
       : "down";
 
-    const readClient =
-      typeof deps.coreSdkRead === "function" ? deps.coreSdkRead() : deps.coreSdkRead;
-    const subgraph: HealthState =
-      readClient === undefined
+    // Resolve the read client through the factory variant inside a
+    // try/catch so a synchronous throw (e.g. a lazy initializer that
+    // can't reach its subgraph) reports "down" instead of rejecting
+    // the whole health check. A factory that legitimately returns
+    // `undefined` still maps to "n/a" — the lazy default in
+    // `createX402bServer` uses that to mean "no read client yet".
+    let readClient: CoreSdkReadAdapter | undefined;
+    let readClientFailed = false;
+    if (typeof deps.coreSdkRead === "function") {
+      try {
+        readClient = deps.coreSdkRead();
+      } catch {
+        readClientFailed = true;
+      }
+    } else {
+      readClient = deps.coreSdkRead;
+    }
+    const subgraph: HealthState = readClientFailed
+      ? "down"
+      : readClient === undefined
         ? "n/a"
         : (await probe(() => readClient.getSellersByAddress(ZERO_ADDRESS_PROBE)))
           ? "ok"
