@@ -169,6 +169,7 @@ with `-t '@p0'`. Priorities:
 | `@p0`    | concurrent commit-and-redeem (E0)             | `concurrent.test.ts`          |
 | `@p0`    | post-commit lifecycle (B1–B4)                 | `post-commit.test.ts`         |
 | `@p0`    | commit-time validations (C1–C5, C8)           | `validation-commit.test.ts`   |
+| `@p0`    | browser paywall (BR1–BR3)                     | `browser/paywall.test.ts`     |
 | `@p1`    | post-commit lifecycle (B6, B7)                | `post-commit.test.ts`         |
 | `@p1`    | operational scenarios (F1)                    | `operational.test.ts`         |
 | `@p2`    | operational scenarios (F2, F4)                | `operational.test.ts`         |
@@ -188,15 +189,18 @@ E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:pr
 # Just the @p0 subset.
 E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:p0
 
-# Matches the nightly workflow — full breadth.
-# E2E_SEQUENTIAL=1 disables file-parallelism so the operational
-# scenarios (F1 kills the facilitator, F2 pauses the subgraph) can't
-# race the commit / post-commit tests in another worker.
-E2E_DOCKER=1 E2E_SEQUENTIAL=1 pnpm --filter @bosonprotocol/x402-e2e test
+# Full suite in one sequential (single-worker) pass — includes the
+# chaos file. Handy when debugging chain-state interactions across files.
+E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:sequential
 
-# Single file (against a stack you launched manually via `pnpm stack:up`).
+# Just the chaos/operational file, sequentially. The default `test`
+# excludes it (F1 kills the facilitator, F2 pauses the subgraph, so it
+# can't race other files); the nightly runs this as a second phase.
+E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:chaos
+
+# A single file, against a stack you launched manually via `pnpm stack:up`.
 E2E_DOCKER=1 E2E_DOCKER_KEEP_STACK=1 \
-  pnpm --filter @bosonprotocol/x402-e2e test operational
+  pnpm --filter @bosonprotocol/x402-e2e exec vitest run test/scenarios/operational.test.ts
 ```
 
 ## CI workflows
@@ -212,10 +216,12 @@ E2E_DOCKER=1 E2E_DOCKER_KEEP_STACK=1 \
     `docker compose logs` on failure.
 - **`.github/workflows/nightly.yml`** runs daily at 03:00 UTC and on
   manual `workflow_dispatch`:
-  - `e2e-full` — same stack boot, no tag filter — runs every
-    scenario including the operational failure-mode tests in the
-    `@p1` / `@p2` tiers. 60-min timeout. Uploads `docker compose
-    logs` on failure.
+  - `e2e-full` — boots the stack once and runs two phases over it
+    (`E2E_DOCKER_KEEP_STACK=1` keeps it alive between them, no restart):
+    first the parallel suite (`test`, with the chaos file excluded),
+    then the chaos file alone, sequentially (`test:chaos`). Together
+    these cover every scenario including the operational failure-mode
+    tests. 60-min timeout. Uploads `docker compose logs` on failure.
 
 Both workflows pin Node 22 for the e2e job (Docker is the heavy
 dependency, not the Node version) and set
@@ -242,10 +248,20 @@ GitHub's June 2026 forced migration.
   `NonceTooLow` / `BAD_META_TX_SIGNATURE` / `OfferSoldOut` failures.
   Mirrors the `seedWalletN` pattern from
   [`bosonprotocol/core-components/e2e/tests/utils.ts`](https://github.com/bosonprotocol/core-components/blob/main/e2e/tests/utils.ts).
-- **Sequential fallback** — set `E2E_SEQUENTIAL=1` to disable
-  cross-file parallelism when debugging chain-state interactions. The
-  default suite is designed to be parallel-safe via the seed-wallet
-  pool above; the knob is purely an escape hatch.
+- **Chaos tests run apart** — `operational.test.ts` SIGKILLs the
+  facilitator (F1) and pauses the subgraph (F2), so it can't share a
+  parallel run with any chain-touching file. The default `test` script
+  excludes it (`--exclude "**/operational.test.ts"`) and runs the rest
+  in parallel; `test:chaos` runs it alone, sequentially; `test:sequential`
+  runs the whole suite single-threaded. The nightly does `test` then
+  `test:chaos` over one shared stack. (`E2E_SEQUENTIAL=1` remains as a
+  config-level escape hatch to force `fileParallelism: false` on any run.)
+- **Quote test-script globs with double quotes** — npm/pnpm run scripts
+  through `cmd` on Windows, where single quotes are literal. A
+  single-quoted `--exclude '**/operational.test.ts'` silently matches
+  nothing there (the chaos file then races the suite); double quotes are
+  stripped by both `cmd` and POSIX shells. Same for the `-t "@p0|@p1"`
+  pipe in `test:pr`.
 - **Addresses + URLs** — `src/config/local-31337-0.ts` is a typed copy
   of the `local-31337-0` entry from `@bosonprotocol/core-sdk`'s
   `defaultConfig`. Source-of-truth comment cites the upstream file so
@@ -317,3 +333,47 @@ await asserter.expect(decoded!.exchangeId!, {
   through. See [`src/harness/seed.ts`](./src/harness/seed.ts) header
   for rationale.
 - **No scenario tests yet** — those land in PR 6 alongside CI wiring.
+
+## Browser scenarios
+
+`test/browser/paywall.test.ts` drives a real headless chromium (via
+the `playwright` library, not `@vitest/browser`) through the
+`@bosonprotocol/x402-paywall` HTML 402 flow end-to-end. Three
+scenarios:
+
+- **BR1** (`@p0`) — happy path: server emits the paywall HTML, an
+  injected EIP-1193 mock (backed by a viem private key on the Node
+  side via `BrowserContext.exposeFunction`) signs the X-PAYMENT
+  payload, the buyer's retry settles on-chain, and the on-chain
+  `ExchangeState.COMMITTED` is asserted via the subgraph reader.
+- **BR2** (`@p0`) — the mock wallet rejects `eth_signTypedData_v4`
+  with `code: 4001`; the paywall surfaces the error in
+  `[data-testid="paywall-error"]` and no on-chain commit happens.
+- **BR3** (`@p0`) — the mock wallet reports the wrong chain id and
+  rejects `wallet_switchEthereumChain`; the paywall shows the
+  wrong-network warning, `Pay` surfaces the rejection, no commit.
+
+Slot: `browser` (`SEED_WALLETS.browser` → `ACCOUNT_14`). All three
+scenarios live in one file so they run sequentially against the same
+in-process resource server — the paywall doesn't yet stamp
+`X-Session-Id`, so concurrent flows would race on the
+`FALLBACK_KEY` session slot in the resource server's session cache.
+
+### Local prerequisites
+
+`playwright` ships its own chromium download (~150MB) via its
+postinstall hook. Cached under `PLAYWRIGHT_BROWSERS_PATH` if set;
+otherwise under each install's `node_modules/playwright/.local-browsers`.
+CI should cache that path to avoid re-downloading per job. Set
+`PLAYWRIGHT_SKIP_DOWNLOAD=1` to opt out (browser tests will fail to
+launch).
+
+### Running only the browser file
+
+```sh
+E2E_DOCKER=1 pnpm --filter @bosonprotocol/x402-e2e test:browser
+```
+
+Equivalent to `vitest run test/browser`. Combine with
+`E2E_DOCKER_KEEP_STACK=1` and a manual `pnpm stack:up` for fast inner
+loops.

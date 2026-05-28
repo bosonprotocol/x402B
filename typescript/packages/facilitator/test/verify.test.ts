@@ -2,7 +2,11 @@ import { permit2TypedData } from "@bosonprotocol/x402-core/eip712/token-auth";
 import { describe, expect, it } from "vitest";
 import {
   BaseError,
+  CallExecutionError,
+  ExecutionRevertedError,
+  InternalRpcError,
   RawContractError,
+  RpcRequestError,
   type Address,
   type PublicClient,
   type WalletClient,
@@ -28,19 +32,30 @@ import {
 /**
  * Build a PublicClient stub whose `call` is configurable per test.
  *
- * `callBehavior: "revert"` throws a viem `BaseError` whose cause chain
- * contains a `RawContractError` — this matches the structure viem
- * produces for an actual on-chain revert and lets
- * `simulateExecuteMetaTransaction`'s revert-discrimination logic
- * recognise the failure as `SIMULATION_REVERT` (rather than
- * `INTERNAL_ERROR`, which is reserved for transport-layer failures).
+ * `callBehavior: "revert"` throws the same `CallExecutionError` chain
+ * viem's `publicClient.call` produces on a real on-chain revert
+ * (`CallExecutionError` → `ExecutionRevertedError`). This is the chain
+ * `simulateExecuteMetaTransaction`'s revert-discrimination logic must
+ * recognise as `SIMULATION_REVERT` rather than `INTERNAL_ERROR`.
+ *
+ * `callBehavior: "revert-raw"` uses a `RawContractError` cause instead,
+ * matching the chain shape viem produces from ABI-aware actions
+ * (`readContract` / `simulateContract`). Covered defensively in case a
+ * future change routes simulation through one of those.
+ *
+ * `callBehavior: "revert-hardhat"` reproduces what Hardhat actually
+ * surfaces today: an `InternalRpcError` (code `-32603`) carrying the
+ * revert reason in `details`. viem doesn't classify this as a revert
+ * (its `getNodeError` only matches code `3`), so the fallback in
+ * `simulate.ts` must pattern-match the wording to still tag it
+ * `SIMULATION_REVERT`.
  *
  * `callBehavior: "rpc-error"` throws a plain `Error` to exercise the
- * non-revert branch.
+ * non-revert branch (transport-layer failure → `INTERNAL_ERROR`).
  */
 function buildPublicClient(
   opts: {
-    callBehavior?: "pass" | "revert" | "rpc-error";
+    callBehavior?: "pass" | "revert" | "revert-raw" | "revert-hardhat" | "rpc-error";
     revertReason?: string;
     rpcErrorMessage?: string;
   } = {},
@@ -49,8 +64,30 @@ function buildPublicClient(
     call: async () => {
       if (opts.callBehavior === "revert") {
         const reason = opts.revertReason ?? "execution reverted: nonce already used";
+        const revert = new ExecutionRevertedError({ message: reason });
+        throw new CallExecutionError(revert, { account: null });
+      }
+      if (opts.callBehavior === "revert-raw") {
+        const reason = opts.revertReason ?? "execution reverted: nonce already used";
         const rawRevert = new RawContractError({ message: reason });
         throw new BaseError("Execution reverted", { cause: rawRevert });
+      }
+      if (opts.callBehavior === "revert-hardhat") {
+        const reason =
+          opts.revertReason ??
+          "Error: VM Exception while processing transaction: reverted with reason string 'ERC20: transfer amount exceeds balance'";
+        // Hardhat returns the revert as JSON-RPC `-32603` with the
+        // actual revert text in `error.message`; viem copies that
+        // verbatim into `details`. Putting `reason` in `data` instead
+        // of `message` would diverge from production and let the stub
+        // silently miss the `isHardhatRevertDetails` fallback.
+        const rpcErr = new RpcRequestError({
+          body: {},
+          error: { code: -32603, message: reason },
+          url: "http://hardhat.test",
+        });
+        const internal = new InternalRpcError(rpcErr);
+        throw new CallExecutionError(internal, { account: null });
       }
       if (opts.callBehavior === "rpc-error") {
         throw new Error(opts.rpcErrorMessage ?? "ECONNREFUSED: RPC unreachable");
@@ -313,6 +350,48 @@ describe("verify()", () => {
     );
     expect(result).toMatchObject({ ok: false, code: "SIMULATION_REVERT" });
     expect((result as { ok: false; reason: string }).reason).toContain("USED_NONCE");
+  });
+
+  it("also classifies a RawContractError cause chain as SIMULATION_REVERT", async () => {
+    const payload = await buildValidPayload();
+    const requirements = buildValidRequirements();
+    const config = buildConfig({
+      client: buildPublicClient({
+        callBehavior: "revert-raw",
+        revertReason: "execution reverted: USED_NONCE",
+      }),
+    });
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      config,
+    );
+    expect(result).toMatchObject({ ok: false, code: "SIMULATION_REVERT" });
+    expect((result as { ok: false; reason: string }).reason).toContain("USED_NONCE");
+  });
+
+  it("classifies a Hardhat-style InternalRpcError revert as SIMULATION_REVERT", async () => {
+    // Hardhat returns the revert as JSON-RPC `-32603` ("Internal error")
+    // with the actual reason in `details`. viem's `getNodeError` only
+    // recognises code `3`, so this lands as an unclassified
+    // `InternalRpcError` and we have to fall back to the textual match
+    // in `isOnChainRevert`.
+    const payload = await buildValidPayload();
+    const requirements = buildValidRequirements();
+    const config = buildConfig({
+      client: buildPublicClient({
+        callBehavior: "revert-hardhat",
+        revertReason:
+          "Error: VM Exception while processing transaction: reverted with reason string 'ERC20: transfer amount exceeds balance'",
+      }),
+    });
+    const result = await verify(
+      { scheme: "escrow", network: NETWORK, payload, requirements },
+      config,
+    );
+    expect(result).toMatchObject({ ok: false, code: "SIMULATION_REVERT" });
+    expect((result as { ok: false; reason: string }).reason).toContain(
+      "ERC20: transfer amount exceeds balance",
+    );
   });
 
   it("maps RPC / transport failures to INTERNAL_ERROR (not SIMULATION_REVERT)", async () => {
