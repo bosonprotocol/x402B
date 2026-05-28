@@ -5,6 +5,12 @@
   "license": "Apache-2.0",
   "description": "Minimal Express service that captures POST bodies, used by the x402B e2e suite to verify the `webhook` fulfillment channel.",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/app.ts",
+      "default": "./src/app.ts"
+    }
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "start": "tsx src/index.ts",
@@ -14,6 +20,7 @@
   },
   "dependencies": {
     "express": "^4.21.2",
+    "selfsigned": "^2.4.1",
     "tsx": "^4.19.2"
   },
   "devDependencies": {
