@@ -76,8 +76,15 @@ function postJsonOverSelfSignedTls(url: string, body: unknown): Promise<void> {
 
     const req = https.request(requestOptions, (res) => {
       res.resume();
-      res.once("end", resolve);
       res.once("error", reject);
+      res.once("end", () => {
+        const status = res.statusCode ?? 0;
+        if (status >= 200 && status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`webhook sink responded with status ${status}`));
+        }
+      });
     });
     req.once("error", reject);
     req.write(payload);
