@@ -70,7 +70,7 @@ describe.skipIf(!ENABLED)("@p0 nextActions derivation", () => {
     const decoded = readXPaymentResponse(res.headers);
     expect(decoded, "X-PAYMENT-RESPONSE header should decode").not.toBeNull();
     // The commit envelope reports the new exchange state and the legal
-    // transitions out of it. `exchangeState` is the numeric enum value.
+    // transitions out of it. `exchangeState` is the string enum value.
     expect(decoded?.nextActions?.exchangeState).toBe(ExchangeState.COMMITTED);
 
     const emitted = decoded?.nextActions?.next?.map((entry) => entry.id) ?? [];
