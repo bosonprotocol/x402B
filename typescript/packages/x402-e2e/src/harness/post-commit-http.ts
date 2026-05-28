@@ -86,6 +86,13 @@ export interface PostCommitActionResult {
   txHash: Hex;
   newExchangeState: ExchangeState;
   newDisputeState?: DisputeState;
+  /**
+   * The action ids the server advertised in the response's
+   * `nextActions.next[]` envelope, in emitted order. Lets scenarios
+   * assert the post-action transition set on the wire (D1 / D2) without
+   * re-deriving it. Empty when the new state is terminal for the buyer.
+   */
+  nextActionIds: readonly string[];
 }
 
 /**
@@ -172,16 +179,37 @@ function flattenServerResponse(
 ): PostCommitActionResult {
   const raw = body as {
     txHash?: unknown;
-    nextActions?: { exchangeState?: unknown; disputeState?: unknown };
+    nextActions?: {
+      exchangeState?: unknown;
+      disputeState?: unknown;
+      next?: unknown;
+    };
   };
   const txHash = raw.txHash;
   const newExchangeState = raw.nextActions?.exchangeState;
   if (typeof txHash !== "string" || typeof newExchangeState !== "string") {
     throw new PostCommitActionError(actionId, status, body);
   }
+  // `EscrowNextActions.next` is required by the wire schema (an empty
+  // array on terminal states, never absent); reject responses that omit
+  // it or stamp a non-array so a server regression can't masquerade as
+  // a terminal post-action transition.
+  const nextRaw = raw.nextActions?.next;
+  if (!Array.isArray(nextRaw)) {
+    throw new PostCommitActionError(actionId, status, body);
+  }
+  const nextActionIds: string[] = [];
+  for (const entry of nextRaw) {
+    const id = (entry as { id?: unknown } | null | undefined)?.id;
+    if (typeof id !== "string") {
+      throw new PostCommitActionError(actionId, status, body);
+    }
+    nextActionIds.push(id);
+  }
   const result: PostCommitActionResult = {
     txHash: txHash as Hex,
     newExchangeState: newExchangeState as ExchangeState,
+    nextActionIds,
   };
   const newDisputeState = raw.nextActions?.disputeState;
   if (typeof newDisputeState === "string") {
