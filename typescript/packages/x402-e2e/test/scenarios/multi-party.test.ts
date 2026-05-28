@@ -111,24 +111,16 @@ describe.skipIf(!ENABLED)("@p1 multi-party — concurrent commit to one seller",
     // Fire both commits in the same microtask so neither waits on the
     // other (interval mining is on, set by globalSetup, so both meta-txs
     // can queue in the mempool).
-    const [resA, resB] = await Promise.all([
-      ctx.buyer.fetch(`${ctx.resourceServerUrl}/resource`),
-      buyerB.fetch(`${ctx.resourceServerUrl}/resource`),
+    const [idA, idB] = await Promise.all([
+      commitFreshExchange(ctx.buyer, ctx.resourceServerUrl),
+      commitFreshExchange(buyerB, ctx.resourceServerUrl),
     ]);
-    expect(resA.status, await resA.clone().text()).toBe(200);
-    expect(resB.status, await resB.clone().text()).toBe(200);
-
-    const [bodyA, bodyB] = (await Promise.all([resA.json(), resB.json()])) as CommitResponseBody[];
-    const idA = bodyA?.x402b?.exchangeId;
-    const idB = bodyB?.x402b?.exchangeId;
-    expect(typeof idA, JSON.stringify(bodyA)).toBe("string");
-    expect(typeof idB, JSON.stringify(bodyB)).toBe("string");
     expect(idA).not.toBe(idB);
 
     // Both land in COMMITTED against the same seller, each escrowing the
     // price — i.e. the escrow accounts for both buyers independently.
     await Promise.all(
-      [idA!, idB!].map((id) =>
+      [idA, idB].map((id) =>
         ctx.asserter.expect(id, {
           state: ExchangeState.COMMITTED,
           seller: ctx.seller.address,
