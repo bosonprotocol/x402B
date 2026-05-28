@@ -69,8 +69,9 @@ export const SEED_WALLETS = {
   operational: toSlot(ACCOUNT_10),
   /** `browser/paywall.test.ts` — drives the in-browser paywall through Playwright. */
   browser: toSlot(ACCOUNT_14),
-  /** Spare slots for future chain-touching scenario files. */
-  spareB: toSlot(ACCOUNT_11),
+  /** `validation-post-commit.test.ts` — C6 / C9 / C10 validation negatives. */
+  validationPostCommit: toSlot(ACCOUNT_11),
+  /** Spare slot for future chain-touching scenario files. */
   spareC: toSlot(ACCOUNT_12),
 } as const;
 

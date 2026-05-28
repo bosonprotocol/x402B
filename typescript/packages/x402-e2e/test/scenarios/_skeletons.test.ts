@@ -25,11 +25,8 @@ describe.skipIf(!ENABLED)("@p2 post-commit lifecycle — PR 7", () => {
   it.todo("B9 — decideDispute by resolver → DisputeState.DECIDED, resolver-set split");
 });
 
-describe.skipIf(!ENABLED)("@p1 commit-time validations — PR 7", () => {
-  it.todo("C6 — insufficient escrow balance → SIMULATION_REVERT");
-  it.todo("C9 — sellerSig mismatch in FullOffer → server BAD_SELLER_SIG");
-  it.todo("C10 — post-commit action on wrong state (e.g. redeem while CANCELLED) → reject");
-});
+// C6, C9, C10 moved to `validation-post-commit.test.ts` as runnable
+// scenarios.
 
 describe.skipIf(!ENABLED)("@p2 commit-time validations — PR 7", () => {
   it.todo("C7 — invalid `tokenAuthStrategy` value (not in enum) → INVALID_PAYLOAD");
