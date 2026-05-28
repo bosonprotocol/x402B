@@ -1004,6 +1004,7 @@ describe("handlers.redeem — fulfillment update", () => {
   it("redeem where onFulfill throws → 200 + FULFILLMENT_DELIVERY_DEFERRED (delivery best-effort)", async () => {
     const fx = await makePaymentFixture();
     const optionStore = new Map<string, readonly string[]>([["42", ["webhook"]]]);
+    const recoveryStore = new Map<string, FulfillmentRecoveryEntry>();
     const channel: RedeemFulfillmentChannel = {
       id: "webhook",
       validate: () => ({ ok: true }),
@@ -1015,6 +1016,7 @@ describe("handlers.redeem — fulfillment update", () => {
     const { server, restore } = await buildRedeemServer({
       reader: makeRedeemReader(fx),
       optionStore,
+      recoveryStore,
       channels: [channel],
     });
     try {
@@ -1024,12 +1026,22 @@ describe("handlers.redeem — fulfillment update", () => {
         fulfillment: { option: "webhook", data: { url: "https://buyer.example/hook" } },
       });
       // Redeem is final on-chain regardless, so delivery failure is a
-      // 200 with an advisory warning, not an error.
+      // 200 with an advisory warning, not an error — and the recovery
+      // store keeps a delivery-phase entry so the host can replay the
+      // dispatch out of band.
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.body.fulfillment).toBeUndefined();
         expect(result.body.warnings?.[0]?.code).toBe("FULFILLMENT_DELIVERY_DEFERRED");
       }
+      expect(recoveryStore.get("42")).toMatchObject({
+        exchangeId: "42",
+        option: "webhook",
+        data: { url: "https://buyer.example/hook" },
+        redeemer: fx.buyer.address,
+        phase: "delivery",
+        error: "buyer endpoint unreachable",
+      });
     } finally {
       restore();
     }
@@ -1245,6 +1257,7 @@ describe("handlers.redeem — fulfillment update", () => {
         option: "email",
         data: { email: "new@example.com" },
         redeemer: fx.buyer.address,
+        phase: "commit",
         error: "store unavailable",
       });
       expect(optionStore.has("42")).toBe(false);
