@@ -188,6 +188,15 @@ describe("resource-server example app", () => {
   // Fulfillment-channel wiring: with no channels the 402 omits the
   // `fulfillment` block entirely (the historical default); with channels
   // it advertises one option per channel's `describe()`.
+  //
+  // These tests cover the *advertise* half of the wiring only. The
+  // *redeem* half — that the same `FulfillmentChannel` instances flow
+  // into `X402bServerConfig.fulfillmentChannels` and the redeem handler
+  // calls each channel's `validate()` / `onCommit` / `onFulfill` — is
+  // exercised end-to-end by the A6 (webhook) and A7 (ipfs-pointer) e2e
+  // scenarios in `@bosonprotocol/x402-e2e`, against a real facilitator
+  // and the deployed protocol, so it isn't re-stubbed at the unit level
+  // here.
   it("omits fulfillment from the 402 challenge when no channels are configured", async () => {
     const { app } = createResourceServerApp(buildEnv(), { exchangeReader: NULL_READER });
     const res = await supertest(app).get("/resource");
