@@ -131,7 +131,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   }
 
   console.log("[x402-e2e/globalSetup] starting stack…");
-  await startStack({ waitForReady: true });
+  // `build: true` so workspace changes that affect the x402B service
+  // images (e.g. new transitive deps pulled in by the resource server)
+  // are picked up automatically. Warm cache adds ~5–10s; cold builds
+  // are dominated by the underlying docker pull, not the rebuild.
+  await startStack({ waitForReady: true, build: true });
 
   try {
     console.log("[x402-e2e/globalSetup] switching Hardhat to 50 ms interval mining…");

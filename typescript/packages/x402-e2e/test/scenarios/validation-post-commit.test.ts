@@ -1,5 +1,5 @@
-// Remaining validation negatives — section C of the e2e plan, the
-// half that needs live on-chain state rather than a tampered payload:
+// Remaining validation negatives — section C of the e2e plan.
+// These scenarios rely on live on-chain state (C6/C10) and a minimally-tampered payload (C9).
 //
 //   - C6  insufficient escrow balance  → facilitator SIMULATION_REVERT  @p1
 //   - C9  sellerSig mismatch           → server SELLER_SIG_MISMATCH      @p1
