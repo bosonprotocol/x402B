@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-core",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "Apache-2.0",
   "description": "Boson Protocol escrow scheme for x402 — JSON schemas, TypeScript types, EIP-712 builders, and exchange state machine.",
   "repository": {

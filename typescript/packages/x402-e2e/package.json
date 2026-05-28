@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-e2e",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "license": "Apache-2.0",
   "description": "Containerised end-to-end test suite for x402B. Wraps the canonical Boson stack (boson-protocol-node, boson-subgraph, ipfs, postgres, meta-tx-gateway, boson-mcp-server) and the x402B example services (resource-server, facilitator-http, webhook-sink) behind a programmatic lifecycle + scenario harness.",

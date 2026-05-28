@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-server-express",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "Apache-2.0",
   "description": "Express adapter for @bosonprotocol/x402-server — middleware + mountable router for the Boson Protocol escrow scheme.",
   "repository": {

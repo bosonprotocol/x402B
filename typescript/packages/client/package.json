@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-client",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "Apache-2.0",
   "description": "Boson Protocol x402 buyer-side SDK — framework-agnostic client that intercepts 402 escrow-scheme responses and produces the X-PAYMENT header.",
   "repository": {

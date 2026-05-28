@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-server",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "Apache-2.0",
   "description": "Framework-agnostic x402 resource-server SDK for the Boson Protocol escrow scheme — 402 challenge builder and FullOffer signer hook.",
   "repository": {

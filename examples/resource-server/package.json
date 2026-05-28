@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-example-resource-server",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "license": "Apache-2.0",
   "description": "Reference Express host for @bosonprotocol/x402-server-express. Boots a working x402B resource server from environment variables; doubles as the runtime image for the x402B e2e suite.",
