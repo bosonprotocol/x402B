@@ -72,9 +72,15 @@ export interface ResourceServerAppOptions {
    * populates the 402 challenge's `fulfillment.options[]`, and the same
    * instance is forwarded to the server config so the redeem handler can
    * `validate()` and persist (`onCommit`) the buyer's delivery data.
-   * Pre-`configure()` each channel (e.g. with its `send` / `upload`
-   * hook) before passing it in. Omitted → no fulfillment options are
-   * advertised and redeem requests carrying `fulfillment` are rejected.
+   *
+   * Each channel must already carry its server-side configuration (the
+   * `send` / `upload` hook etc.) by the time it's passed in — either via
+   * the factory's `initialCfg` argument
+   * (`createWebhookChannel({ send })`) or by calling `channel.configure(...)`
+   * before mounting the app. Otherwise `onFulfill` throws at redeem time.
+   *
+   * Omitted → no fulfillment options are advertised and redeem requests
+   * carrying `fulfillment` are rejected.
    */
   fulfillmentChannels?: readonly FulfillmentChannel[];
   /**
