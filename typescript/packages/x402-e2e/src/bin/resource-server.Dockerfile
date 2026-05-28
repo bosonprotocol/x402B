@@ -45,7 +45,15 @@ COPY --from=build /deploy ./
 
 ENV PORT=4001
 EXPOSE 4001
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+# This entrypoint does NOT bind the HTTP listener (and therefore can't
+# answer /health) until it has self-seeded its Boson seller on-chain —
+# waiting for the escrow + protocol config, blocking on the subgraph
+# indexing to the chain head, then landing a `createSeller` tx. On a cold
+# e2e stack that takes ~70s, which sat right on the old 10s start-period +
+# 3×30s retry budget: `docker compose up --wait` would intermittently mark
+# the container unhealthy a beat before it bound (flaky ~70s race). Give
+# the seed generous head-room so legitimate startup never trips the probe.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=180s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:${PORT}/health" >/dev/null || exit 1
 
 USER node

@@ -3,6 +3,7 @@
 // (required / optional / asAddress / asHex32 / asInt helpers) so both
 // example apps fail the same way on the same kind of bad input.
 
+import type { PaywallConfig } from "@bosonprotocol/x402-paywall";
 import type { Address, Hex } from "viem";
 
 export interface ResourceServerEnv {
@@ -34,6 +35,13 @@ export interface ResourceServerEnv {
   subgraphUrl?: string;
   /** HTTP listen port. */
   port: number;
+  /**
+   * Optional paywall config forwarded to `evmEscrowPaywall.generateHtml`
+   * when the resource server emits an HTML 402. `undefined` falls back
+   * to the React app's in-code defaults (`appName: "x402B paywall"`,
+   * etc.).
+   */
+  paywallConfig?: PaywallConfig;
 }
 
 function required(name: string): string {
@@ -94,9 +102,29 @@ function asHttpUrl(value: string, name: string): string {
   return value;
 }
 
+function readPaywallConfig(): PaywallConfig | undefined {
+  // Build only the fields the operator explicitly sets — `undefined`
+  // entries would otherwise survive JSON serialization into the injected
+  // `window.x402b.config` and override the React app's in-code defaults.
+  const appName = process.env.PAYWALL_APP_NAME;
+  const appLogo = process.env.PAYWALL_APP_LOGO;
+  const walletConnectProjectId = process.env.PAYWALL_WALLETCONNECT_PROJECT_ID;
+  const testnet = process.env.PAYWALL_TESTNET === "1";
+  if (!appName && !appLogo && !walletConnectProjectId && !testnet) {
+    return undefined;
+  }
+  return {
+    ...(appName ? { appName } : {}),
+    ...(appLogo ? { appLogo } : {}),
+    ...(walletConnectProjectId ? { walletConnectProjectId } : {}),
+    ...(testnet ? { testnet: true } : {}),
+  };
+}
+
 export function readEnv(): ResourceServerEnv {
   const chainId = asInt(optional("CHAIN_ID", "31337"), "CHAIN_ID", { min: 1 });
   const subgraphRaw = process.env.SUBGRAPH_URL;
+  const paywallConfig = readPaywallConfig();
   return {
     publicUrl: asHttpUrl(required("RESOURCE_SERVER_URL"), "RESOURCE_SERVER_URL"),
     rpcNode: asHttpUrl(required("RPC_NODE"), "RPC_NODE"),
@@ -117,5 +145,6 @@ export function readEnv(): ResourceServerEnv {
       ? { subgraphUrl: asHttpUrl(subgraphRaw, "SUBGRAPH_URL") }
       : {}),
     port: asInt(optional("PORT", "4001"), "PORT", { min: 1, max: 65535 }),
+    ...(paywallConfig !== undefined ? { paywallConfig } : {}),
   };
 }

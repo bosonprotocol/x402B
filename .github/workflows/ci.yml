@@ -21,7 +21,6 @@ jobs:
   build-test-lint:
     name: build / test / lint (node ${{ matrix.node }})
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.draft }}
     strategy:
       fail-fast: false
       matrix:
@@ -56,9 +55,9 @@ jobs:
   # chaos scenario kills the facilitator container mid-flight and would
   # race the chain-touching tests in other files when run in parallel.
   # Keeping it out lets this job stay parallel (fast); the operational
-  # tier — F1 (@p1), plus F2 / F4 (@p2) — is exercised nightly with
-  # `E2E_SEQUENTIAL=1`. The @p2 tier is also kept out here via the tag
-  # filter.
+  # tier — F1 (@p1), plus F2 / F4 (@p2) — is exercised nightly via the
+  # `test:chaos` script (runs operational.test.ts alone, sequentially).
+  # The @p2 tier is also kept out here via the tag filter.
   e2e-pr:
     name: e2e (@p0 + @p1)
     runs-on: ubuntu-latest
@@ -81,6 +80,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm build
+
+      # The browser-paywall scenarios (test/browser/paywall.test.ts) drive a
+      # headless Chromium via Playwright. `pnpm install` fetches the npm
+      # package but not the browser binary, so install it (+ system libs)
+      # explicitly. Only Chromium is used, so skip the other engines.
+      - name: Install Playwright Chromium
+        run: pnpm --filter @bosonprotocol/x402-e2e exec playwright install --with-deps chromium
 
       - name: Run @p0 + @p1 e2e suite
         env:
