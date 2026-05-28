@@ -233,6 +233,11 @@ const fulfillmentChannelShallowSchema = z
   })
   .passthrough();
 
+const asyncStoreSchema = <T>(): z.ZodType<Store<T>> =>
+  z.custom<Store<T>>(isStore, {
+    message: "must implement the async Store<V> interface (get/set/delete/entries)",
+  });
+
 /**
  * zod validator for `X402bServerConfig`. Shallow on the signer +
  * exchange reader (viem account types bring their own structural
@@ -264,16 +269,8 @@ export const x402bServerConfigSchema = z
     exchangeReader: exchangeReaderShallowSchema.optional(),
     subgraphUrl: httpUrlSchema.optional(),
     coreSdkRead: coreSdkReadShallowSchema.optional(),
-    exchangeFulfillmentOptionStore: z
-      .custom<Store<readonly string[]>>(isStore, {
-        message: "must implement the async Store<V> interface (get/set/delete/entries)",
-      })
-      .optional(),
-    fulfillmentRecoveryStore: z
-      .custom<Store<FulfillmentRecoveryEntry>>(isStore, {
-        message: "must implement the async Store<V> interface (get/set/delete/entries)",
-      })
-      .optional(),
+    exchangeFulfillmentOptionStore: asyncStoreSchema<readonly string[]>().optional(),
+    fulfillmentRecoveryStore: asyncStoreSchema<FulfillmentRecoveryEntry>().optional(),
     logger: z
       .object({
         debug: z.function(),
