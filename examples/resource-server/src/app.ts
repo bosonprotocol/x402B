@@ -79,8 +79,10 @@ export interface ResourceServerAppOptions {
   fulfillmentChannels?: readonly FulfillmentChannel[];
   /**
    * Whether the buyer MUST select a fulfillment option at commit time
-   * (`fulfillment.required` on the wire). Defaults to `false`. Ignored
-   * when `fulfillmentChannels` is empty / omitted.
+   * (`fulfillment.required` on the wire). Defaults to `false`. Passing
+   * `true` without any `fulfillmentChannels` is rejected at construction
+   * time — the misconfiguration would otherwise advertise no options
+   * while demanding one, leaving the buyer with no valid choice.
    */
   fulfillmentRequired?: boolean;
 }
@@ -132,6 +134,18 @@ export function createResourceServerApp(
   const protocolConfig = options.protocolConfig;
   const tokenAuthStrategies = options.tokenAuthStrategies ?? DEFAULT_TOKEN_AUTH_STRATEGIES;
   const fulfillmentChannels = options.fulfillmentChannels;
+
+  // Fail fast on a config that would advertise no options while
+  // demanding the buyer pick one — silently dropping `fulfillmentRequired`
+  // would let the misconfiguration ship to production unnoticed.
+  if (
+    options.fulfillmentRequired === true &&
+    (fulfillmentChannels === undefined || fulfillmentChannels.length === 0)
+  ) {
+    throw new Error(
+      "createResourceServerApp: `fulfillmentRequired: true` requires at least one entry in `fulfillmentChannels`",
+    );
+  }
 
   // Channels are fixed for the app's lifetime, so derive the advertised
   // `fulfillment` block once. Each channel's `describe()` yields the
