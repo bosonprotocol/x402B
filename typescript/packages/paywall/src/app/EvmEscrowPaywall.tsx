@@ -183,6 +183,11 @@ export function EvmEscrowPaywall({ state }: Props) {
         const challenge = await fetch(currentUrl, {
           headers: { Accept: "application/json", [SESSION_ID_HEADER]: sessionId },
         });
+        if (challenge.status !== 402) {
+          setStatus("error");
+          setErrorMessage(`Expected a 402 challenge, got status ${challenge.status}.`);
+          return;
+        }
         const escrowEntry = findEscrowAccept(await challenge.json().catch(() => undefined));
         if (!escrowEntry) {
           setStatus("error");
