@@ -798,6 +798,58 @@ describe("handlers.redeem — fulfillment update", () => {
     expect(events).toEqual(["commit:42", "fulfill:42"]);
   });
 
+  it("Flow B commit-and-redeem where onFulfill throws → 200 + FULFILLMENT_DELIVERY_DEFERRED (delivery best-effort)", async () => {
+    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
+    const channel: RedeemFulfillmentChannel = {
+      id: "webhook",
+      validate: () => ({ ok: true }),
+      onCommit: async () => {},
+      onFulfill: async () => {
+        throw new Error("buyer endpoint unreachable");
+      },
+    };
+    const reader = makeReader({
+      state: ExchangeState.REDEEMED,
+      seller: fx.requirements.offer.creator,
+      exchangeToken: TOKEN,
+      price: fx.requirements.amount,
+    });
+    const requirements = {
+      ...fx.requirements,
+      actions: {
+        ...fx.requirements.actions,
+        next: [
+          ...fx.requirements.actions.next,
+          { id: "boson-createOfferCommitAndRedeem" as const, channels: ["server" as const] },
+        ],
+      },
+      fulfillment: {
+        required: true,
+        options: [{ id: "webhook", schema: { type: "object" as const } }],
+      },
+    };
+    const payload = {
+      ...fx.payload,
+      fulfillment: { option: "webhook", data: { url: "https://buyer.example/hook" } },
+    };
+    const { server } = await buildServerWithStubs({
+      facilitator: () => ({ ok: true, exchangeId: "42", txHash: "0xabc" }),
+      reader,
+      channels: [channel],
+    });
+    const result = await server.handlers.commitAndRedeem({
+      paymentHeader: makeBuyerHeader(payload),
+      requirements,
+    });
+    // Atomic redeem is already final on-chain, so a delivery failure is
+    // a 200 with an advisory warning — never an error.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.fulfillment).toBeUndefined();
+      expect(result.body.warnings?.[0]?.code).toBe("FULFILLMENT_DELIVERY_DEFERRED");
+    }
+  });
+
   it("Flow B onCommit failure → 200 + FULFILLMENT_COMMIT_DEFERRED warning + pending recovery update", async () => {
     const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
     const channel = makeSpyChannel("email");
