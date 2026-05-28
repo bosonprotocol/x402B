@@ -22,7 +22,8 @@ export function serializeFulfillmentResult(result: FulfillmentResult): Serialize
       contentType: result.contentType,
     };
   }
-  return result.pointer !== undefined
-    ? { kind: "async", pointer: result.pointer }
-    : { kind: "async" };
+  return {
+    kind: "async",
+    ...(result.pointer !== undefined ? { pointer: result.pointer } : {}),
+  };
 }
