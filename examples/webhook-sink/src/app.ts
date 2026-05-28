@@ -3,6 +3,8 @@ import https from "node:https";
 
 import express, { type Express } from "express";
 
+import { generateSelfSignedCert } from "./_selfsigned.js";
+
 export interface WebhookSink {
   app: Express;
   /** Clear the in-memory store. Tests call this between cases. */
@@ -82,25 +84,7 @@ export async function startWebhookSink(
   let server: http.Server | https.Server;
   let scheme: "http" | "https";
   if (options.tls === true) {
-    // selfsigned's bundled types declare `generate` without exporting
-    // it, so import the CJS module and type the slice we use locally.
-    const selfsignedModule = (await import("selfsigned")) as unknown as {
-      default?: {
-        generate?: (
-          attrs?: ReadonlyArray<{ name: string; value: string }>,
-          opts?: { days?: number; keySize?: number; algorithm?: string },
-        ) => { private: string; cert: string };
-      };
-      generate?: (
-        attrs?: ReadonlyArray<{ name: string; value: string }>,
-        opts?: { days?: number; keySize?: number; algorithm?: string },
-      ) => { private: string; cert: string };
-    };
-    const generate = selfsignedModule.default?.generate ?? selfsignedModule.generate;
-    if (typeof generate !== "function") {
-      throw new Error("selfsigned module did not expose a `generate` function");
-    }
-    const pems = generate([{ name: "commonName", value: "localhost" }], {
+    const pems = await generateSelfSignedCert([{ name: "commonName", value: "localhost" }], {
       days: 36500,
       keySize: 2048,
       algorithm: "sha256",
