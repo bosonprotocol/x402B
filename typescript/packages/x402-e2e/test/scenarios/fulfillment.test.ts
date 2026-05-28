@@ -163,7 +163,8 @@ describe.skipIf(!ENABLED)("@p1 commit-time fulfillment — webhook (A6)", () => 
 
     // The delivery POST is awaited inside the redeem handler, so by the
     // time the redeem returns the sink has already recorded it.
-    expect(sink.sink.snapshot()).toContainEqual({ exchangeId });
+    const { sink: webhookSink } = sink;
+    expect(webhookSink.snapshot()).toContainEqual({ exchangeId });
 
     await ctx.asserter.expect(exchangeId!, {
       state: ExchangeState.REDEEMED,
