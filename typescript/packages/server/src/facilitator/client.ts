@@ -130,6 +130,20 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
   const baseHeaders = { "content-type": "application/json", ...(opts.headers ?? {}) };
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const retry = opts.retry ?? DEFAULT_RETRY;
+  // Defensive validation: `x402bServerConfigSchema` enforces these
+  // bounds when the client is built via `createX402bServer`, but
+  // `createFacilitatorClient` is also exported for direct use — a bad
+  // `attempts` would silently fall through the retry loop and throw
+  // `undefined` instead of a `FacilitatorHttpError`.
+  if (!Number.isInteger(retry.attempts) || retry.attempts < 1) {
+    throw new Error("createFacilitatorClient: retry.attempts must be an integer >= 1");
+  }
+  if (!Number.isFinite(retry.backoffMs) || retry.backoffMs < 0) {
+    throw new Error("createFacilitatorClient: retry.backoffMs must be a finite number >= 0");
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("createFacilitatorClient: timeoutMs must be a finite number > 0");
+  }
   const newIdempotencyKey = opts.idempotencyKey ?? (() => globalThis.crypto.randomUUID());
   const setTimeoutImpl = opts.setTimeout ?? setTimeout;
   const clearTimeoutImpl = opts.clearTimeout ?? clearTimeout;
