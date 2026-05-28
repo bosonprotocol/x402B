@@ -18,6 +18,7 @@
 // `facilitator-perform-action.ts`).
 
 import type { ExchangeState, DisputeState } from "@bosonprotocol/x402-actions";
+import type { SerializedFulfillmentResult } from "@bosonprotocol/x402-server";
 import type { Address, Hex } from "viem";
 
 import type { BuyerActor } from "./buyer-actor.js";
@@ -93,6 +94,13 @@ export interface PostCommitActionResult {
    * re-deriving it. Empty when the new state is terminal for the buyer.
    */
   nextActionIds: readonly string[];
+  /**
+   * Delivery outcome the server surfaced from the fulfillment channel's
+   * `onFulfill` (only on `boson-redeem` carrying `fulfillment`). `async`
+   * carries the out-of-band `pointer` (e.g. `ipfs://…`); absent when no
+   * channel delivered. Used by the A6 / A7 fulfillment scenarios.
+   */
+  fulfillment?: SerializedFulfillmentResult;
 }
 
 /**
@@ -179,6 +187,7 @@ function flattenServerResponse(
 ): PostCommitActionResult {
   const raw = body as {
     txHash?: unknown;
+    fulfillment?: SerializedFulfillmentResult;
     nextActions?: {
       exchangeState?: unknown;
       disputeState?: unknown;
@@ -214,6 +223,9 @@ function flattenServerResponse(
   const newDisputeState = raw.nextActions?.disputeState;
   if (typeof newDisputeState === "string") {
     result.newDisputeState = newDisputeState as DisputeState;
+  }
+  if (raw.fulfillment !== undefined) {
+    result.fulfillment = raw.fulfillment;
   }
   return result;
 }

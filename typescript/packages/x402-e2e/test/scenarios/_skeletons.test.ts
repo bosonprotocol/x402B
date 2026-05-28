@@ -52,8 +52,11 @@ describe.skipIf(!ENABLED)("@p2 multi-party — PR 7", () => {
   it.todo("E2 — buyer commits, then seller revokeVoucher → buyer refunded");
 });
 
+// A6 (webhook) moved to `fulfillment.test.ts` as a runnable scenario.
+// The original skeleton scoped delivery to `onCommit`; the implemented
+// scenario triggers delivery from `onFulfill` (on redeem), matching the
+// channel's actual lifecycle.
 describe.skipIf(!ENABLED)("@p1/@p2 commit-time fulfillment — PR 7", () => {
-  it.todo("A6 — commit with `webhook` fulfillment → webhook-sink receives onCommit payload");
   it.todo("A7 — commit with `ipfs-pointer` fulfillment → response carries valid CID");
   it.todo("A8 — commit with `mcp` fulfillment — skipped until `@bosonprotocol/x402-agent` lands");
 });

@@ -746,6 +746,125 @@ describe("handlers.redeem — fulfillment update", () => {
     }
   });
 
+  it("Flow B commit-and-redeem dispatches onFulfill and surfaces the pointer", async () => {
+    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
+    const events: string[] = [];
+    const channel: RedeemFulfillmentChannel = {
+      id: "ipfs-pointer",
+      validate: () => ({ ok: true }),
+      onCommit: async (exchangeId) => {
+        events.push(`commit:${exchangeId}`);
+      },
+      onFulfill: async (exchangeId) => {
+        events.push(`fulfill:${exchangeId}`);
+        return { kind: "async", pointer: "ipfs://bafyTestCid" };
+      },
+    };
+    const reader = makeReader({
+      state: ExchangeState.REDEEMED,
+      seller: fx.requirements.offer.creator,
+      exchangeToken: TOKEN,
+      price: fx.requirements.amount,
+    });
+    const requirements = {
+      ...fx.requirements,
+      actions: {
+        ...fx.requirements.actions,
+        next: [
+          ...fx.requirements.actions.next,
+          { id: "boson-createOfferCommitAndRedeem" as const, channels: ["server" as const] },
+        ],
+      },
+      fulfillment: {
+        required: true,
+        options: [{ id: "ipfs-pointer", schema: { type: "object" as const } }],
+      },
+    };
+    const payload = {
+      ...fx.payload,
+      fulfillment: { option: "ipfs-pointer", data: { recipientPubKey: "0xabc" } },
+    };
+    const { server } = await buildServerWithStubs({
+      facilitator: () => ({ ok: true, exchangeId: "42", txHash: "0xabc" }),
+      reader,
+      channels: [channel],
+    });
+    const result = await server.handlers.commitAndRedeem({
+      paymentHeader: makeBuyerHeader(payload),
+      requirements,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.fulfillment).toEqual({ kind: "async", pointer: "ipfs://bafyTestCid" });
+      expect(result.body.warnings).toBeUndefined();
+    }
+    expect(events).toEqual(["commit:42", "fulfill:42"]);
+  });
+
+  it("Flow B commit-and-redeem where onFulfill throws → 200 + FULFILLMENT_DELIVERY_DEFERRED (delivery best-effort)", async () => {
+    const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
+    const channel: RedeemFulfillmentChannel = {
+      id: "webhook",
+      validate: () => ({ ok: true }),
+      onCommit: async () => {},
+      onFulfill: async () => {
+        throw new Error("buyer endpoint unreachable");
+      },
+    };
+    const reader = makeReader({
+      state: ExchangeState.REDEEMED,
+      seller: fx.requirements.offer.creator,
+      exchangeToken: TOKEN,
+      price: fx.requirements.amount,
+    });
+    const requirements = {
+      ...fx.requirements,
+      actions: {
+        ...fx.requirements.actions,
+        next: [
+          ...fx.requirements.actions.next,
+          { id: "boson-createOfferCommitAndRedeem" as const, channels: ["server" as const] },
+        ],
+      },
+      fulfillment: {
+        required: true,
+        options: [{ id: "webhook", schema: { type: "object" as const } }],
+      },
+    };
+    const payload = {
+      ...fx.payload,
+      fulfillment: { option: "webhook", data: { url: "https://buyer.example/hook" } },
+    };
+    const recoveryStore = new Map<string, FulfillmentRecoveryEntry>();
+    const { server } = await buildServerWithStubs({
+      facilitator: () => ({ ok: true, exchangeId: "42", txHash: "0xabc" }),
+      reader,
+      recoveryStore,
+      channels: [channel],
+    });
+    const result = await server.handlers.commitAndRedeem({
+      paymentHeader: makeBuyerHeader(payload),
+      requirements,
+    });
+    // Atomic redeem is already final on-chain, so a delivery failure is
+    // a 200 with an advisory warning — never an error. The recovery
+    // store keeps a delivery-phase entry so the host can replay the
+    // dispatch out of band.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.fulfillment).toBeUndefined();
+      expect(result.body.warnings?.[0]?.code).toBe("FULFILLMENT_DELIVERY_DEFERRED");
+    }
+    expect(recoveryStore.get("42")).toMatchObject({
+      exchangeId: "42",
+      option: "webhook",
+      data: { url: "https://buyer.example/hook" },
+      redeemer: fx.buyer.address,
+      phase: "delivery",
+      error: "buyer endpoint unreachable",
+    });
+  });
+
   it("Flow B onCommit failure → 200 + FULFILLMENT_COMMIT_DEFERRED warning + pending recovery update", async () => {
     const fx = await makePaymentFixture({ action: "boson-createOfferCommitAndRedeem" });
     const channel = makeSpyChannel("email");
@@ -797,6 +916,7 @@ describe("handlers.redeem — fulfillment update", () => {
       option: "email",
       data: { email: "buyer@example.com" },
       redeemer: fx.buyer.address,
+      phase: "commit",
       error: "store unavailable",
     });
   });
@@ -839,6 +959,120 @@ describe("handlers.redeem — fulfillment update", () => {
       });
       expect(result.ok).toBe(true);
       expect(channel.commits).toEqual([{ exchangeId: "42", data: { email: "new@example.com" } }]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("redeem with a delivering channel → 200, onFulfill runs after onCommit and the pointer surfaces", async () => {
+    const fx = await makePaymentFixture();
+    const optionStore = new Map<string, readonly string[]>([["42", ["webhook"]]]);
+    // Record both lifecycle hooks into one log so the ordering
+    // (persist, then dispatch) is asserted, not just that each ran.
+    const events: string[] = [];
+    const channel: RedeemFulfillmentChannel = {
+      id: "webhook",
+      validate: () => ({ ok: true }),
+      onCommit: async (exchangeId) => {
+        events.push(`commit:${exchangeId}`);
+      },
+      onFulfill: async (exchangeId) => {
+        events.push(`fulfill:${exchangeId}`);
+        return { kind: "async", pointer: "https://buyer.example/hook" };
+      },
+    };
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      optionStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "webhook", data: { url: "https://buyer.example/hook" } },
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.body.fulfillment).toEqual({
+          kind: "async",
+          pointer: "https://buyer.example/hook",
+        });
+        expect(result.body.warnings).toBeUndefined();
+      }
+      expect(events).toEqual(["commit:42", "fulfill:42"]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("redeem where onFulfill throws → 200 + FULFILLMENT_DELIVERY_DEFERRED (delivery best-effort)", async () => {
+    const fx = await makePaymentFixture();
+    const optionStore = new Map<string, readonly string[]>([["42", ["webhook"]]]);
+    const recoveryStore = new Map<string, FulfillmentRecoveryEntry>();
+    const channel: RedeemFulfillmentChannel = {
+      id: "webhook",
+      validate: () => ({ ok: true }),
+      onCommit: async () => {},
+      onFulfill: async () => {
+        throw new Error("buyer endpoint unreachable");
+      },
+    };
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      optionStore,
+      recoveryStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "webhook", data: { url: "https://buyer.example/hook" } },
+      });
+      // Redeem is final on-chain regardless, so delivery failure is a
+      // 200 with an advisory warning, not an error — and the recovery
+      // store keeps a delivery-phase entry so the host can replay the
+      // dispatch out of band.
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.body.fulfillment).toBeUndefined();
+        expect(result.body.warnings?.[0]?.code).toBe("FULFILLMENT_DELIVERY_DEFERRED");
+      }
+      expect(recoveryStore.get("42")).toMatchObject({
+        exchangeId: "42",
+        option: "webhook",
+        data: { url: "https://buyer.example/hook" },
+        redeemer: fx.buyer.address,
+        phase: "delivery",
+        error: "buyer endpoint unreachable",
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("redeem with a channel lacking onFulfill → 200, persists with no delivery", async () => {
+    const fx = await makePaymentFixture();
+    const optionStore = new Map<string, readonly string[]>([["42", ["email"]]]);
+    const channel = makeSpyChannel(); // no onFulfill — host delivers out-of-band
+    const { server, restore } = await buildRedeemServer({
+      reader: makeRedeemReader(fx),
+      optionStore,
+      channels: [channel],
+    });
+    try {
+      const result = await server.handlers.redeem({
+        exchangeId: "42",
+        signedPayload: makeRedeemSignedPayload(fx.buyer.address),
+        fulfillment: { option: "email", data: { email: "new@example.com" } },
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.body.fulfillment).toBeUndefined();
+        expect(result.body.warnings).toBeUndefined();
+      }
+      expect(channel.commits).toHaveLength(1);
     } finally {
       restore();
     }
@@ -1035,6 +1269,7 @@ describe("handlers.redeem — fulfillment update", () => {
         option: "email",
         data: { email: "new@example.com" },
         redeemer: fx.buyer.address,
+        phase: "commit",
         error: "store unavailable",
       });
       expect(optionMap.has("42")).toBe(false);

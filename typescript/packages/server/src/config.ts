@@ -117,12 +117,14 @@ export interface X402bServerConfig {
    */
   exchangeFulfillmentOptionStore?: Store<readonly string[]>;
   /**
-   * Pending fulfillment updates that reached REDEEMED on-chain but
-   * failed the server-side `channel.onCommit(...)` upsert. The commit
-   * handler records Flow B updates here before attempting the channel
-   * write; the redeem handler does the same for Flow A. Both delete
-   * the record on success and leave it behind with the error message
-   * on failure so the host can replay/reconcile out of band.
+   * Pending fulfillment work that reached REDEEMED on-chain but did
+   * not complete server-side. Tracks both the `channel.onCommit(...)`
+   * upsert and the `channel.onFulfill(...)` delivery dispatch — see
+   * `FulfillmentRecoveryEntry.phase` for which step each entry left
+   * behind. The commit handler records Flow B entries; the redeem
+   * handler records Flow A. Each step deletes the entry on success
+   * and re-records it with the error message on failure so the host
+   * can replay/reconcile out of band.
    *
    * Same persistence story as `exchangeFulfillmentOptionStore`:
    * defaults to in-memory `Map`; production hosts MUST supply a
@@ -172,6 +174,20 @@ export interface X402bServerConfig {
 }
 
 /**
+ * Result of a channel's `onFulfill` dispatch. Mirrors
+ * `@bosonprotocol/x402-fulfillment`'s `FulfillmentResult` (kept inline so
+ * this SDK doesn't depend on that package — see `RedeemFulfillmentChannel`).
+ *
+ * - `inline` — the resource itself (the server base64-encodes `body` for
+ *   the JSON wire response; see `serializeFulfillmentResult`).
+ * - `async`  — delivered out-of-band; an optional `pointer` (e.g.
+ *   `ipfs://…`, the buyer's webhook `https://…`) is surfaced to the caller.
+ */
+export type FulfillmentResult =
+  | { kind: "inline"; body: Uint8Array; contentType: string }
+  | { kind: "async"; pointer?: string };
+
+/**
  * Minimal structural slice of `FulfillmentChannel` the redeem
  * handler needs. Kept inline so `@bosonprotocol/x402-server` does
  * not depend on `@bosonprotocol/x402-fulfillment` (avoids a hard
@@ -182,6 +198,15 @@ export interface RedeemFulfillmentChannel {
   readonly id: string;
   validate(data: Record<string, unknown> | null): { ok: true } | { ok: false; reason: string };
   onCommit(exchangeId: string, data: Record<string, unknown> | null): Promise<void>;
+  /**
+   * Dispatch delivery once the on-chain release is confirmed (REDEEMED).
+   * Optional: when present, the redeem / atomic-commit-and-redeem handlers
+   * invoke it after `onCommit` persists the buyer's target, and surface
+   * the result on the 200 response. A host that delivers out-of-band via
+   * its own worker can omit it — persistence (`onCommit`) still runs.
+   * Real `@bosonprotocol/x402-fulfillment` channels always implement it.
+   */
+  onFulfill?(exchangeId: string): Promise<FulfillmentResult>;
 }
 
 export interface FulfillmentRecoveryEntry {
@@ -190,6 +215,17 @@ export interface FulfillmentRecoveryEntry {
   data: Record<string, unknown> | null;
   redeemer: Address;
   recordedAt: number;
+  /**
+   * Which lifecycle step left this entry behind:
+   *   - `"commit"`   — `channel.onCommit(...)` was pending / failed
+   *     (the server's delivery-target store was not updated).
+   *   - `"delivery"` — `onCommit` persisted, but `channel.onFulfill(...)`
+   *     was pending / failed (the buyer's webhook POST / IPFS upload
+   *     still needs dispatch).
+   * A single recovery worker can dispatch the right retry step by
+   * branching on this field.
+   */
+  phase: "commit" | "delivery";
   error?: string;
 }
 
@@ -230,6 +266,9 @@ const fulfillmentChannelShallowSchema = z
     id: z.string().min(1),
     validate: z.function(),
     onCommit: z.function(),
+    // Optional delivery dispatch — present on real channels, omitted by
+    // hosts that deliver out-of-band.
+    onFulfill: z.function().optional(),
   })
   .passthrough();
 

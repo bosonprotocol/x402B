@@ -12,6 +12,10 @@ import { decodeSignedPayload } from "@bosonprotocol/x402-evm";
 import type { Hex } from "viem";
 
 import { emitNextActions } from "./next-actions.js";
+import {
+  serializeFulfillmentResult,
+  type SerializedFulfillmentResult,
+} from "./fulfillment-result.js";
 import { handlerErr, handlerOk, type HandlerResult, type HandlerWarning } from "./types.js";
 import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
@@ -62,6 +66,13 @@ export interface RedeemHandlerContext extends PerformActionContext {
 export interface PerformActionOk {
   txHash: string;
   warnings?: HandlerWarning[];
+  /**
+   * Delivery outcome from the fulfillment channel's `onFulfill`, when one
+   * ran (redeem carried `fulfillment` and the channel implements it).
+   * `async` carries the out-of-band `pointer` (e.g. `ipfs://…`); `inline`
+   * carries a base64 `body`. Absent when no channel delivered.
+   */
+  fulfillment?: SerializedFulfillmentResult;
 }
 
 /**
@@ -243,7 +254,11 @@ export async function handleRedeem(
   // upsert the channel's delivery-target store. Record a pending
   // update first so a failing channel write leaves the host with an
   // explicit recovery item instead of losing the buyer's target.
-  let warning: HandlerWarning | undefined;
+  // Warnings are accumulated into an array (matching Flow B in
+  // `commit-and-redeem.ts`) so a future post-delivery hook can append
+  // without silently overwriting an earlier failure.
+  const warnings: HandlerWarning[] = [];
+  let delivery: SerializedFulfillmentResult | undefined;
   if (resolvedChannel !== undefined && input.fulfillment !== undefined) {
     const pending: FulfillmentRecoveryEntry = {
       exchangeId: input.exchangeId,
@@ -251,6 +266,7 @@ export async function handleRedeem(
       data: input.fulfillment.data,
       redeemer,
       recordedAt: Date.now(),
+      phase: "commit",
     };
     const logger = ctx.logger ?? noopLogger;
     await ctx.fulfillmentRecoveryStore.set(input.exchangeId, pending);
@@ -258,9 +274,10 @@ export async function handleRedeem(
       exchangeId: input.exchangeId,
       option: input.fulfillment.option,
     });
+    let onCommitOk = false;
     try {
       await resolvedChannel.onCommit(input.exchangeId, input.fulfillment.data);
-      await ctx.fulfillmentRecoveryStore.delete(input.exchangeId);
+      onCommitOk = true;
       logger.debug("x402-server: Flow A channel onCommit succeeded", {
         exchangeId: input.exchangeId,
         option: input.fulfillment.option,
@@ -273,7 +290,7 @@ export async function handleRedeem(
         option: input.fulfillment.option,
         error: reason,
       });
-      warning = {
+      warnings.push({
         code: "FULFILLMENT_UPDATE_DEFERRED",
         reason:
           "redeem succeeded on-chain, but the server could not persist the fulfillment update",
@@ -282,7 +299,45 @@ export async function handleRedeem(
           option: input.fulfillment.option,
           error: reason,
         },
-      };
+      });
+    }
+
+    // Persistence succeeded → dispatch delivery if the channel supports
+    // it. The redeem is already final on-chain, so a delivery failure is
+    // a non-fatal warning, mirroring the onCommit-deferral path above.
+    // Re-record the entry under `phase: "delivery"` so a failed dispatch
+    // leaves a durable recovery item; clear it on success.
+    if (onCommitOk) {
+      if (resolvedChannel.onFulfill !== undefined) {
+        const deliveryPending: FulfillmentRecoveryEntry = {
+          ...pending,
+          phase: "delivery",
+          recordedAt: Date.now(),
+        };
+        await ctx.fulfillmentRecoveryStore.set(input.exchangeId, deliveryPending);
+        try {
+          delivery = serializeFulfillmentResult(await resolvedChannel.onFulfill(input.exchangeId));
+          await ctx.fulfillmentRecoveryStore.delete(input.exchangeId);
+        } catch (e) {
+          const reason = errorMessage(e);
+          await ctx.fulfillmentRecoveryStore.set(input.exchangeId, {
+            ...deliveryPending,
+            error: reason,
+          });
+          warnings.push({
+            code: "FULFILLMENT_DELIVERY_DEFERRED",
+            reason:
+              "redeem succeeded on-chain, but the fulfillment channel's delivery dispatch failed",
+            details: {
+              exchangeId: input.exchangeId,
+              option: input.fulfillment.option,
+              error: reason,
+            },
+          });
+        }
+      } else {
+        await ctx.fulfillmentRecoveryStore.delete(input.exchangeId);
+      }
     }
   }
 
@@ -290,12 +345,15 @@ export async function handleRedeem(
   // the per-exchange option-policy entry is no longer consulted.
   await ctx.exchangeFulfillmentOptionStore.delete(input.exchangeId);
 
-  if (warning !== undefined) {
+  if (warnings.length > 0 || delivery !== undefined) {
     return {
       ...result,
       body: {
         ...result.body,
-        warnings: [...(result.body.warnings ?? []), warning],
+        ...(delivery !== undefined ? { fulfillment: delivery } : {}),
+        ...(warnings.length > 0
+          ? { warnings: [...(result.body.warnings ?? []), ...warnings] }
+          : {}),
       },
     };
   }

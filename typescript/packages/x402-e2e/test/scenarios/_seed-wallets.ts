@@ -77,8 +77,8 @@ export const SEED_WALLETS = {
   nextActions: toSlot(ACCOUNT_16),
   /** `multi-party.test.ts` — E1 (concurrent commit) + E3 (dual-sig resolve). */
   multiParty: toSlot(ACCOUNT_15),
-  /** Spare slot for future chain-touching scenario files. */
-  spareC: toSlot(ACCOUNT_12),
+  /** `fulfillment.test.ts` — A6 (webhook) + A7 (ipfs-pointer). */
+  fulfillment: toSlot(ACCOUNT_12),
 } as const;
 
 export type SeedWalletName = keyof typeof SEED_WALLETS;
