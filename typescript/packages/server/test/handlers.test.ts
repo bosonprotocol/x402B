@@ -832,9 +832,11 @@ describe("handlers.redeem — fulfillment update", () => {
       ...fx.payload,
       fulfillment: { option: "webhook", data: { url: "https://buyer.example/hook" } },
     };
+    const recoveryStore = new Map<string, FulfillmentRecoveryEntry>();
     const { server } = await buildServerWithStubs({
       facilitator: () => ({ ok: true, exchangeId: "42", txHash: "0xabc" }),
       reader,
+      recoveryStore,
       channels: [channel],
     });
     const result = await server.handlers.commitAndRedeem({
@@ -842,12 +844,22 @@ describe("handlers.redeem — fulfillment update", () => {
       requirements,
     });
     // Atomic redeem is already final on-chain, so a delivery failure is
-    // a 200 with an advisory warning — never an error.
+    // a 200 with an advisory warning — never an error. The recovery
+    // store keeps a delivery-phase entry so the host can replay the
+    // dispatch out of band.
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.body.fulfillment).toBeUndefined();
       expect(result.body.warnings?.[0]?.code).toBe("FULFILLMENT_DELIVERY_DEFERRED");
     }
+    expect(recoveryStore.get("42")).toMatchObject({
+      exchangeId: "42",
+      option: "webhook",
+      data: { url: "https://buyer.example/hook" },
+      redeemer: fx.buyer.address,
+      phase: "delivery",
+      error: "buyer endpoint unreachable",
+    });
   });
 
   it("Flow B onCommit failure → 200 + FULFILLMENT_COMMIT_DEFERRED warning + pending recovery update", async () => {
@@ -900,6 +912,7 @@ describe("handlers.redeem — fulfillment update", () => {
       option: "email",
       data: { email: "buyer@example.com" },
       redeemer: fx.buyer.address,
+      phase: "commit",
       error: "store unavailable",
     });
   });

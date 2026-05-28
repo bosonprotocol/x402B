@@ -263,6 +263,7 @@ export async function handleRedeem(
       data: input.fulfillment.data,
       redeemer,
       recordedAt: Date.now(),
+      phase: "commit",
     };
     ctx.fulfillmentRecoveryStore.set(input.exchangeId, pending);
     try {

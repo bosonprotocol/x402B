@@ -229,6 +229,7 @@ async function handleCommitImpl(
       data: decoded.payload.fulfillment.data,
       redeemer: decoded.payload.payload.buyer,
       recordedAt: Date.now(),
+      phase: "commit",
     };
     ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, pending);
 
@@ -254,14 +255,28 @@ async function handleCommitImpl(
     } else {
       try {
         await channel.onCommit(settleResult.exchangeId, decoded.payload.fulfillment.data);
-        ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
         // Persistence succeeded → dispatch delivery if the channel
         // supports it. The atomic redeem is already final on-chain, so a
-        // delivery failure is a non-fatal warning (as with onCommit above).
+        // delivery failure is a non-fatal warning (as with onCommit
+        // above). Re-record the entry under `phase: "delivery"` first so
+        // a failed dispatch leaves a durable recovery item — the buyer
+        // is still owed delivery even though the on-chain release ran.
         if (channel.onFulfill !== undefined) {
+          const deliveryPending: FulfillmentRecoveryEntry = {
+            ...pending,
+            phase: "delivery",
+            recordedAt: Date.now(),
+          };
+          ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, deliveryPending);
           try {
             delivery = serializeFulfillmentResult(await channel.onFulfill(settleResult.exchangeId));
+            ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
           } catch (e) {
+            const reason = e instanceof Error ? e.message : String(e);
+            ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
+              ...deliveryPending,
+              error: reason,
+            });
             warnings.push({
               code: "FULFILLMENT_DELIVERY_DEFERRED",
               reason:
@@ -269,10 +284,12 @@ async function handleCommitImpl(
               details: {
                 exchangeId: settleResult.exchangeId,
                 option: decoded.payload.fulfillment.option,
-                error: e instanceof Error ? e.message : String(e),
+                error: reason,
               },
             });
           }
+        } else {
+          ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
         }
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);

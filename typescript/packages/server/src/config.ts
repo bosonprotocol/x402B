@@ -97,12 +97,14 @@ export interface X402bServerConfig {
    */
   exchangeFulfillmentOptionStore?: Map<string, readonly string[]>;
   /**
-   * Pending fulfillment updates that reached REDEEMED on-chain but
-   * failed the server-side `channel.onCommit(...)` upsert. The commit
-   * handler records Flow B updates here before attempting the channel
-   * write; the redeem handler does the same for Flow A. Both delete the
-   * record on success and leave it behind with the error message on
-   * failure so the host can replay/reconcile out of band.
+   * Pending fulfillment work that reached REDEEMED on-chain but did
+   * not complete server-side. Tracks both the `channel.onCommit(...)`
+   * upsert and the `channel.onFulfill(...)` delivery dispatch — see
+   * `FulfillmentRecoveryEntry.phase` for which step each entry left
+   * behind. The commit handler records Flow B entries; the redeem
+   * handler records Flow A. Each step deletes the entry on success
+   * and re-records it with the error message on failure so the host
+   * can replay/reconcile out of band.
    */
   fulfillmentRecoveryStore?: Map<string, FulfillmentRecoveryEntry>;
   /**
@@ -160,6 +162,17 @@ export interface FulfillmentRecoveryEntry {
   data: Record<string, unknown> | null;
   redeemer: Address;
   recordedAt: number;
+  /**
+   * Which lifecycle step left this entry behind:
+   *   - `"commit"`   — `channel.onCommit(...)` was pending / failed
+   *     (the server's delivery-target store was not updated).
+   *   - `"delivery"` — `onCommit` persisted, but `channel.onFulfill(...)`
+   *     was pending / failed (the buyer's webhook POST / IPFS upload
+   *     still needs dispatch).
+   * A single recovery worker can dispatch the right retry step by
+   * branching on this field.
+   */
+  phase: "commit" | "delivery";
   error?: string;
 }
 
