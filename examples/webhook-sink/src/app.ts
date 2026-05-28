@@ -97,6 +97,9 @@ export async function startWebhookSink(
       ) => { private: string; cert: string };
     };
     const generate = selfsignedModule.default?.generate ?? selfsignedModule.generate;
+    if (typeof generate !== "function") {
+      throw new Error("selfsigned module did not expose a `generate` function");
+    }
     const pems = generate([{ name: "commonName", value: "localhost" }], {
       days: 36500,
       keySize: 2048,
