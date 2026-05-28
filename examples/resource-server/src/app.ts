@@ -111,9 +111,7 @@ function buildServerConfig(
     // `FulfillmentChannel` is a structural superset of the redeem
     // handler's `RedeemFulfillmentChannel` (it adds `describe` /
     // `onFulfill` / `configure`), so the array is assignable as-is.
-    ...(fulfillmentChannels !== undefined && fulfillmentChannels.length > 0
-      ? { fulfillmentChannels }
-      : {}),
+    ...(fulfillmentChannels !== undefined ? { fulfillmentChannels } : {}),
   };
 }
 
@@ -133,15 +131,18 @@ export function createResourceServerApp(
   const now = options.now ?? Date.now;
   const protocolConfig = options.protocolConfig;
   const tokenAuthStrategies = options.tokenAuthStrategies ?? DEFAULT_TOKEN_AUTH_STRATEGIES;
-  const fulfillmentChannels = options.fulfillmentChannels;
+  // Normalise once: an empty array is semantically equivalent to
+  // omission for every downstream check, so collapse both into
+  // `undefined` here and pass `activeChannels` everywhere.
+  const activeChannels: readonly FulfillmentChannel[] | undefined =
+    options.fulfillmentChannels !== undefined && options.fulfillmentChannels.length > 0
+      ? options.fulfillmentChannels
+      : undefined;
 
   // Fail fast on a config that would advertise no options while
   // demanding the buyer pick one — silently dropping `fulfillmentRequired`
   // would let the misconfiguration ship to production unnoticed.
-  if (
-    options.fulfillmentRequired === true &&
-    (fulfillmentChannels === undefined || fulfillmentChannels.length === 0)
-  ) {
+  if (options.fulfillmentRequired === true && activeChannels === undefined) {
     throw new Error(
       "createResourceServerApp: `fulfillmentRequired: true` requires at least one entry in `fulfillmentChannels`",
     );
@@ -151,16 +152,14 @@ export function createResourceServerApp(
   // `fulfillment` block once. Each channel's `describe()` yields the
   // `FulfillmentOption` the buyer picks from at commit/redeem time.
   const fulfillment: FulfillmentRequirements | undefined =
-    fulfillmentChannels !== undefined && fulfillmentChannels.length > 0
+    activeChannels !== undefined
       ? {
           required: options.fulfillmentRequired ?? false,
-          options: fulfillmentChannels.map((channel) => channel.describe()),
+          options: activeChannels.map((channel) => channel.describe()),
         }
       : undefined;
 
-  const server = createX402bServer(
-    buildServerConfig(env, seller, exchangeReader, fulfillmentChannels),
-  );
+  const server = createX402bServer(buildServerConfig(env, seller, exchangeReader, activeChannels));
 
   // The Express adapters call `resolveRequirements` twice per buyer
   // commit flow (once for the 402 challenge, once when the buyer
