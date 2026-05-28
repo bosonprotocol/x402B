@@ -18,10 +18,33 @@
 //     method, body, and every other init field.
 //  6. Return the retry response. A second `402` is NOT re-retried — the
 //     server has spoken twice, surface the error.
+//
+// Each wrapper invocation is tagged with a fresh
+// `X-X402-Boson-Session-Id` header on BOTH the initial request and the
+// retry. The example resource server uses this id to scope its
+// `FullOffer` cache: the 402 challenge and the X-PAYMENT retry share
+// one offer (the validator deep-equals `payload.offerRef.fullOffer`
+// against `requirements.offer.fullOffer`), while distinct buyer flows
+// see distinct offers so a single-quantity offer isn't served to two
+// commits in a row.
 
+import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
+import { findEscrowAccept } from "@bosonprotocol/x402-core/schemes/escrow";
 import type { X402bClient } from "@bosonprotocol/x402-client";
 
+// Re-exported below so existing `@bosonprotocol/x402-client-fetch`
+// importers keep working without having to add a direct dep on
+// `@bosonprotocol/x402-core`.
+export { SESSION_ID_HEADER };
+
 const X_PAYMENT_HEADER = "X-PAYMENT";
+
+function newSessionId(): string {
+  // `globalThis.crypto.randomUUID()` works in modern browsers and Node 19+
+  // (the engines this repo targets). No `node:crypto` import keeps the
+  // module isomorphic — browser bundlers don't need a node polyfill.
+  return globalThis.crypto.randomUUID();
+}
 
 /**
  * Wrap a `fetch` implementation so 402 responses carrying the Boson
@@ -34,6 +57,12 @@ export function wrapFetchWithPayment(
 ): typeof fetch {
   return async function fetchWithPayment(input, init) {
     const initialRequest = new Request(input, init);
+    // Stamp a fresh session id on this buyer flow's headers so the
+    // resource server's offer cache scopes the 402 challenge and the
+    // X-PAYMENT retry to the same offer. `Headers.set` mutates the
+    // Request's headers in place; the `clone()` below carries the id
+    // onto `retryBase`.
+    initialRequest.headers.set(SESSION_ID_HEADER, newSessionId());
     const retryBase = initialRequest.clone();
 
     const initial = await originalFetch(initialRequest);
@@ -69,17 +98,5 @@ async function extractEscrowEntry(response: Response): Promise<unknown | undefin
   } catch {
     return undefined;
   }
-  if (typeof body !== "object" || body === null) {
-    return undefined;
-  }
-  const accepts = (body as { accepts?: unknown }).accepts;
-  if (!Array.isArray(accepts)) {
-    return undefined;
-  }
-  return accepts.find(
-    (entry) =>
-      typeof entry === "object" &&
-      entry !== null &&
-      (entry as { scheme?: unknown }).scheme === "escrow",
-  );
+  return findEscrowAccept(body);
 }

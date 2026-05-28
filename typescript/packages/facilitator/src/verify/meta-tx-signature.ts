@@ -1,16 +1,42 @@
 // Meta-tx signature recovery.
 //
-// The buyer signs the Boson `MetaTransaction` EIP-712 typed-data with
-// the Diamond as the verifying contract. We reconstruct the same
-// typed-data via `metaTransactionTypedData()` from
-// `@bosonprotocol/x402-core/eip712` (which delegates the EIP-712 domain
-// to `@bosonprotocol/core-sdk` so we stay in lock-step with the deployed
-// protocol), then recover the signer with viem.
+// The signer (buyer or seller) signs a Boson EIP-712 typed-data with
+// the Diamond as the verifying contract. core-sdk uses FOUR distinct
+// primary types depending on the action family:
+//
+//   - `MetaTransaction` — commit-time (`createOfferAndCommit`,
+//     `createOfferCommitAndRedeem`), `revokeVoucher`,
+//     `extendDisputeTimeout`, `depositFunds`. Message carries the raw
+//     `functionSignature: bytes`.
+//   - `MetaTxExchange` — exchange-keyed post-commit actions
+//     (`redeemVoucher`, `cancelVoucher`, `completeExchange`,
+//     `raiseDispute`, `retractDispute`, `escalateDispute`). Message
+//     carries `exchangeDetails: {exchangeId}`.
+//   - `MetaTxDisputeResolution` — `resolveDispute`. Message carries
+//     `disputeResolutionDetails: {exchangeId, buyerPercentBasisPoints,
+//     signature}`.
+//   - `MetaTxFund` — `withdrawFunds`. Message carries `fundDetails:
+//     {entityId, tokenList, tokenAmounts}`.
+//
+// We MUST reconstruct the same typed-data the signer used or
+// `ecrecover` yields a garbage address. Each variant routes through
+// the corresponding `@bosonprotocol/x402-core/eip712` builder which
+// delegates to core-sdk's `signMetaTx*({returnTypedDataToSign: true})`
+// — that keeps the reconstructed shape in lock-step with what
+// `MetaTransactionsHandlerFacet` verifies on-chain.
 
-import { metaTransactionTypedData } from "@bosonprotocol/x402-core/eip712";
+import {
+  metaTransactionDisputeResolutionTypedData,
+  metaTransactionExchangeTypedData,
+  metaTransactionFundTypedData,
+  metaTransactionTypedData,
+  type ActionMetaTransactionTypedData,
+} from "@bosonprotocol/x402-core/eip712";
 import type { Address, BosonMetaTx, Hex } from "@bosonprotocol/x402-core/schemes/escrow";
-import { recoverTypedDataAddress } from "viem";
+import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
+import { decodeFunctionData, recoverTypedDataAddress } from "viem";
 
+import { BOSON_POST_COMMIT_ACTION_ABI } from "../internal/boson-action-abi.js";
 import type { StepResult } from "./structural.js";
 
 export interface VerifyMetaTxSignatureArgs {
@@ -28,12 +54,18 @@ export type RecoverMetaTxSignerResult =
   | { ok: false; code: "BAD_META_TX_SIGNATURE"; reason: string };
 
 /**
- * Recover the meta-tx signer from the EIP-712 typed-data. Does **not**
- * check who the signer should be — that's the caller's job. The on-chain
- * `MetaTransactionsHandlerFacet.executeMetaTransaction` recovers
- * signatures with `LibSignature.recover`, which accepts only the legacy
- * `v ∈ {27, 28}` form — reject `v ∈ {0, 1}` upfront with a clear error
- * rather than letting the simulation fail later.
+ * Recover the meta-tx signer from the `MetaTransaction` (basic) EIP-712
+ * typed-data — used by the commit-time `verify()` path and by
+ * post-commit actions that share that primary type (`revokeVoucher`,
+ * `extendDisputeTimeout`, `depositFunds`). Other post-commit actions
+ * must route through {@link recoverActionMetaTxSigner}, which dispatches
+ * on the action id and rebuilds the matching primary type.
+ *
+ * Does **not** check who the signer should be — that's the caller's job.
+ * The on-chain `MetaTransactionsHandlerFacet.executeMetaTransaction`
+ * recovers signatures with `LibSignature.recover`, which accepts only
+ * the legacy `v ∈ {27, 28}` form — reject `v ∈ {0, 1}` upfront with a
+ * clear error rather than letting the simulation fail later.
  */
 export async function recoverMetaTxSigner(args: {
   chainId: number;
@@ -41,13 +73,8 @@ export async function recoverMetaTxSigner(args: {
   metaTx: BosonMetaTx;
 }): Promise<RecoverMetaTxSignerResult> {
   const { v, r, s } = args.metaTx.sig;
-  if (v !== 27 && v !== 28) {
-    return {
-      ok: false,
-      code: "BAD_META_TX_SIGNATURE",
-      reason: `meta-tx signature v must be 27 or 28, got ${v}`,
-    };
-  }
+  const vCheck = checkV(v);
+  if (vCheck !== null) return vCheck;
   const typedData = await metaTransactionTypedData({
     chainId: args.chainId,
     verifyingContract: args.escrowAddress as `0x${string}`,
@@ -59,7 +86,126 @@ export async function recoverMetaTxSigner(args: {
       functionSignature: args.metaTx.functionSignature as `0x${string}`,
     },
   });
+  return recoverFromTypedData(typedData, packRsv(r as Hex, s as Hex, v));
+}
+
+/**
+ * Action-aware variant of {@link recoverMetaTxSigner}. Dispatches on
+ * `args.action` to reconstruct the EIP-712 typed-data the buyer / seller
+ * actually signed:
+ *
+ *   - Exchange-keyed family (`boson-redeem`, `boson-cancelVoucher`,
+ *     `boson-completeExchange`, `boson-raiseDispute`,
+ *     `boson-retractDispute`, `boson-escalateDispute`) → `MetaTxExchange`
+ *     primary type, message carries `exchangeDetails: {exchangeId}`.
+ *   - `boson-resolveDispute` → `MetaTxDisputeResolution`, message carries
+ *     `disputeResolutionDetails: {exchangeId, buyerPercentBasisPoints,
+ *     signature}`.
+ *   - `boson-withdrawFunds` → `MetaTxFund`, message carries
+ *     `fundDetails: {entityId, tokenList, tokenAmounts}`.
+ *   - Anything else (`boson-revokeVoucher`, commit-time actions) →
+ *     falls through to {@link recoverMetaTxSigner}'s basic
+ *     `MetaTransaction` recovery.
+ *
+ * The action-specific args (`exchangeId`, `buyerPercent`, …) are
+ * decoded from `metaTx.functionSignature` so callers only need to pass
+ * the action id and the raw meta-tx envelope.
+ */
+export async function recoverActionMetaTxSigner(args: {
+  chainId: number;
+  escrowAddress: Address;
+  metaTx: BosonMetaTx;
+  action: ActionId;
+}): Promise<RecoverMetaTxSignerResult> {
+  const { v, r, s } = args.metaTx.sig;
+  const vCheck = checkV(v);
+  if (vCheck !== null) return vCheck;
+
+  const escrow = args.escrowAddress as `0x${string}`;
+  const baseArgs = {
+    chainId: args.chainId,
+    verifyingContract: escrow,
+    nonce: BigInt(args.metaTx.nonce),
+    from: args.metaTx.from as `0x${string}`,
+  };
   const signature = packRsv(r as Hex, s as Hex, v);
+
+  try {
+    let typedData: ActionMetaTransactionTypedData;
+    switch (args.action) {
+      case "boson-redeem":
+      case "boson-cancelVoucher":
+      case "boson-completeExchange":
+      case "boson-raiseDispute":
+      case "boson-retractDispute":
+      case "boson-escalateDispute": {
+        const exchangeId = decodeExchangeIdArg(args.metaTx.functionSignature);
+        if (!exchangeId.ok) return exchangeId;
+        typedData = await metaTransactionExchangeTypedData({
+          ...baseArgs,
+          functionName: args.metaTx.functionName,
+          exchangeId: exchangeId.value,
+        });
+        break;
+      }
+      case "boson-resolveDispute": {
+        const decoded = decodeResolveDisputeArgs(args.metaTx.functionSignature);
+        if (!decoded.ok) return decoded;
+        typedData = await metaTransactionDisputeResolutionTypedData({
+          ...baseArgs,
+          exchangeId: decoded.exchangeId,
+          buyerPercentBasisPoints: decoded.buyerPercentBasisPoints,
+          counterpartySig: decoded.counterpartySig as `0x${string}`,
+        });
+        break;
+      }
+      case "boson-withdrawFunds": {
+        const decoded = decodeWithdrawFundsArgs(args.metaTx.functionSignature);
+        if (!decoded.ok) return decoded;
+        typedData = await metaTransactionFundTypedData({
+          ...baseArgs,
+          entityId: decoded.entityId,
+          tokenList: decoded.tokenList as readonly `0x${string}`[],
+          tokenAmounts: decoded.tokenAmounts,
+        });
+        break;
+      }
+      default:
+        // `boson-revokeVoucher`, `boson-createOfferAndCommit`,
+        // `boson-createOfferCommitAndRedeem`, and any future action that
+        // uses the basic `MetaTransaction` primary type fall through to
+        // the existing recovery path.
+        return recoverMetaTxSigner({
+          chainId: args.chainId,
+          escrowAddress: args.escrowAddress,
+          metaTx: args.metaTx,
+        });
+    }
+    return recoverFromTypedData(typedData, signature);
+  } catch (e) {
+    return {
+      ok: false,
+      code: "BAD_META_TX_SIGNATURE",
+      reason: e instanceof Error ? `recovery failed: ${e.message}` : "recovery failed",
+    };
+  }
+}
+
+function checkV(v: number): RecoverMetaTxSignerResult | null {
+  if (v !== 27 && v !== 28) {
+    return {
+      ok: false,
+      code: "BAD_META_TX_SIGNATURE",
+      reason: `meta-tx signature v must be 27 or 28, got ${v}`,
+    };
+  }
+  return null;
+}
+
+async function recoverFromTypedData(
+  typedData: ActionMetaTransactionTypedData,
+  signature: Hex,
+): Promise<RecoverMetaTxSignerResult> {
   try {
     const recovered = await recoverTypedDataAddress({
       domain: typedData.domain,
@@ -67,13 +213,152 @@ export async function recoverMetaTxSigner(args: {
       primaryType: typedData.primaryType,
       message: typedData.message,
       signature: signature as `0x${string}`,
-    });
+    } as Parameters<typeof recoverTypedDataAddress>[0]);
     return { ok: true, recovered };
   } catch (e) {
     return {
       ok: false,
       code: "BAD_META_TX_SIGNATURE",
       reason: e instanceof Error ? `recovery failed: ${e.message}` : "recovery failed",
+    };
+  }
+}
+
+type DecodeFailure = { ok: false; code: "BAD_META_TX_SIGNATURE"; reason: string };
+
+// The exchange-keyed actions whose typed-data carries a single
+// `exchangeId` (`MetaTxExchange` primary type). Used to gate
+// `decodeExchangeIdArg` so a calldata buffer for a different member of
+// `BOSON_POST_COMMIT_ACTION_ABI` (e.g. `withdrawFunds`) can't slip
+// through just because its first argument also happens to be a
+// `uint256`.
+const EXCHANGE_KEYED_FUNCTION_NAMES = new Set<string>([
+  "redeemVoucher",
+  "cancelVoucher",
+  "completeExchange",
+  "raiseDispute",
+  "retractDispute",
+  "escalateDispute",
+]);
+
+function decodeExchangeIdArg(
+  functionSignature: string,
+): { ok: true; value: bigint } | DecodeFailure {
+  try {
+    const decoded = decodeFunctionData({
+      abi: BOSON_POST_COMMIT_ACTION_ABI,
+      data: functionSignature as `0x${string}`,
+    });
+    if (!EXCHANGE_KEYED_FUNCTION_NAMES.has(decoded.functionName)) {
+      return {
+        ok: false,
+        code: "BAD_META_TX_SIGNATURE",
+        reason: `expected exchange-keyed action calldata, got "${decoded.functionName}"`,
+      };
+    }
+    const exchangeId = decoded.args?.[0];
+    if (typeof exchangeId !== "bigint") {
+      return {
+        ok: false,
+        code: "BAD_META_TX_SIGNATURE",
+        reason: "metaTx.functionSignature does not encode exchangeId as the first uint256 argument",
+      };
+    }
+    return { ok: true, value: exchangeId };
+  } catch (e) {
+    return {
+      ok: false,
+      code: "BAD_META_TX_SIGNATURE",
+      reason:
+        e instanceof Error
+          ? `metaTx.functionSignature decode failed: ${e.message}`
+          : "metaTx.functionSignature decode failed",
+    };
+  }
+}
+
+function decodeResolveDisputeArgs(functionSignature: string):
+  | {
+      ok: true;
+      exchangeId: bigint;
+      buyerPercentBasisPoints: bigint;
+      counterpartySig: Hex;
+    }
+  | DecodeFailure {
+  try {
+    const decoded = decodeFunctionData({
+      abi: BOSON_POST_COMMIT_ACTION_ABI,
+      data: functionSignature as `0x${string}`,
+    });
+    if (decoded.functionName !== "resolveDispute") {
+      return {
+        ok: false,
+        code: "BAD_META_TX_SIGNATURE",
+        reason: `expected resolveDispute calldata, got "${decoded.functionName}"`,
+      };
+    }
+    const [exchangeId, buyerPercent, counterpartySig] = decoded.args as readonly [
+      bigint,
+      bigint,
+      `0x${string}`,
+    ];
+    return {
+      ok: true,
+      exchangeId,
+      buyerPercentBasisPoints: buyerPercent,
+      counterpartySig: counterpartySig as Hex,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      code: "BAD_META_TX_SIGNATURE",
+      reason:
+        e instanceof Error
+          ? `metaTx.functionSignature decode failed: ${e.message}`
+          : "metaTx.functionSignature decode failed",
+    };
+  }
+}
+
+function decodeWithdrawFundsArgs(functionSignature: string):
+  | {
+      ok: true;
+      entityId: bigint;
+      tokenList: readonly Address[];
+      tokenAmounts: readonly bigint[];
+    }
+  | DecodeFailure {
+  try {
+    const decoded = decodeFunctionData({
+      abi: BOSON_POST_COMMIT_ACTION_ABI,
+      data: functionSignature as `0x${string}`,
+    });
+    if (decoded.functionName !== "withdrawFunds") {
+      return {
+        ok: false,
+        code: "BAD_META_TX_SIGNATURE",
+        reason: `expected withdrawFunds calldata, got "${decoded.functionName}"`,
+      };
+    }
+    const [entityId, tokenList, tokenAmounts] = decoded.args as readonly [
+      bigint,
+      readonly `0x${string}`[],
+      readonly bigint[],
+    ];
+    return {
+      ok: true,
+      entityId,
+      tokenList: tokenList as readonly Address[],
+      tokenAmounts,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      code: "BAD_META_TX_SIGNATURE",
+      reason:
+        e instanceof Error
+          ? `metaTx.functionSignature decode failed: ${e.message}`
+          : "metaTx.functionSignature decode failed",
     };
   }
 }

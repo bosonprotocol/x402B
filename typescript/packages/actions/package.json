@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-actions",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "Apache-2.0",
   "description": "Boson Protocol `nextActions` envelope builder for x402 — channel registry, action-entry types, and the pluggable channel-adapter contract used by the server SDK to advertise legal next transitions on every response.",
   "repository": {
@@ -49,7 +49,7 @@
   },
   "scripts": {
     "build": "tsup && node scripts/postbuild.mjs",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "lint": "eslint src test --max-warnings 0",
     "clean": "rm -rf dist .turbo"
   },

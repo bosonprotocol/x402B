@@ -35,6 +35,8 @@ import { parseChainId } from "../core-sdk-factory.js";
 import { UnsupportedTokenAuthError } from "../errors.js";
 import type { TokenDomainResolver } from "../types.js";
 
+import { computeTokenAuthDeadline } from "./deadline.js";
+
 const NONCES_ABI = [
   {
     type: "function",
@@ -73,7 +75,7 @@ export async function signPermit({
   const domain = await tokenDomainResolver(requirements.asset as Address, chainId);
 
   const noncePreSign = await readNonce(publicClient, requirements.asset as Address, buyer);
-  const deadline = Math.floor(now() / 1000) + requirements.maxTimeoutSeconds;
+  const deadline = computeTokenAuthDeadline(requirements.maxTimeoutSeconds, now);
 
   const result = await coreSdk.signReceiveWithErc2612Permit(
     requirements.asset,

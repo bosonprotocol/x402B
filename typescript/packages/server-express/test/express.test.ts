@@ -122,9 +122,16 @@ async function buildBuyerPayload() {
     escrow: ESCROW,
     chainId: CHAIN_ID,
   });
+  // Mirror the real x402-client behaviour: build calldata with
+  // `committer: buyer.address`. `committer` is an outer arg of the
+  // on-chain `createOfferAndCommit(...)`, not part of the seller's
+  // EIP-712 typed-data, so the buyer's client splices it in before
+  // signing. Rule 7 (in `@bosonprotocol/x402-server`) mirrors the
+  // same splice when rebuilding calldata — see x402B#73.
   const calldata = await buildCreateOfferAndCommitCalldata({
     fullOffer: {
       ...offerRef.fullOffer,
+      committer: buyer.address,
       signature: offerRef.sellerSig,
     } as Parameters<typeof buildCreateOfferAndCommitCalldata>[0]["fullOffer"],
   });

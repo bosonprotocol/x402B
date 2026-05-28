@@ -1,0 +1,62 @@
+{
+  "name": "@bosonprotocol/x402-client-browser",
+  "version": "0.2.0",
+  "license": "Apache-2.0",
+  "description": "Browser-environment adapters for the Boson Protocol x402 buyer-side SDK — wraps a viem WalletClient or a raw EIP-1193 provider (e.g. window.ethereum) as an X402bClient Signer.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bosonprotocol/x402B.git",
+    "directory": "typescript/packages/client-browser"
+  },
+  "homepage": "https://github.com/bosonprotocol/x402B/tree/main/typescript/packages/client-browser",
+  "bugs": {
+    "url": "https://github.com/bosonprotocol/x402B/issues"
+  },
+  "keywords": [
+    "x402",
+    "boson-protocol",
+    "escrow",
+    "browser",
+    "wallet",
+    "eip-1193",
+    "viem",
+    "client",
+    "buyer",
+    "web3",
+    "payments"
+  ],
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup && node scripts/postbuild.mjs",
+    "test": "vitest run",
+    "lint": "eslint src test --max-warnings 0",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@bosonprotocol/x402-client": "workspace:^",
+    "viem": "^2.39.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
