@@ -24,6 +24,7 @@
     "@bosonprotocol/x402-actions": "workspace:^",
     "@bosonprotocol/x402-core": "workspace:^",
     "@bosonprotocol/x402-fulfillment": "workspace:^",
+    "@bosonprotocol/x402-paywall": "workspace:^",
     "@bosonprotocol/x402-server": "workspace:^",
     "@bosonprotocol/x402-server-express": "workspace:^",
     "express": "^4.21.2",
