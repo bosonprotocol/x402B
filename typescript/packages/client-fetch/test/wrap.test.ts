@@ -11,6 +11,37 @@ import type { X402bClient } from "@bosonprotocol/x402-client";
 
 import { wrapFetchWithPayment } from "../src/wrap.js";
 
+// Minimal but schema-valid `EscrowPaymentPayload` JSON, base64-encoded
+// so the commit-fallback path can decode it through
+// `parseEscrowPaymentPayload`. Shape mirrors
+// `core/test/schemes/escrow/fixtures.ts:validPayloadNone`.
+const VALID_PAYLOAD_JSON = {
+  x402Version: 2,
+  scheme: "escrow",
+  network: "eip155:8453",
+  payload: {
+    action: "boson-createOfferAndCommit",
+    tokenAuthStrategy: "none",
+    offerRef: {
+      fullOffer: { id: "0", price: "1000000" },
+      sellerSig: "0xdeadbeef",
+    },
+    buyer: "0x2222222222222222222222222222222222222222",
+    metaTx: {
+      from: "0x2222222222222222222222222222222222222222",
+      nonce: "0",
+      functionName: "createOfferAndCommit(...)",
+      functionSignature: "0xabcd1234",
+      sig: { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
+    },
+  },
+  fulfillment: { option: "inline" },
+};
+
+const VALID_PAYLOAD_BASE64 = Buffer.from(JSON.stringify(VALID_PAYLOAD_JSON), "utf8").toString(
+  "base64",
+);
+
 function makeClient(headerValue = "base64-encoded-payment"): X402bClient & {
   handle402: Mock;
   parsePaymentResponse: Mock;
@@ -23,7 +54,14 @@ function makeClient(headerValue = "base64-encoded-payment"): X402bClient & {
   };
 }
 
-function escrow402Body() {
+function escrow402Body(options: { withFacilitatorEndpoint?: boolean } = {}) {
+  const channels: string[] = options.withFacilitatorEndpoint
+    ? ["server", "facilitator"]
+    : ["server"];
+  const endpoints: Record<string, string> = { server: "https://example/resource" };
+  if (options.withFacilitatorEndpoint) {
+    endpoints.facilitator = "https://facilitator.example/settle";
+  }
   return {
     x402Version: 2,
     accepts: [
@@ -41,7 +79,9 @@ function escrow402Body() {
           creator: "0x1111111111111111111111111111111111111111",
         },
         tokenAuthStrategies: ["erc3009"],
-        actions: { next: [{ id: "boson-createOfferAndCommit", channels: ["server"] }] },
+        actions: {
+          next: [{ id: "boson-createOfferAndCommit", channels, endpoints }],
+        },
       },
     ],
   };
@@ -181,5 +221,181 @@ describe("wrapFetchWithPayment", () => {
     // initial + 1 retry = 2, never more
     expect(fakeFetch).toHaveBeenCalledTimes(2);
     expect(client.handle402).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("wrapFetchWithPayment — commit fallback (opt-in)", () => {
+  function settleOkBody(): { ok: true; exchangeId: string; txHash: string } {
+    return { ok: true, exchangeId: "42", txHash: "0xdeadbeef" };
+  }
+
+  it("default (commitFallback off): resource-server 5xx after X-PAYMENT bubbles up unchanged", async () => {
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(escrow402Body({ withFacilitatorEndpoint: true }), { status: 402 }),
+      )
+      .mockResolvedValueOnce(new Response("boom", { status: 502 }));
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client);
+    const res = await wrapped("https://example/resource");
+
+    expect(res.status).toBe(502);
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+    // No call to the facilitator URL.
+    expect(
+      fakeFetch.mock.calls.some(
+        (c) => String(c[0] as Request | URL | string) === "https://facilitator.example/settle",
+      ),
+    ).toBe(false);
+  });
+
+  it("commitFallback='auto': resource-server 5xx triggers facilitator settle, returns synthesized 200", async () => {
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith("https://example/resource")) {
+        if (fakeFetch.mock.calls.length === 1) {
+          return jsonResponse(escrow402Body({ withFacilitatorEndpoint: true }), { status: 402 });
+        }
+        return new Response("boom", { status: 502 });
+      }
+      if (url.startsWith("https://facilitator.example/settle")) {
+        return jsonResponse(settleOkBody(), { status: 200 });
+      }
+      return new Response("unexpected", { status: 500 });
+    });
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client, { commitFallback: "auto" });
+    const res = await wrapped("https://example/resource");
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-X402-Boson-Commit-Channel")).toBe("facilitator");
+    expect(res.headers.get("X-X402-Boson-Server-Error")).toBe("502");
+    expect(res.headers.get("X-PAYMENT-RESPONSE")).toBeTruthy();
+    expect(await res.text()).toBe("");
+
+    // initial 402 + X-PAYMENT retry (502) + facilitator settle (200) = 3
+    expect(fakeFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("commitFallback='auto': X-PAYMENT-RESPONSE header decodes to {exchangeId, txHash, nextActions.exchangeState}", async () => {
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith("https://example/resource")) {
+        if (fakeFetch.mock.calls.length === 1) {
+          return jsonResponse(escrow402Body({ withFacilitatorEndpoint: true }), { status: 402 });
+        }
+        return new Response("boom", { status: 502 });
+      }
+      return jsonResponse(settleOkBody(), { status: 200 });
+    });
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client, { commitFallback: "auto" });
+    const res = await wrapped("https://example/resource");
+
+    const headerValue = res.headers.get("X-PAYMENT-RESPONSE")!;
+    const decoded = JSON.parse(Buffer.from(headerValue, "base64").toString("utf8"));
+    expect(decoded).toEqual({
+      exchangeId: "42",
+      txHash: "0xdeadbeef",
+      nextActions: { exchangeState: "COMMITTED" },
+    });
+  });
+
+  it("commitFallback='auto': network error on retry triggers fallback, marker carries network: prefix", async () => {
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith("https://example/resource")) {
+        if (fakeFetch.mock.calls.length === 1) {
+          return jsonResponse(escrow402Body({ withFacilitatorEndpoint: true }), { status: 402 });
+        }
+        throw new TypeError("connect ECONNREFUSED");
+      }
+      return jsonResponse(settleOkBody(), { status: 200 });
+    });
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client, { commitFallback: "auto" });
+    const res = await wrapped("https://example/resource");
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-X402-Boson-Commit-Channel")).toBe("facilitator");
+    expect(res.headers.get("X-X402-Boson-Server-Error")).toContain("network:");
+  });
+
+  it("commitFallback='auto' but no facilitator endpoint advertised: surfaces the original 5xx unchanged", async () => {
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(escrow402Body(), { status: 402 }))
+      .mockResolvedValueOnce(new Response("boom", { status: 502 }));
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client, { commitFallback: "auto" });
+    const res = await wrapped("https://example/resource");
+
+    expect(res.status).toBe(502);
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("commitFallback='auto': facilitator also fails → original 5xx surfaces", async () => {
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith("https://example/resource")) {
+        if (fakeFetch.mock.calls.length === 1) {
+          return jsonResponse(escrow402Body({ withFacilitatorEndpoint: true }), { status: 402 });
+        }
+        return new Response("server down", { status: 502 });
+      }
+      return new Response("facilitator down", { status: 503 });
+    });
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client, { commitFallback: "auto" });
+    const res = await wrapped("https://example/resource");
+
+    expect(res.status).toBe(502);
+    expect(await res.text()).toBe("server down");
+  });
+
+  it("commitFallback='auto': resource-server 4xx does NOT trigger fallback (only 5xx)", async () => {
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith("https://example/resource")) {
+        if (fakeFetch.mock.calls.length === 1) {
+          return jsonResponse(escrow402Body({ withFacilitatorEndpoint: true }), { status: 402 });
+        }
+        return new Response("bad payload", { status: 400 });
+      }
+      return jsonResponse(settleOkBody(), { status: 200 });
+    });
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client, { commitFallback: "auto" });
+    const res = await wrapped("https://example/resource");
+
+    expect(res.status).toBe(400);
+    // initial + retry = 2; no facilitator call.
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("commitFallback='auto': retry success (200) is returned untouched — no fallback path", async () => {
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(escrow402Body({ withFacilitatorEndpoint: true }), { status: 402 }),
+      )
+      .mockResolvedValueOnce(new Response("resource-body", { status: 200 }));
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client, { commitFallback: "auto" });
+    const res = await wrapped("https://example/resource");
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("resource-body");
+    expect(res.headers.get("X-X402-Boson-Commit-Channel")).toBeNull();
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
   });
 });

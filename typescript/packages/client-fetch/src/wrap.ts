@@ -27,9 +27,40 @@
 // against `requirements.offer.fullOffer`), while distinct buyer flows
 // see distinct offers so a single-quantity offer isn't served to two
 // commits in a row.
+//
+// ### Commit fallback (opt-in)
+//
+// When `commitFallback: "auto"` is set, a resource-server 5xx / network
+// error / timeout on step 5 no longer fails the call. Instead, the
+// wrapper recovers the structured `EscrowPaymentPayload` from the
+// X-PAYMENT base64, looks up `requirements.actions.next[*]
+// .endpoints.facilitator` for the chosen commit action, and POSTs
+// `{ scheme, network, payload, requirements }` directly to the
+// facilitator's `/settle` route. On success the commit lands on-chain
+// via the facilitator and the wrapper returns a **synthesized 200**
+// with:
+//
+//   - `X-PAYMENT-RESPONSE: <base64-of-the-success-body>` so
+//     `client.parsePaymentResponse(...)` continues to work,
+//   - `X-X402-Boson-Commit-Channel: facilitator` so the caller can
+//     detect that fallback was used,
+//   - `X-X402-Boson-Server-Error: <status-or-message>` for diagnostics,
+//   - an empty body — the resource itself comes from the resource
+//     server, which by definition is unreachable; callers that need
+//     the resource must come back later (re-GET when the server is up,
+//     or rely on the seller's asynchronous fulfillment channel).
+//
+// Default is `commitFallback: "off"` — the behaviour above is opt-in so
+// that existing callers don't get a different response shape from a
+// brief upstream blip.
 
 import { SESSION_ID_HEADER } from "@bosonprotocol/x402-core";
-import { findEscrowAccept } from "@bosonprotocol/x402-core/schemes/escrow";
+import {
+  findEscrowAccept,
+  parseEscrowPaymentPayload,
+  type EscrowPaymentPayload,
+  type NextAction,
+} from "@bosonprotocol/x402-core/schemes/escrow";
 import type { X402bClient } from "@bosonprotocol/x402-client";
 
 // Re-exported below so existing `@bosonprotocol/x402-client-fetch`
@@ -38,6 +69,28 @@ import type { X402bClient } from "@bosonprotocol/x402-client";
 export { SESSION_ID_HEADER };
 
 const X_PAYMENT_HEADER = "X-PAYMENT";
+const X_PAYMENT_RESPONSE_HEADER = "X-PAYMENT-RESPONSE";
+const COMMIT_CHANNEL_HEADER = "X-X402-Boson-Commit-Channel";
+const SERVER_ERROR_HEADER = "X-X402-Boson-Server-Error";
+
+/** Per-wrapper configuration knobs. */
+export interface WrapFetchOptions {
+  /**
+   * When `"auto"`, retry-with-X-PAYMENT failures (5xx / network error /
+   * timeout against the resource server) are recovered by POSTing the
+   * payload directly to the facilitator's `/settle` endpoint advertised
+   * in the prior 402's `actions.next[*].endpoints.facilitator`. The
+   * wrapper synthesizes a 200 response carrying the
+   * `X-PAYMENT-RESPONSE` header and a `X-X402-Boson-Commit-Channel:
+   * facilitator` marker so callers can detect the fallback path.
+   *
+   * Default `"off"` — callers must opt in to the synthesized-response
+   * shape.
+   */
+  commitFallback?: "off" | "auto";
+  /** Per-attempt timeout in milliseconds, applied to the facilitator fallback POST. Default 10000. */
+  facilitatorTimeoutMs?: number;
+}
 
 function newSessionId(): string {
   // `globalThis.crypto.randomUUID()` works in modern browsers and Node 19+
@@ -54,7 +107,11 @@ function newSessionId(): string {
 export function wrapFetchWithPayment(
   originalFetch: typeof fetch,
   client: X402bClient,
+  options: WrapFetchOptions = {},
 ): typeof fetch {
+  const commitFallback = options.commitFallback ?? "off";
+  const facilitatorTimeoutMs = options.facilitatorTimeoutMs ?? 10_000;
+
   return async function fetchWithPayment(input, init) {
     const initialRequest = new Request(input, init);
     // Stamp a fresh session id on this buyer flow's headers so the
@@ -81,7 +138,46 @@ export function wrapFetchWithPayment(
     headers.set(X_PAYMENT_HEADER, headerValue);
     const retryRequest = new Request(retryBase, { headers });
 
-    return originalFetch(retryRequest);
+    let retryResponse: Response;
+    let networkErrorMessage: string | undefined;
+    try {
+      retryResponse = await originalFetch(retryRequest);
+    } catch (e) {
+      if (commitFallback !== "auto") {
+        throw e;
+      }
+      networkErrorMessage = e instanceof Error ? e.message : String(e);
+      retryResponse = new Response(null, { status: 599 });
+    }
+
+    if (commitFallback !== "auto" || retryResponse.status < 500) {
+      return retryResponse;
+    }
+
+    // Resource server failed (5xx / network). Try the facilitator-direct
+    // path. On *any* recoverable hand-off failure (no facilitator
+    // endpoint advertised, facilitator also failing, …) we surface the
+    // original 5xx — the buyer-facing contract is "fallback is
+    // best-effort; on failure the upstream error wins".
+    const fallback = await tryFacilitatorFallback({
+      escrowEntry,
+      headerValue,
+      facilitatorTimeoutMs,
+      originalFetch,
+    });
+    if (fallback === undefined) {
+      // Couldn't fall back. Surface the original retry response —
+      // either the resource server's 5xx body, or, when the call
+      // failed at the network level, the synthesized 599 placeholder.
+      return retryResponse;
+    }
+    return synthesizeCommitFallbackResponse({
+      body: fallback,
+      serverErrorMarker:
+        networkErrorMessage !== undefined
+          ? `network:${networkErrorMessage}`
+          : String(retryResponse.status),
+    });
   };
 }
 
@@ -99,4 +195,139 @@ async function extractEscrowEntry(response: Response): Promise<unknown | undefin
     return undefined;
   }
   return findEscrowAccept(body);
+}
+
+/**
+ * Try to land the commit via the facilitator's `/settle` route. Returns
+ * the parsed success body on a 2xx, or `undefined` on any failure
+ * (caller surfaces the original 5xx).
+ */
+async function tryFacilitatorFallback(input: {
+  escrowEntry: unknown;
+  headerValue: string;
+  facilitatorTimeoutMs: number;
+  originalFetch: typeof fetch;
+}): Promise<{ ok: true; exchangeId: string; txHash: string } | undefined> {
+  const requirements = input.escrowEntry as {
+    scheme?: unknown;
+    network?: unknown;
+    actions?: { next?: unknown };
+  };
+  if (
+    requirements.scheme !== "escrow" ||
+    typeof requirements.network !== "string" ||
+    !Array.isArray(requirements.actions?.next)
+  ) {
+    return undefined;
+  }
+
+  const commitEntry = (requirements.actions.next as NextAction[]).find(
+    (e) =>
+      (e.id === "boson-createOfferAndCommit" || e.id === "boson-createOfferCommitAndRedeem") &&
+      e.channels.includes("facilitator") &&
+      typeof e.endpoints?.facilitator === "string",
+  );
+  if (commitEntry === undefined) {
+    return undefined;
+  }
+
+  let payload: EscrowPaymentPayload;
+  try {
+    payload = parseEscrowPaymentPayload(JSON.parse(decodeBase64(input.headerValue)));
+  } catch {
+    return undefined;
+  }
+
+  const settleUrl = commitEntry.endpoints!.facilitator!;
+  const body = JSON.stringify({
+    scheme: "escrow",
+    network: requirements.network,
+    payload,
+    requirements,
+  });
+
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(input.originalFetch, settleUrl, body, input.facilitatorTimeoutMs);
+  } catch {
+    return undefined;
+  }
+
+  if (!res.ok) return undefined;
+
+  const parsed = (await res.json().catch(() => null)) as unknown;
+  if (parsed === null || typeof parsed !== "object" || (parsed as { ok?: unknown }).ok !== true) {
+    return undefined;
+  }
+  const ok = parsed as { ok: true; exchangeId?: unknown; txHash?: unknown };
+  if (typeof ok.exchangeId !== "string" || typeof ok.txHash !== "string") {
+    return undefined;
+  }
+  return { ok: true, exchangeId: ok.exchangeId, txHash: ok.txHash };
+}
+
+/**
+ * Build the synthesized fallback `Response` returned to the caller when
+ * the facilitator settled the commit successfully. Status 200 keeps
+ * existing `response.ok` checks happy; the channel header lets callers
+ * detect that the resource body wasn't delivered.
+ */
+function synthesizeCommitFallbackResponse(input: {
+  body: { ok: true; exchangeId: string; txHash: string };
+  serverErrorMarker: string;
+}): Response {
+  const xPaymentResponseBody = {
+    exchangeId: input.body.exchangeId,
+    txHash: input.body.txHash,
+    nextActions: { exchangeState: "COMMITTED" },
+  };
+  const headers = new Headers();
+  headers.set(X_PAYMENT_RESPONSE_HEADER, encodeBase64(JSON.stringify(xPaymentResponseBody)));
+  headers.set(COMMIT_CHANNEL_HEADER, "facilitator");
+  headers.set(SERVER_ERROR_HEADER, input.serverErrorMarker);
+  return new Response(null, { status: 200, headers });
+}
+
+async function fetchWithTimeout(
+  fetcher: typeof fetch,
+  url: string,
+  body: string,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetcher(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function decodeBase64(value: string): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(value, "base64").toString("utf8");
+  }
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+function encodeBase64(value: string): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(value, "utf8").toString("base64");
+  }
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const b of bytes) {
+    binary += String.fromCharCode(b);
+  }
+  return btoa(binary);
 }
