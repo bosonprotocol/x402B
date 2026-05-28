@@ -251,7 +251,10 @@ export async function handleRedeem(
   // upsert the channel's delivery-target store. Record a pending
   // update first so a failing channel write leaves the host with an
   // explicit recovery item instead of losing the buyer's target.
-  let warning: HandlerWarning | undefined;
+  // Warnings are accumulated into an array (matching Flow B in
+  // `commit-and-redeem.ts`) so a future post-delivery hook can append
+  // without silently overwriting an earlier failure.
+  const warnings: HandlerWarning[] = [];
   let delivery: SerializedFulfillmentResult | undefined;
   if (resolvedChannel !== undefined && input.fulfillment !== undefined) {
     const pending: FulfillmentRecoveryEntry = {
@@ -268,7 +271,7 @@ export async function handleRedeem(
     } catch (e) {
       const reason = errorMessage(e);
       ctx.fulfillmentRecoveryStore.set(input.exchangeId, { ...pending, error: reason });
-      warning = {
+      warnings.push({
         code: "FULFILLMENT_UPDATE_DEFERRED",
         reason:
           "redeem succeeded on-chain, but the server could not persist the fulfillment update",
@@ -277,13 +280,13 @@ export async function handleRedeem(
           option: input.fulfillment.option,
           error: reason,
         },
-      };
+      });
     }
 
     // Persistence succeeded → dispatch delivery if the channel supports
     // it. The redeem is already final on-chain, so a delivery failure is
     // a non-fatal warning, mirroring the onCommit-deferral path above.
-    if (warning === undefined && resolvedChannel.onFulfill !== undefined) {
+    if (warnings.length === 0 && resolvedChannel.onFulfill !== undefined) {
       delivery = await dispatchFulfillment(
         resolvedChannel.onFulfill.bind(resolvedChannel),
         input.exchangeId,
@@ -291,7 +294,7 @@ export async function handleRedeem(
       ).then(
         (d) => d,
         (deliveryWarning: HandlerWarning) => {
-          warning = deliveryWarning;
+          warnings.push(deliveryWarning);
           return undefined;
         },
       );
@@ -302,13 +305,15 @@ export async function handleRedeem(
   // the per-exchange option-policy entry is no longer consulted.
   ctx.exchangeFulfillmentOptionStore.delete(input.exchangeId);
 
-  if (warning !== undefined || delivery !== undefined) {
+  if (warnings.length > 0 || delivery !== undefined) {
     return {
       ...result,
       body: {
         ...result.body,
         ...(delivery !== undefined ? { fulfillment: delivery } : {}),
-        ...(warning !== undefined ? { warnings: [...(result.body.warnings ?? []), warning] } : {}),
+        ...(warnings.length > 0
+          ? { warnings: [...(result.body.warnings ?? []), ...warnings] }
+          : {}),
       },
     };
   }
