@@ -24,6 +24,7 @@
     "format:check": "prettier --check .",
     "clean": "turbo run clean && rm -rf node_modules",
     "changeset": "changeset",
+    "changeset:coverage": "node scripts/check-changeset-coverage.mjs",
     "version": "changeset version",
     "release": "turbo run build && changeset publish",
     "publish:alpha": "node scripts/publish-alpha.mjs",

@@ -3,7 +3,10 @@ name: CI
 on:
   pull_request:
     branches: ["**"]
-    types: [opened, synchronize, reopened, ready_for_review]
+    # `labeled`/`unlabeled` so the changeset-coverage check re-evaluates when the
+    # `no-changeset` escape-hatch label is toggled (the build/test/e2e jobs skip
+    # those events — see their `if:` — so a label change stays cheap).
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -18,9 +21,37 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  # Fails a PR that changes a publishable package without a changeset that names
+  # it — the gap that let PR #68 merge without ever publishing. No `pnpm install`
+  # needed: the script reads package.json files + git directly. Bypass an
+  # intentional no-release change with the `no-changeset` label.
+  changeset-coverage:
+    name: changeset coverage
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - run: git fetch --no-tags origin ${{ github.event.pull_request.base.ref }}
+
+      - name: Check changeset coverage
+        env:
+          CHANGESET_BASE: origin/${{ github.event.pull_request.base.ref }}
+          HAS_OVERRIDE_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'no-changeset') }}
+        run: node scripts/check-changeset-coverage.mjs
+
   build-test-lint:
     name: build / test / lint (node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    # Skip on label-only events (they don't change code).
+    if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')
     strategy:
       fail-fast: false
       matrix:
@@ -61,7 +92,8 @@ jobs:
   e2e-pr:
     name: e2e (@p0 + @p1)
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.draft }}
+    # Skip drafts, and label-only events (they don't change code).
+    if: ${{ !github.event.pull_request.draft && github.event.action != 'labeled' && github.event.action != 'unlabeled' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
