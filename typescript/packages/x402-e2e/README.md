@@ -176,6 +176,14 @@ with `-t '@p0'`. Priorities:
 | `@p1/@p2`| commit-time fulfillment (A6–A8)               | `_skeletons.test.ts`          |
 | `it.todo`| follow-up scenarios (B5, B8–9, C6–C10, D1–D4, E1–E3) | `_skeletons.test.ts`   |
 
+### Scenario walkthroughs
+
+Prose + sequence-diagram docs that explain how the protocol behaves,
+flow by flow, mapping each step back to the harness / SDK / facilitator /
+Diamond method that runs it — see [`docs/scenarios/`](./docs/scenarios/README.md).
+Pilot coverage: [Flow A — deferred commit](./docs/scenarios/flow-a-deferred-commit.md)
+and [Flow C — dispute path](./docs/scenarios/flow-c-dispute.md).
+
 ### Running a tag subset
 
 ```sh
