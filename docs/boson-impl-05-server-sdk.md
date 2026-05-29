@@ -370,9 +370,10 @@ interface MountX402bOptions {
 }
 ```
 
-Returns an `express.Router` wiring the eight `POST /x402B/*` convenience routes (plus a `GET` for
-`/available-funds`). By default the router registers both the canonical `/x402B` paths and the
-legacy `/x402b` aliases. Bodies that don't shape-match (missing fields, non-hex `signedPayload`,
+Returns an `express.Router` wiring one `POST /x402B/*` route per write handler — `commit`,
+`commit-and-redeem`, `redeem`, `complete`, `dispute/{raise,resolve,retract,escalate}`,
+`withdraw-funds` — plus a `GET /x402B/available-funds`. By default the router registers both the
+canonical `/x402B` paths and the legacy `/x402b` aliases. Bodies that don't shape-match (missing fields, non-hex `signedPayload`,
 both/none of `entityId` and `address`) get a `400` with `{ code: "INVALID_REQUEST_BODY", reason }`
 before the handler is invoked. The shared `INVALID_REQUEST_BODY` constant is exported for callers
 that want to branch on the code.
