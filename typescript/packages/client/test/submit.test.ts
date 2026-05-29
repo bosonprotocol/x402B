@@ -166,7 +166,11 @@ describe("submitAction", () => {
       }),
     );
     expect(result.channelUsed).toBe("facilitator");
-    expect(result.attempts[0]).toMatchObject({ channel: "server", ok: false, reason: "network" });
+    expect(result.attempts[0]).toMatchObject({
+      channel: "server",
+      ok: false,
+      reason: "no-endpoint",
+    });
   });
 
   it("server channel body contains exchangeId + signedPayload (and fulfillment when provided)", async () => {

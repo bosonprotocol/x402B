@@ -34,8 +34,14 @@ export type SubmitChannel = "server" | "facilitator";
 
 const SUBMIT_CHANNELS: readonly SubmitChannel[] = ["server", "facilitator"];
 
-/** Why a channel attempt didn't yield a 2xx. */
-export type ChannelFailureReason = "5xx" | "4xx" | "network" | "timeout";
+/**
+ * Why a channel attempt didn't yield a 2xx. `"no-endpoint"` is a
+ * configuration gap (channel advertised, but no URL listed under
+ * `action.endpoints`) — distinct from a real transport-level
+ * `"network"` failure so callers branching on `reason` can tell the
+ * two apart.
+ */
+export type ChannelFailureReason = "5xx" | "4xx" | "network" | "timeout" | "no-endpoint";
 
 /** Per-channel attempt record — every walk-step appended to `attempts[]`. */
 export type ChannelAttempt =
@@ -141,7 +147,7 @@ export async function submitAction(args: SubmitArgs): Promise<SubmitResult> {
       attempts.push({
         channel,
         ok: false,
-        reason: "network",
+        reason: "no-endpoint",
         message: `no endpoint advertised for channel '${channel}'`,
       });
       continue;
