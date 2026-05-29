@@ -39,9 +39,18 @@ const SUBMIT_CHANNELS: readonly SubmitChannel[] = ["server", "facilitator"];
  * configuration gap (channel advertised, but no URL listed under
  * `action.endpoints`) — distinct from a real transport-level
  * `"network"` failure so callers branching on `reason` can tell the
- * two apart.
+ * two apart. `"invalid-response"` covers 2xx replies whose body
+ * doesn't match the channel's expected shape — the server replied
+ * but with something we can't make sense of, treated as a
+ * recoverable failure (the next channel is tried).
  */
-export type ChannelFailureReason = "5xx" | "4xx" | "network" | "timeout" | "no-endpoint";
+export type ChannelFailureReason =
+  | "5xx"
+  | "4xx"
+  | "network"
+  | "timeout"
+  | "no-endpoint"
+  | "invalid-response";
 
 /** Per-channel attempt record — every walk-step appended to `attempts[]`. */
 export type ChannelAttempt =
@@ -224,9 +233,20 @@ async function attemptChannel(input: {
       attempt: { channel, ok: false, reason: "5xx", status: res.status },
     };
   }
-  if (!res.ok || parsed === null || typeof parsed !== "object") {
+  if (!res.ok) {
     return {
       attempt: { channel, ok: false, reason: "4xx", status: res.status },
+    };
+  }
+  if (parsed === null || typeof parsed !== "object") {
+    return {
+      attempt: {
+        channel,
+        ok: false,
+        reason: "invalid-response",
+        status: res.status,
+        message: "response body is not a JSON object",
+      },
     };
   }
 
@@ -237,12 +257,19 @@ async function attemptChannel(input: {
       attempt: { channel, ok: true, status: res.status },
       result: { ...result, channelUsed: channel },
     };
-  } catch {
-    // Body parsed as JSON but doesn't match the expected shape — treat
-    // as a 4xx (the channel responded with a 200 we can't make sense of;
-    // falling back wouldn't help because the issue is upstream).
+  } catch (e) {
+    // 2xx body parsed as JSON but doesn't match the expected shape — the
+    // server replied with something we can't make sense of. Treat as
+    // recoverable so the next channel gets a chance (vs. a 4xx, which
+    // is terminal because no other channel can fix the buyer's payload).
     return {
-      attempt: { channel, ok: false, reason: "4xx", status: res.status },
+      attempt: {
+        channel,
+        ok: false,
+        reason: "invalid-response",
+        status: res.status,
+        message: e instanceof Error ? e.message : String(e),
+      },
     };
   }
 }

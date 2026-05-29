@@ -228,6 +228,44 @@ describe("submitAction", () => {
     expect(result.newDisputeState).toBe("RESOLVING");
   });
 
+  it("server 2xx with body of wrong shape → reason='invalid-response', falls back to facilitator", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo) => {
+      if (String(input) === SERVER_URL) {
+        // 200 with a JSON object that's missing txHash + nextActions.
+        return jsonResponse(200, { unexpected: true });
+      }
+      return jsonResponse(200, FACILITATOR_OK_BODY);
+    });
+    const result = await submitAction(makeArgs({ fetch: fetcher as unknown as typeof fetch }));
+    expect(result.channelUsed).toBe("facilitator");
+    expect(result.attempts[0]).toMatchObject({
+      channel: "server",
+      ok: false,
+      reason: "invalid-response",
+      status: 200,
+    });
+  });
+
+  it("server 2xx with non-object body → reason='invalid-response', falls back to facilitator", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo) => {
+      if (String(input) === SERVER_URL) {
+        return new Response('"a-string"', {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return jsonResponse(200, FACILITATOR_OK_BODY);
+    });
+    const result = await submitAction(makeArgs({ fetch: fetcher as unknown as typeof fetch }));
+    expect(result.channelUsed).toBe("facilitator");
+    expect(result.attempts[0]).toMatchObject({
+      channel: "server",
+      ok: false,
+      reason: "invalid-response",
+      status: 200,
+    });
+  });
+
   it("respects the seller's advertised channel order (facilitator first, then server)", async () => {
     const calls: string[] = [];
     const fetcher = vi.fn(async (input: RequestInfo) => {
