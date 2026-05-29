@@ -11,7 +11,7 @@
 3. Forwards to a facilitator (or settles directly) and waits for confirmation.
 4. Verifies the resulting on-chain exchange state through a caller-supplied `ExchangeReader`.
 5. Returns 200 + resource (or pointer) + `nextActions`.
-6. Exposes convenience handlers for post-redeem actions (`redeem`, `complete`, `disputeRaise` / `Resolve` / `Retract` / `Escalate`, `withdrawFunds`, `getAvailableFunds`) — each one a thin wrapper over the on-chain call.
+6. Exposes convenience handlers for post-redeem actions (`redeem`, `complete`, `disputeRaise`, `disputeResolve`, `disputeRetract`, `disputeEscalate`, `withdrawFunds`, `getAvailableFunds`) — each one a thin wrapper over the on-chain call.
 7. Re-emits a fresh `nextActions` envelope on every response.
 
 Adapter sub-packages: `@bosonprotocol/x402-server-express` ships today; `x402-server-hono` and `x402-server-next` are future.
