@@ -381,6 +381,25 @@ describe("createFacilitatorClient", () => {
     expect(stub.calls[0]!.init?.headers?.authorization).toBe("Bearer token-123");
   });
 
+  it("attaches caller-supplied headers to the /healthz GET as well", async () => {
+    // A facilitator that requires `Authorization` would otherwise
+    // 401 the GET /healthz while normal POSTs succeed, leaving the
+    // host's health check perpetually `"down"`.
+    const stub = makeStubFetch(() => ({ status: 200 }));
+    const client = createFacilitatorClient({
+      url: BASE_URL,
+      fetch: stub.fetch,
+      headers: { authorization: "Bearer token-123" },
+    });
+
+    await client.healthCheck();
+
+    expect(stub.calls).toHaveLength(1);
+    expect(stub.calls[0]!.url).toBe(`${BASE_URL}/healthz`);
+    expect(stub.calls[0]!.init?.method).toBe("GET");
+    expect(stub.calls[0]!.init?.headers?.authorization).toBe("Bearer token-123");
+  });
+
   it("throws synchronously if neither global fetch nor an opts.fetch is available", () => {
     const originalFetch = globalThis.fetch;
     try {

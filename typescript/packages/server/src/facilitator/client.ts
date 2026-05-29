@@ -291,13 +291,17 @@ export function createFacilitatorClient(opts: CreateFacilitatorClientOptions): F
       // else (network error, timeout, non-2xx) raises FacilitatorHttpError
       // so the `createHealthCheck` helper maps to "down". The abort
       // timer mirrors `postOnce` so a stuck connection can't hang the
-      // host's /healthz route indefinitely.
+      // host's /healthz route indefinitely. `opts.headers` (e.g.
+      // `Authorization` for hosted facilitators) must ride along here
+      // too — otherwise normal POSTs would succeed while /healthz
+      // would always 401 → "down".
       const controller = new AbortController();
       const timer = setTimeoutImpl(() => controller.abort(), timeoutMs);
       let res: Awaited<ReturnType<FetchLike>>;
       try {
         res = await fetchImpl(`${baseUrl}/healthz`, {
           method: "GET",
+          headers: { ...(opts.headers ?? {}) },
           signal: controller.signal,
         });
       } catch (cause) {
