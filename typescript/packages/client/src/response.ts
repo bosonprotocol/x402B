@@ -7,6 +7,7 @@
 // the common property paths an x402B server might use. Callers who need
 // stronger guarantees can read `raw` directly.
 
+import { decodeBase64 } from "./base64.js";
 import type { ExchangeSummary } from "./types.js";
 
 const HEADER_NAME = "X-PAYMENT-RESPONSE";
@@ -99,18 +100,6 @@ function isClientStateShape(v: unknown): v is NonNullable<ExchangeSummary["state
     return false;
   }
   return true;
-}
-
-function decodeBase64(value: string): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(value, "base64").toString("utf8");
-  }
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new TextDecoder().decode(bytes);
 }
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {

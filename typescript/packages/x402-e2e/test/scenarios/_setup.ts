@@ -21,6 +21,7 @@ import {
 } from "@bosonprotocol/x402-example-resource-server";
 import type { Policy, TokenDomainResolver } from "@bosonprotocol/x402-client";
 import type { TokenAuthStrategy } from "@bosonprotocol/x402-core/schemes/escrow";
+import type { FulfillmentChannel } from "@bosonprotocol/x402-fulfillment";
 import { createServer, type AddressInfo } from "node:net";
 import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 
@@ -95,6 +96,15 @@ export interface ScenarioContextArgs {
    * commit-and-redeem scenarios.
    */
   buyerPolicy?: Policy;
+  /**
+   * Fulfillment channels the in-process resource server advertises +
+   * accepts. Pre-`configure()` each (with its `send` / `upload` hook)
+   * before passing it in. Used by the fulfillment scenarios (A6 webhook,
+   * A7 ipfs-pointer); omitted scenarios advertise no fulfillment options.
+   */
+  fulfillmentChannels?: readonly FulfillmentChannel[];
+  /** Forwarded to the resource server as `fulfillment.required`. Defaults to `false`. */
+  fulfillmentRequired?: boolean;
 }
 
 export interface ScenarioContext {
@@ -228,6 +238,12 @@ export async function createScenarioContext(args: ScenarioContextArgs): Promise<
     protocolConfig,
     ...(args.tokenAuthStrategies !== undefined
       ? { tokenAuthStrategies: args.tokenAuthStrategies }
+      : {}),
+    ...(args.fulfillmentChannels !== undefined
+      ? { fulfillmentChannels: args.fulfillmentChannels }
+      : {}),
+    ...(args.fulfillmentRequired !== undefined
+      ? { fulfillmentRequired: args.fulfillmentRequired }
       : {}),
   });
   const httpServer = app.listen(port);

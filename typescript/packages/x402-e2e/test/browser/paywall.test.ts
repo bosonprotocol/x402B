@@ -2,10 +2,13 @@
 // and @bosonprotocol/x402-paywall end-to-end through headless chromium.
 //
 // All three scenarios live in one file (one describe → one seed-wallet
-// slot → sequential `it` blocks within the file) so they share the
-// resource-server's `FALLBACK_KEY` session slot safely. The paywall
-// doesn't stamp `X-Session-Id` today; sequencing avoids the race that
-// concurrent browser flows would otherwise trigger.
+// slot → sequential `it` blocks within the file) because they share one
+// buyer EOA — BR2/BR3 snapshot its balance to assert no spend, so they
+// must not race BR1's commit. The paywall now mints a fresh
+// `X-X402-Boson-Session-Id` per Pay click and stamps it on both the
+// challenge re-fetch and the X-PAYMENT retry (see EvmEscrowPaywall), so
+// the resource-server offer cache no longer forces the sequencing — each
+// flow already gets its own session-scoped offer.
 //
 // Tag: `@p0`. Runs on every PR alongside the node scenarios; the
 // `describe.skipIf` keeps it a no-op when `E2E_DOCKER` isn't set.
@@ -135,6 +138,12 @@ describe.skipIf(!ENABLED)("@p0 browser-paywall scenarios", () => {
 
       const response = await paymentResponse;
       expect(response.status()).toBe(200);
+
+      // The retry must carry the per-flow session id (lower-cased by the
+      // browser) so the resource server re-resolves the same session-scoped
+      // offer it signed at challenge time, rather than its fallback slot.
+      const retryHeaders = response.request().headers();
+      expect(retryHeaders["x-x402-boson-session-id"]).toBeTruthy();
 
       const decoded = readXPaymentResponse(await response.allHeaders());
       expect(decoded).not.toBeNull();

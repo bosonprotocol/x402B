@@ -36,6 +36,8 @@ import {
   ACCOUNT_12,
   ACCOUNT_13,
   ACCOUNT_14,
+  ACCOUNT_15,
+  ACCOUNT_16,
 } from "../../src/config/accounts.js";
 
 export interface SeedWalletSlot {
@@ -69,9 +71,14 @@ export const SEED_WALLETS = {
   operational: toSlot(ACCOUNT_10),
   /** `browser/paywall.test.ts` — drives the in-browser paywall through Playwright. */
   browser: toSlot(ACCOUNT_14),
-  /** Spare slots for future chain-touching scenario files. */
-  spareB: toSlot(ACCOUNT_11),
-  spareC: toSlot(ACCOUNT_12),
+  /** `validation-post-commit.test.ts` — C6 / C9 / C10 validation negatives. */
+  validationPostCommit: toSlot(ACCOUNT_11),
+  /** `next-actions.test.ts` — D1 / D2 post-commit `nextActions` derivation. */
+  nextActions: toSlot(ACCOUNT_16),
+  /** `multi-party.test.ts` — E1 (concurrent commit) + E3 (dual-sig resolve). */
+  multiParty: toSlot(ACCOUNT_15),
+  /** `fulfillment.test.ts` — A6 (webhook) + A7 (ipfs-pointer). */
+  fulfillment: toSlot(ACCOUNT_12),
 } as const;
 
 export type SeedWalletName = keyof typeof SEED_WALLETS;

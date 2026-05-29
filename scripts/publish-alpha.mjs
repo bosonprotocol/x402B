@@ -94,11 +94,14 @@ async function main() {
     }
     const pkgJsonPath = join(pkgDir, "package.json");
     const pkgJson = JSON.parse(await readFile(pkgJsonPath, "utf8"));
-    const baseVersion = pkgJson.version;
+    // Base the alpha line on the *next* release version (the bump implied by the
+    // queued changesets), not the currently-published version — so an alpha is a
+    // preview of the version the next `latest` will ship.
+    const baseVersion = release.newVersion;
     const existing = await npmVersions(release.name);
     const counter = nextAlphaCounter(existing, baseVersion);
     const newVersion = `${baseVersion}-alpha-${counter}`;
-    console.log(`${release.name}: ${baseVersion} -> ${newVersion}`);
+    console.log(`${release.name}: ${release.oldVersion} -> ${newVersion}`);
     pkgJson.version = newVersion;
     writes.push({
       path: pkgJsonPath,

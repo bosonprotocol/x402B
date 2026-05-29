@@ -25,37 +25,38 @@ describe.skipIf(!ENABLED)("@p2 post-commit lifecycle — PR 7", () => {
   it.todo("B9 — decideDispute by resolver → DisputeState.DECIDED, resolver-set split");
 });
 
-describe.skipIf(!ENABLED)("@p1 commit-time validations — PR 7", () => {
-  it.todo("C6 — insufficient escrow balance → SIMULATION_REVERT");
-  it.todo("C9 — sellerSig mismatch in FullOffer → server BAD_SELLER_SIG");
-  it.todo("C10 — post-commit action on wrong state (e.g. redeem while CANCELLED) → reject");
-});
+// C6, C9, C10 moved to `validation-post-commit.test.ts` as runnable
+// scenarios.
 
 describe.skipIf(!ENABLED)("@p2 commit-time validations — PR 7", () => {
   it.todo("C7 — invalid `tokenAuthStrategy` value (not in enum) → INVALID_PAYLOAD");
 });
 
 describe.skipIf(!ENABLED)("@p0/@p1 nextActions / channel routing — PR 7", () => {
-  it.todo("D1 — post-commit nextActions[] matches ACTION_POST_STATE for the new state");
-  it.todo("D2 — post-redeem nextActions[] shrinks to [completeExchange, raiseDispute]");
-  // D3 stays a todo: the client-side channel fallback chain
-  // (server → facilitator → onchain on 5xx / network error) isn't
-  // implemented today in `x402-client` / `x402-client-fetch`. The
-  // test will land alongside the feature work in its own PR.
-  it.todo("D3 — server/facilitator/onchain channel fallback chain (kill facilitator)");
+  // D1, D2, and D3 (server→facilitator) moved to `next-actions.test.ts`
+  // as runnable scenarios. The remaining todos extend D3's fallback
+  // chain once the matching submitters land: `onchain` needs a
+  // wallet-driven submitter wired into `client.submitAction`, and
+  // `mcp` ships with `@bosonprotocol/x402-agent`.
+  it.todo("D5 — extend D3 fallback chain to `onchain` once the wallet submitter lands");
   it.todo(
     "D4 — `mcp` channel for buyer-side action — skipped until `@bosonprotocol/x402-agent` lands",
   );
 });
 
-describe.skipIf(!ENABLED)("@p1/@p2 multi-party — PR 7", () => {
-  it.todo("E1 — two concurrent buyers commit to the same offer → distinct exchangeIds");
+// E1 (concurrent commit) and E3 (dual-sig resolveDispute regression)
+// moved to `multi-party.test.ts` as runnable scenarios. E2 stays here:
+// it needs seller-side `revokeVoucher` meta-tx signing wired through
+// `SellerActor` — the same harness gap that defers B8.
+describe.skipIf(!ENABLED)("@p2 multi-party — PR 7", () => {
   it.todo("E2 — buyer commits, then seller revokeVoucher → buyer refunded");
-  it.todo("E3 — mutual resolveDispute requires both buyer + seller sigs (dual-sig regression)");
 });
 
+// A6 (webhook) moved to `fulfillment.test.ts` as a runnable scenario.
+// The original skeleton scoped delivery to `onCommit`; the implemented
+// scenario triggers delivery from `onFulfill` (on redeem), matching the
+// channel's actual lifecycle.
 describe.skipIf(!ENABLED)("@p1/@p2 commit-time fulfillment — PR 7", () => {
-  it.todo("A6 — commit with `webhook` fulfillment → webhook-sink receives onCommit payload");
   it.todo("A7 — commit with `ipfs-pointer` fulfillment → response carries valid CID");
   it.todo("A8 — commit with `mcp` fulfillment — skipped until `@bosonprotocol/x402-agent` lands");
 });

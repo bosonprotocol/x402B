@@ -345,26 +345,15 @@ describe.skipIf(!ENABLED)("@p2 operational scenarios", () => {
     expect(err.status).toBe(502);
     const body = err.body as { code?: string; reason?: string; details?: unknown } | undefined;
     expect(body?.code).toBe("FACILITATOR_REJECTED");
-    // The redeem MUST be rejected — that's the load-bearing assertion.
-    // The specific facilitator-side code reflects which classification
-    // path the revert took inside `facilitator/src/verify/simulate.ts`:
-    //   - `SIMULATION_REVERT` when viem's error chain exposes a
-    //     `RawContractError` / `ContractFunctionRevertedError`,
-    //   - `ONCHAIN_REVERT` when the tx was submitted and reverted,
-    //   - `BAD_META_TX_SIGNATURE` when sig recovery / sig-vs-from
-    //     check fails (the meta-tx itself is self-consistent here so
-    //     this path shouldn't fire, but we accept it for robustness),
-    //   - `INTERNAL_ERROR` when the revert happens but viem returns a
-    //     transport-layer wrapper that `isOnChainRevert` doesn't
-    //     classify — observed locally on Hardhat 31337 where the
-    //     revert reason surface differs from production EVM clients.
-    // Future tightening of the simulate step's revert classification
-    // would push the local F4 path into `SIMULATION_REVERT`; the test
-    // stays loose so that improvement doesn't break this assertion.
+    // The meta-tx is self-consistent (signer = key B = metaTx.from) so
+    // signature recovery passes; the rejection comes from the on-chain
+    // simulation of `redeemVoucher`, which reverts because the voucher
+    // owner is buyer A. `facilitator/src/verify/simulate.ts` classifies
+    // that as `SIMULATION_REVERT` on every EVM client we support —
+    // including Hardhat, whose `-32603` "Internal error" shape is
+    // handled by the `isHardhatRevertDetails` fallback there.
     const facilitatorCode = (body?.details as { facilitatorCode?: string })?.facilitatorCode;
-    expect(facilitatorCode).toMatch(
-      /SIMULATION_REVERT|ONCHAIN_REVERT|BAD_META_TX_SIGNATURE|INTERNAL_ERROR/,
-    );
+    expect(facilitatorCode).toBe("SIMULATION_REVERT");
 
     // On-chain voucher state must NOT have transitioned — exchange
     // stays COMMITTED, since the rejection happened before settle.

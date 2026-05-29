@@ -18,6 +18,7 @@
 // `facilitator-perform-action.ts`).
 
 import type { ExchangeState, DisputeState } from "@bosonprotocol/x402-actions";
+import type { SerializedFulfillmentResult } from "@bosonprotocol/x402-server";
 import type { Address, Hex } from "viem";
 
 import type { BuyerActor } from "./buyer-actor.js";
@@ -86,6 +87,20 @@ export interface PostCommitActionResult {
   txHash: Hex;
   newExchangeState: ExchangeState;
   newDisputeState?: DisputeState;
+  /**
+   * The action ids the server advertised in the response's
+   * `nextActions.next[]` envelope, in emitted order. Lets scenarios
+   * assert the post-action transition set on the wire (D1 / D2) without
+   * re-deriving it. Empty when the new state is terminal for the buyer.
+   */
+  nextActionIds: readonly string[];
+  /**
+   * Delivery outcome the server surfaced from the fulfillment channel's
+   * `onFulfill` (only on `boson-redeem` carrying `fulfillment`). `async`
+   * carries the out-of-band `pointer` (e.g. `ipfs://…`); absent when no
+   * channel delivered. Used by the A6 / A7 fulfillment scenarios.
+   */
+  fulfillment?: SerializedFulfillmentResult;
 }
 
 /**
@@ -172,20 +187,45 @@ function flattenServerResponse(
 ): PostCommitActionResult {
   const raw = body as {
     txHash?: unknown;
-    nextActions?: { exchangeState?: unknown; disputeState?: unknown };
+    fulfillment?: SerializedFulfillmentResult;
+    nextActions?: {
+      exchangeState?: unknown;
+      disputeState?: unknown;
+      next?: unknown;
+    };
   };
   const txHash = raw.txHash;
   const newExchangeState = raw.nextActions?.exchangeState;
   if (typeof txHash !== "string" || typeof newExchangeState !== "string") {
     throw new PostCommitActionError(actionId, status, body);
   }
+  // `EscrowNextActions.next` is required by the wire schema (an empty
+  // array on terminal states, never absent); reject responses that omit
+  // it or stamp a non-array so a server regression can't masquerade as
+  // a terminal post-action transition.
+  const nextRaw = raw.nextActions?.next;
+  if (!Array.isArray(nextRaw)) {
+    throw new PostCommitActionError(actionId, status, body);
+  }
+  const nextActionIds: string[] = [];
+  for (const entry of nextRaw) {
+    const id = (entry as { id?: unknown } | null | undefined)?.id;
+    if (typeof id !== "string") {
+      throw new PostCommitActionError(actionId, status, body);
+    }
+    nextActionIds.push(id);
+  }
   const result: PostCommitActionResult = {
     txHash: txHash as Hex,
     newExchangeState: newExchangeState as ExchangeState,
+    nextActionIds,
   };
   const newDisputeState = raw.nextActions?.disputeState;
   if (typeof newDisputeState === "string") {
     result.newDisputeState = newDisputeState as DisputeState;
+  }
+  if (raw.fulfillment !== undefined) {
+    result.fulfillment = raw.fulfillment;
   }
   return result;
 }

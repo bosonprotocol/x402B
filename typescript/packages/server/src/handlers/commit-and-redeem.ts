@@ -10,6 +10,10 @@ import type { EscrowPaymentRequirements } from "@bosonprotocol/x402-core/schemes
 import type { ActionId } from "@bosonprotocol/x402-core/state-machine";
 
 import { emitNextActions } from "./next-actions.js";
+import {
+  serializeFulfillmentResult,
+  type SerializedFulfillmentResult,
+} from "./fulfillment-result.js";
 import { handlerErr, handlerOk, type HandlerResult, type HandlerWarning } from "./types.js";
 import { decodeXPaymentHeader } from "../validate/decode.js";
 import { validatePaymentPayload } from "../validate/payment-payload.js";
@@ -54,6 +58,13 @@ export interface CommitOk {
    * warnings are advisory.
    */
   warnings?: HandlerWarning[];
+  /**
+   * Delivery outcome from the fulfillment channel's `onFulfill`, when one
+   * ran. Only Flow B reaches REDEEMED in this handler, so only Flow B can
+   * populate it; `async` carries the out-of-band `pointer`, `inline` a
+   * base64 `body`. Absent when no channel delivered.
+   */
+  fulfillment?: SerializedFulfillmentResult;
 }
 
 /**
@@ -206,6 +217,7 @@ async function handleCommitImpl(
   // committed regardless). Record a pending update before the channel
   // write so the host can recover if the write fails after redeem.
   const warnings: HandlerWarning[] = [];
+  let delivery: SerializedFulfillmentResult | undefined;
   if (
     expected.expectedState === ExchangeState.REDEEMED &&
     decoded.payload.fulfillment !== undefined &&
@@ -217,6 +229,7 @@ async function handleCommitImpl(
       data: decoded.payload.fulfillment.data,
       redeemer: decoded.payload.payload.buyer,
       recordedAt: Date.now(),
+      phase: "commit",
     };
     ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, pending);
 
@@ -242,7 +255,42 @@ async function handleCommitImpl(
     } else {
       try {
         await channel.onCommit(settleResult.exchangeId, decoded.payload.fulfillment.data);
-        ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
+        // Persistence succeeded → dispatch delivery if the channel
+        // supports it. The atomic redeem is already final on-chain, so a
+        // delivery failure is a non-fatal warning (as with onCommit
+        // above). Re-record the entry under `phase: "delivery"` first so
+        // a failed dispatch leaves a durable recovery item — the buyer
+        // is still owed delivery even though the on-chain release ran.
+        if (channel.onFulfill !== undefined) {
+          const deliveryPending: FulfillmentRecoveryEntry = {
+            ...pending,
+            phase: "delivery",
+            recordedAt: Date.now(),
+          };
+          ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, deliveryPending);
+          try {
+            delivery = serializeFulfillmentResult(await channel.onFulfill(settleResult.exchangeId));
+            ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
+          } catch (e) {
+            const reason = e instanceof Error ? e.message : String(e);
+            ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
+              ...deliveryPending,
+              error: reason,
+            });
+            warnings.push({
+              code: "FULFILLMENT_DELIVERY_DEFERRED",
+              reason:
+                "atomic redeem succeeded on-chain, but the channel's delivery dispatch failed",
+              details: {
+                exchangeId: settleResult.exchangeId,
+                option: decoded.payload.fulfillment.option,
+                error: reason,
+              },
+            });
+          }
+        } else {
+          ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
+        }
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
         ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
@@ -283,6 +331,7 @@ async function handleCommitImpl(
     txHash: settleResult.txHash,
     nextActions,
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...(delivery !== undefined ? { fulfillment: delivery } : {}),
   });
 }
 

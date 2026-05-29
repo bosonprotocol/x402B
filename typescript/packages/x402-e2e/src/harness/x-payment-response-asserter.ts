@@ -7,6 +7,7 @@
 // inverse of `encodeXPaymentResponse` from
 // `@bosonprotocol/x402-server/src/internal/x-payment-response.ts`.
 
+import type { DisputeState, ExchangeState } from "@bosonprotocol/x402-actions";
 import { X_PAYMENT_RESPONSE_HEADER } from "@bosonprotocol/x402-server";
 
 export { X_PAYMENT_RESPONSE_HEADER };
@@ -52,8 +53,12 @@ export interface DecodedXPaymentResponse {
       endpoints?: Record<string, string>;
     }[];
     exchangeId?: string;
-    exchangeState?: number;
-    disputeState?: number;
+    // `ExchangeState` / `DisputeState` are string enums in core-sdk's
+    // subgraph schema (`COMMITTED = "COMMITTED"`, …), so the wire values
+    // are strings — compare against `ExchangeState.*` / `DisputeState.*`
+    // directly.
+    exchangeState?: ExchangeState;
+    disputeState?: DisputeState;
   };
 }
 

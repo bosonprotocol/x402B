@@ -84,6 +84,9 @@ importers:
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../../typescript/packages/core
+      '@bosonprotocol/x402-fulfillment':
+        specifier: workspace:^
+        version: link:../../typescript/packages/fulfillment
       '@bosonprotocol/x402-paywall':
         specifier: workspace:^
         version: link:../../typescript/packages/paywall
@@ -130,6 +133,9 @@ importers:
       express:
         specifier: ^4.21.2
         version: 4.22.2
+      selfsigned:
+        specifier: ^2.4.1
+        version: 2.4.1
       tsx:
         specifier: ^4.19.2
         version: 4.22.0
@@ -581,6 +587,12 @@ importers:
       '@bosonprotocol/x402-example-resource-server':
         specifier: workspace:^
         version: link:../../../examples/resource-server
+      '@bosonprotocol/x402-example-webhook-sink':
+        specifier: workspace:^
+        version: link:../../../examples/webhook-sink
+      '@bosonprotocol/x402-fulfillment':
+        specifier: workspace:^
+        version: link:../fulfillment
       '@bosonprotocol/x402-server':
         specifier: workspace:^
         version: link:../server
@@ -2424,6 +2436,9 @@ packages:
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
+  '@types/node-forge@1.3.14':
+    resolution: {integrity: sha512-mhVF2BnD4BO+jtOp7z1CdzaK4mbuK0LLQYAvdOLqHTavxFNq4zA1EmYkpnFjP8HOUzedfQkRnp0E2ulSAYSzAw==}
+
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
 
@@ -3922,6 +3937,10 @@ packages:
       encoding:
         optional: true
 
+  node-forge@1.4.0:
+    resolution: {integrity: sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==}
+    engines: {node: '>= 6.13.0'}
+
   node-gyp-build@4.8.4:
     resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
     hasBin: true
@@ -4373,6 +4392,10 @@ packages:
 
   schema-to-yup@1.12.18:
     resolution: {integrity: sha512-rzMtnIQpkokOzyb6JfsuCB+/BklFB5J7pFcvc/SnybOtmks8uW4SJXfMpzMQT98f826XgI3/mlPGQf0HBhF8FQ==}
+
+  selfsigned@2.4.1:
+    resolution: {integrity: sha512-th5B4L2U+eGLq1TVh7zNRGBapioSORUeymIydxgFpwww9d2qyKvtuPU2jJuHvYAwwqi2Y596QBL3eEqcPEYL8Q==}
+    engines: {node: '>=10'}
 
   semver@7.7.4:
     resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
@@ -7241,6 +7264,10 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
+  '@types/node-forge@1.3.14':
+    dependencies:
+      '@types/node': 20.19.40
+
   '@types/node@12.20.55': {}
 
   '@types/node@20.19.40':
@@ -9387,6 +9414,8 @@ snapshots:
     dependencies:
       whatwg-url: 5.0.0
 
+  node-forge@1.4.0: {}
+
   node-gyp-build@4.8.4: {}
 
   node-mock-http@1.0.4: {}
@@ -9885,6 +9914,11 @@ snapshots:
       uniq: 1.0.1
       uppercamelcase: 3.0.0
       yup: 1.7.1
+
+  selfsigned@2.4.1:
+    dependencies:
+      '@types/node-forge': 1.3.14
+      node-forge: 1.4.0
 
   semver@7.7.4: {}
 

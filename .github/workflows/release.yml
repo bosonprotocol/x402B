@@ -31,6 +31,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
+          token: ${{ secrets.GH_RELEASE_PAT }}
 
       - uses: pnpm/action-setup@v4
         with:
