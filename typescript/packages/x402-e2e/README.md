@@ -181,8 +181,11 @@ with `-t '@p0'`. Priorities:
 Prose + sequence-diagram docs that explain how the protocol behaves,
 flow by flow, mapping each step back to the harness / SDK / facilitator /
 Diamond method that runs it — see [`docs/scenarios/`](./docs/scenarios/README.md).
-Pilot coverage: [Flow A — deferred commit](./docs/scenarios/flow-a-deferred-commit.md)
-and [Flow C — dispute path](./docs/scenarios/flow-c-dispute.md).
+One doc per protocol flow:
+[A — deferred commit](./docs/scenarios/flow-a-deferred-commit.md),
+[B — atomic commit-and-redeem](./docs/scenarios/flow-b-atomic-commit-redeem.md),
+[C — dispute path](./docs/scenarios/flow-c-dispute.md),
+[D — channels & nextActions](./docs/scenarios/flow-d-channels-nextactions.md).
 
 ### Running a tag subset
 

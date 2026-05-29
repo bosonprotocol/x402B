@@ -42,12 +42,13 @@ under whichever flow they exercise:
 | Flow doc | Protocol flow | e2e scenarios |
 |---|---|---|
 | [`flow-a-deferred-commit.md`](./flow-a-deferred-commit.md) | Deferred commit, redeem later | A1/A3/A4/A5 commit, B1 redeem, A6 fulfillment, B7 cancel |
-| `flow-b-atomic-commit-redeem.md` _(planned)_ | Atomic commit-and-redeem | A2, B2 completeExchange |
+| [`flow-b-atomic-commit-redeem.md`](./flow-b-atomic-commit-redeem.md) | Atomic commit-and-redeem | A2, B2 completeExchange |
 | [`flow-c-dispute.md`](./flow-c-dispute.md) | Dispute path | B3 raise, B4 resolve (50/50), B6 retract, E3 dual-sig |
-| `flow-d-channels-nextactions.md` _(planned)_ | Channel fallback + `nextActions` | B7 via facilitator, D1/D2 |
+| [`flow-d-channels-nextactions.md`](./flow-d-channels-nextactions.md) | Channels + `nextActions` | D1/D2, B7 via facilitator |
 
-> **Status:** pilot. `flow-a` and `flow-c` are written; `flow-b` and
-> `flow-d` follow once the format is settled.
+> All four protocol flows are documented. Deferred scenarios (escalation
+> B5/B9, channel-fallback-on-failure D3, MCP D4) are noted inline in the
+> relevant flow doc until their harness support lands.
 
 ## Sources of truth
 
