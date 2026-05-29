@@ -85,9 +85,14 @@ export interface RecoveryApi {
   /** Snapshot of all pending recovery entries. */
   list(): Promise<readonly FulfillmentRecoveryEntry[]>;
   /**
-   * Re-run `channel.onCommit(exchangeId, entry.data)` for the recorded
-   * entry. Deletes the entry on success; leaves it (with an updated
-   * `error` field) on failure.
+   * Re-run the channel step that was pending when the entry was
+   * recorded. Branches on `entry.phase`:
+   *   - `"commit"`   → re-runs `channel.onCommit(exchangeId, entry.data)`.
+   *   - `"delivery"` → re-runs `channel.onFulfill(exchangeId)` (the
+   *     prior `onCommit` already persisted).
+   * Deletes the entry on success; leaves it (with an updated `error`
+   * field) on failure. A `"delivery"` entry whose channel has no
+   * `onFulfill` returns `{ ok: false }` with the entry retained.
    */
   replay(exchangeId: string): Promise<RecoveryReplayResult>;
 }
@@ -263,12 +268,48 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
         });
         return { ok: false, reason };
       }
+      // Branch on the phase the entry was recorded with. `commit`
+      // entries failed `onCommit`; `delivery` entries persisted but
+      // failed `onFulfill`, so re-running `onCommit` would silently
+      // skip the still-pending delivery dispatch.
+      if (entry.phase === "delivery") {
+        if (channel.onFulfill === undefined) {
+          const reason = `channel '${entry.option}' has no onFulfill; cannot replay delivery phase`;
+          await fulfillmentRecoveryStore.set(exchangeId, { ...entry, error: reason });
+          logger.warn("x402-server: recovery replay failed (no onFulfill)", {
+            exchangeId,
+            option: entry.option,
+          });
+          return { ok: false, reason };
+        }
+        try {
+          await channel.onFulfill(exchangeId);
+          await fulfillmentRecoveryStore.delete(exchangeId);
+          logger.info("x402-server: recovery replay succeeded", {
+            exchangeId,
+            option: entry.option,
+            phase: entry.phase,
+          });
+          return { ok: true };
+        } catch (e) {
+          const reason = e instanceof Error ? e.message : String(e);
+          await fulfillmentRecoveryStore.set(exchangeId, { ...entry, error: reason });
+          logger.warn("x402-server: recovery replay failed (channel error)", {
+            exchangeId,
+            option: entry.option,
+            phase: entry.phase,
+            error: reason,
+          });
+          return { ok: false, reason };
+        }
+      }
       try {
         await channel.onCommit(exchangeId, entry.data);
         await fulfillmentRecoveryStore.delete(exchangeId);
         logger.info("x402-server: recovery replay succeeded", {
           exchangeId,
           option: entry.option,
+          phase: entry.phase,
         });
         return { ok: true };
       } catch (e) {
@@ -277,6 +318,7 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
         logger.warn("x402-server: recovery replay failed (channel error)", {
           exchangeId,
           option: entry.option,
+          phase: entry.phase,
           error: reason,
         });
         return { ok: false, reason };

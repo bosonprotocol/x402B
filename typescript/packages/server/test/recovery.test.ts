@@ -20,37 +20,58 @@ const ESCROW = "0xdddddddddddddddddddddddddddddddddddddddd" as const;
 const TEST_SELLER_PK = `0x${"22".repeat(32)}` as const;
 const BUYER = "0x2222222222222222222222222222222222222222" as const;
 
-function seedEntry(option: string, exchangeId: string): FulfillmentRecoveryEntry {
+function seedEntry(
+  option: string,
+  exchangeId: string,
+  phase: FulfillmentRecoveryEntry["phase"] = "commit",
+): FulfillmentRecoveryEntry {
   return {
     exchangeId,
     option,
     data: { addr: `target-${exchangeId}` },
     redeemer: BUYER,
     recordedAt: Date.now(),
+    phase,
     error: "(stale) channel.onCommit failed",
   };
 }
 
 interface SpyChannel extends RedeemFulfillmentChannel {
-  calls: Array<{ exchangeId: string; data: Record<string, unknown> | null }>;
+  commitCalls: Array<{ exchangeId: string; data: Record<string, unknown> | null }>;
+  fulfillCalls: Array<{ exchangeId: string }>;
   failNextOnCommit: boolean;
+  failNextOnFulfill: boolean;
 }
 
-function spyChannel(id: string): SpyChannel {
-  const calls: SpyChannel["calls"] = [];
-  return {
+function spyChannel(id: string, opts: { withFulfill?: boolean } = {}): SpyChannel {
+  const commitCalls: SpyChannel["commitCalls"] = [];
+  const fulfillCalls: SpyChannel["fulfillCalls"] = [];
+  const channel: SpyChannel = {
     id,
-    calls,
+    commitCalls,
+    fulfillCalls,
     failNextOnCommit: false,
+    failNextOnFulfill: false,
     validate: () => ({ ok: true }),
     async onCommit(exchangeId, data) {
-      calls.push({ exchangeId, data });
-      if (this.failNextOnCommit) {
-        this.failNextOnCommit = false;
+      commitCalls.push({ exchangeId, data });
+      if (channel.failNextOnCommit) {
+        channel.failNextOnCommit = false;
         throw new Error("channel write timed out");
       }
     },
   };
+  if (opts.withFulfill !== false) {
+    channel.onFulfill = async (exchangeId) => {
+      fulfillCalls.push({ exchangeId });
+      if (channel.failNextOnFulfill) {
+        channel.failNextOnFulfill = false;
+        throw new Error("delivery dispatch timed out");
+      }
+      return { kind: "async" };
+    };
+  }
+  return channel;
 }
 
 function buildServerWithStore(opts: { channels?: readonly RedeemFulfillmentChannel[] }): {
@@ -101,7 +122,8 @@ describe("server.recovery.replay()", () => {
     const result = await server.recovery.replay("1");
     expect(result).toEqual({ ok: true });
     expect(store.has("1")).toBe(false);
-    expect(channel.calls).toEqual([{ exchangeId: "1", data: { addr: "target-1" } }]);
+    expect(channel.commitCalls).toEqual([{ exchangeId: "1", data: { addr: "target-1" } }]);
+    expect(channel.fulfillCalls).toEqual([]);
   });
 
   it("returns ok:false when the entry is missing", async () => {
@@ -152,5 +174,47 @@ describe("server.recovery.replay()", () => {
     const result = await server.recovery.replay("2");
     expect(result).toEqual({ ok: true });
     expect([...store.keys()].sort()).toEqual(["1", "3"]);
+  });
+
+  it("dispatches onFulfill (not onCommit) for delivery-phase entries", async () => {
+    const channel = spyChannel("email");
+    const { server, store } = buildServerWithStore({ channels: [channel] });
+    store.set("1", seedEntry("email", "1", "delivery"));
+
+    const result = await server.recovery.replay("1");
+    expect(result).toEqual({ ok: true });
+    expect(store.has("1")).toBe(false);
+    expect(channel.commitCalls).toEqual([]);
+    expect(channel.fulfillCalls).toEqual([{ exchangeId: "1" }]);
+  });
+
+  it("retains a delivery-phase entry with updated error when onFulfill throws", async () => {
+    const channel = spyChannel("email");
+    channel.failNextOnFulfill = true;
+    const { server, store } = buildServerWithStore({ channels: [channel] });
+    store.set("1", seedEntry("email", "1", "delivery"));
+
+    const result = await server.recovery.replay("1");
+    expect(result).toEqual({ ok: false, reason: "delivery dispatch timed out" });
+    expect(store.has("1")).toBe(true);
+    expect(store.get("1")?.error).toBe("delivery dispatch timed out");
+    expect(channel.commitCalls).toEqual([]);
+  });
+
+  it("returns ok:false when a delivery-phase entry's channel has no onFulfill", async () => {
+    const channel = spyChannel("email", { withFulfill: false });
+    const { server, store } = buildServerWithStore({ channels: [channel] });
+    store.set("1", seedEntry("email", "1", "delivery"));
+
+    const result = await server.recovery.replay("1");
+    expect(result).toEqual({
+      ok: false,
+      reason: "channel 'email' has no onFulfill; cannot replay delivery phase",
+    });
+    expect(store.has("1")).toBe(true);
+    expect(store.get("1")?.error).toBe(
+      "channel 'email' has no onFulfill; cannot replay delivery phase",
+    );
+    expect(channel.commitCalls).toEqual([]);
   });
 });

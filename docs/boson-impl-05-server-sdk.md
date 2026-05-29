@@ -107,7 +107,7 @@ Failure modes: `400` for malformed `entityId` / `address` / `role`; `404` when t
 
 ## Fulfillment recovery — operator runbook
 
-The commit / redeem handlers record a `FulfillmentRecoveryEntry` in `config.fulfillmentRecoveryStore` whenever a post-settle `channel.onCommit(...)` either has no registered adapter or throws. The on-chain exchange is already `REDEEMED` at that point — the buyer's funds + voucher are gone — so the entry is the host's recovery handle for the buyer's delivery target.
+The commit / redeem handlers record a `FulfillmentRecoveryEntry` in `config.fulfillmentRecoveryStore` whenever a post-settle channel step is pending — either `channel.onCommit(...)` had no registered adapter or threw, or `onCommit` persisted but the subsequent `channel.onFulfill(...)` dispatch failed. The on-chain exchange is already `REDEEMED` at that point — the buyer's funds + voucher are gone — so the entry is the host's recovery handle for the still-pending channel work. The entry's `phase` field (`"commit"` | `"delivery"`) records which step is outstanding.
 
 The returned `X402bServer` exposes two operator primitives:
 
@@ -119,10 +119,12 @@ server.recovery.replay(exchangeId: string): Promise<
 >
 ```
 
-`list()` returns a stable snapshot of every pending entry (each entry has `exchangeId`, `option`, `data`, `redeemer`, `recordedAt`, and the last `error`). `replay(exchangeId)` re-runs `channel.onCommit(exchangeId, entry.data)` and:
+`list()` returns a stable snapshot of every pending entry (each entry has `exchangeId`, `option`, `data`, `redeemer`, `recordedAt`, `phase`, and the last `error`). `replay(exchangeId)` branches on `entry.phase`:
 
-- deletes the entry on success (returns `{ ok: true }`);
-- leaves the entry in place with an updated `error` field on failure (returns `{ ok: false, reason }`).
+- `"commit"` — re-runs `channel.onCommit(exchangeId, entry.data)`;
+- `"delivery"` — re-runs `channel.onFulfill(exchangeId)` (the prior `onCommit` already persisted; replaying it would silently skip the still-pending delivery dispatch).
+
+In both cases the entry is deleted on success (returns `{ ok: true }`) and left in place with an updated `error` field on failure (returns `{ ok: false, reason }`). A `"delivery"` entry whose channel has no `onFulfill` returns `{ ok: false }` with the entry retained.
 
 Typical operator workflow:
 
