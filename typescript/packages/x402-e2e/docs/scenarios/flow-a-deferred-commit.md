@@ -122,7 +122,7 @@ See the [402 payload](#402-paymentrequirements) below.
 - signs a Boson **meta-transaction** over that call (Diamond EIP-712
   domain) and, unless `tokenAuthStrategy: "none"`, a **token-transfer
   authorization** (the variant depends on the strategy — see
-  [Token-auth variants](#token-auth-variants-a1-a3-a4-a5)),
+  [Token-auth variants](#token-auth-variants-a1--a3--a4--a5)),
 - returns the base64 string set as the `X-PAYMENT` header on the retry.
 
 The retry is `GET /resource` again, now carrying `X-PAYMENT` (decoded
