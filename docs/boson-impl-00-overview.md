@@ -86,8 +86,8 @@ All packages publish under `@bosonprotocol/`.
 | 02 | [flows.md](./boson-impl-02-flows.md) | detailed |
 | 03 | [fulfillment-channels.md](./boson-impl-03-fulfillment-channels.md) | detailed |
 | 04 | [state-machine-and-next-actions.md](./boson-impl-04-state-machine-and-next-actions.md) | detailed |
-| 05 | [server-sdk.md](./boson-impl-05-server-sdk.md) | stub |
-| 06 | [client-sdk.md](./boson-impl-06-client-sdk.md) | stub |
+| 05 | [server-sdk.md](./boson-impl-05-server-sdk.md) | implemented library surface |
+| 06 | [client-sdk.md](./boson-impl-06-client-sdk.md) | implemented library surface |
 | 07 | [facilitator.md](./boson-impl-07-facilitator.md) | implemented library surface |
 | 08 | [agent-mode.md](./boson-impl-08-agent-mode.md) | stub |
 | 09 | [seller-metadata.md](./boson-impl-09-seller-metadata.md) | stub |
