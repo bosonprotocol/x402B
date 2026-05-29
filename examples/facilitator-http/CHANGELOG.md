@@ -1,5 +1,12 @@
 # @bosonprotocol/x402-example-facilitator-http
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [731acc3]
+  - @bosonprotocol/x402-facilitator-express@0.2.0
+
 ## 0.0.1
 
 ### Patch Changes
