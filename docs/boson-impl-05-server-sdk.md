@@ -280,6 +280,60 @@ Response:
 
 Failure modes: `400` for malformed `entityId` / `address` / `role`; `404` when the address resolves to no entity; `409` when the address resolves ambiguously — either to both roles with `role` omitted, or to multiple entities within a single role (one wallet registered as admin of several Boson sellers, for example). The 409 body includes `details.sellerIds` and/or `details.buyerIds` (arrays of the matching entity ids) so the caller can re-issue with an explicit `entityId`. `502` on subgraph failure.
 
+## Fulfillment recovery — operator runbook
+
+The commit / redeem handlers record a `FulfillmentRecoveryEntry` in `config.fulfillmentRecoveryStore` whenever a post-settle channel step is pending — either `channel.onCommit(...)` had no registered adapter or threw, or `onCommit` persisted but the subsequent `channel.onFulfill(...)` dispatch failed. The on-chain exchange is already `REDEEMED` at that point — the buyer's funds + voucher are gone — so the entry is the host's recovery handle for the still-pending channel work. The entry's `phase` field (`"commit"` | `"delivery"`) records which step is outstanding.
+
+The returned `X402bServer` exposes two operator primitives:
+
+```ts
+server.recovery.list(): Promise<readonly FulfillmentRecoveryEntry[]>
+server.recovery.replay(exchangeId: string): Promise<
+  | { ok: true }
+  | { ok: false; reason: string }
+>
+```
+
+`list()` returns a stable snapshot of every pending entry (each entry has `exchangeId`, `option`, `data`, `redeemer`, `recordedAt`, `phase`, and the last `error`). `replay(exchangeId)` branches on `entry.phase`:
+
+- `"commit"` — re-runs `channel.onCommit(exchangeId, entry.data)`;
+- `"delivery"` — re-runs `channel.onFulfill(exchangeId)` (the prior `onCommit` already persisted; replaying it would silently skip the still-pending delivery dispatch).
+
+In both cases the entry is deleted on success (returns `{ ok: true }`) and left in place with an updated `error` field on failure (returns `{ ok: false, reason }`). A `"delivery"` entry whose channel has no `onFulfill` returns `{ ok: false }` with the entry retained.
+
+Typical operator workflow:
+
+1. Page when `server.recovery.list().length > 0` (or when growth rate exceeds a per-host threshold). The `Logger` warn events from the handlers feed the same signal in real time.
+2. For each entry, decide between: (a) replay against the same channel, (b) re-route to a different channel by mutating the entry's `option` in the underlying store and replaying, (c) escalate to manual delivery.
+3. After successful replay, the entry is gone; the buyer's redeem flow is fully complete.
+
+In production deployments the recovery store MUST be backed by a persistent store (Redis / Postgres), not the in-memory `Map` default — otherwise a restart between the on-chain `REDEEMED` and the operator's replay loses the recovery handle entirely.
+
+## Health check
+
+`server.healthCheck()` returns a per-dependency liveness snapshot:
+
+```ts
+type HealthState = "ok" | "down" | "n/a";
+
+healthCheck(): Promise<{
+  facilitator: HealthState;
+  subgraph: HealthState;
+}>;
+```
+
+`facilitator` probes the facilitator's `GET /healthz` endpoint via the configured HTTP client; any 2xx is `"ok"`, network errors and non-2xx responses are `"down"`. `subgraph` probes a cheap `coreSdk.getSellersByAddress(0x0)` read; the same `ok` / `down` mapping applies, and the dependency reports `"n/a"` when neither `coreSdkRead` nor `subgraphUrl` is configured (commit / redeem-only servers don't need a subgraph).
+
+The SDK stays framework-free — `healthCheck()` is just an async function the host can mount behind whatever route their framework uses. A typical Express adapter:
+
+```ts
+app.get("/healthz", async (_req, res) => {
+  const health = await server.healthCheck();
+  const allOk = health.facilitator === "ok" && (health.subgraph === "ok" || health.subgraph === "n/a");
+  res.status(allOk ? 200 : 503).json(health);
+});
+```
+
 ## Express adapter
 
 `@bosonprotocol/x402-server-express` is a thin wrapper — all logic lives in the framework-agnostic

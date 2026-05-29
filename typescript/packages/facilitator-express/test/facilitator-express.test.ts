@@ -116,6 +116,15 @@ describe("mountFacilitator — routing", () => {
     expect(res.status).toBe(404);
   });
 
+  it("GET /healthz returns 200 — matches the server SDK's facilitator probe", async () => {
+    // `createFacilitatorClient.healthCheck()` polls this path; without
+    // the route mounted, every health probe at a server pointed at this
+    // router would report `facilitator: "down"`.
+    const res = await supertest(buildApp()).get("/healthz");
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
   // Body parsing failure tests are covered indirectly above; if
   // `express.json()` isn't installed at all, `req.body` is `undefined`
   // and the guard returns INVALID_REQUEST_BODY (asserted in the

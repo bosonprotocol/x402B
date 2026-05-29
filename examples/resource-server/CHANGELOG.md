@@ -1,5 +1,13 @@
 # @bosonprotocol/x402-example-resource-server
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [731acc3]
+  - @bosonprotocol/x402-server@0.3.0
+  - @bosonprotocol/x402-server-express@0.1.3
+
 ## 0.0.1
 
 ### Patch Changes

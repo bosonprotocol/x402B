@@ -25,6 +25,8 @@ import {
 import type { FacilitatorClient } from "../facilitator/client.js";
 import { FacilitatorHttpError } from "../facilitator/errors.js";
 import type { FulfillmentRecoveryEntry, X402bServerConfig } from "../config.js";
+import type { Store } from "../store.js";
+import { noopLogger, type Logger } from "../logger.js";
 
 export interface CommitHandlerInput {
   /** Raw `X-PAYMENT` header value (base64'd JSON). */
@@ -37,13 +39,15 @@ export interface CommitHandlerContext {
   config: X402bServerConfig;
   facilitator: FacilitatorClient;
   exchangeReader: ExchangeReader;
-  fulfillmentRecoveryStore: Map<string, FulfillmentRecoveryEntry>;
+  fulfillmentRecoveryStore: Store<FulfillmentRecoveryEntry>;
   /**
    * Per-exchange fulfillment option policy. Flow A writes the ids
    * advertised by the original requirements so the redeem-time choice
    * is constrained to the offer's own channel set.
    */
-  exchangeFulfillmentOptionStore: Map<string, readonly string[]>;
+  exchangeFulfillmentOptionStore: Store<readonly string[]>;
+  /** Optional structured logger. Defaults to no-op when absent. */
+  logger?: Logger;
 }
 
 export interface CommitOk {
@@ -101,6 +105,7 @@ async function handleCommitImpl(
   ctx: CommitHandlerContext,
   expected: { expectedAction: ActionId; expectedState: ExchangeState },
 ): Promise<HandlerResult<CommitOk>> {
+  const logger = ctx.logger ?? noopLogger;
   const decoded = decodeXPaymentHeader(input.paymentHeader);
   if (!decoded.ok) {
     const status = decoded.code === "MISSING_HEADER" ? 402 : 400;
@@ -203,7 +208,7 @@ async function handleCommitImpl(
   // fulfillment choice to the offer's own channel set. Flow B is
   // already in REDEEMED — there is no later redeem step to gate.
   if (expected.expectedState === ExchangeState.COMMITTED) {
-    ctx.exchangeFulfillmentOptionStore.set(
+    await ctx.exchangeFulfillmentOptionStore.set(
       settleResult.exchangeId,
       input.requirements.fulfillment?.options.map((option) => option.id) ?? [],
     );
@@ -231,14 +236,22 @@ async function handleCommitImpl(
       recordedAt: Date.now(),
       phase: "commit",
     };
-    ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, pending);
+    await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, pending);
+    logger.debug("x402-server: fulfillment recovery entry recorded (Flow B)", {
+      exchangeId: settleResult.exchangeId,
+      option: decoded.payload.fulfillment.option,
+    });
 
     const channel = channelById.get(decoded.payload.fulfillment.option);
     if (channel === undefined) {
       const reason = "no channel adapter is registered";
-      ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
+      await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
         ...pending,
         error: reason,
+      });
+      logger.error("x402-server: Flow B channel adapter missing post-settle", {
+        exchangeId: settleResult.exchangeId,
+        option: decoded.payload.fulfillment.option,
       });
       // Validation should have caught this (rule 13 rejects an option
       // with no registered adapter). Surface a warning rather than
@@ -267,13 +280,17 @@ async function handleCommitImpl(
             phase: "delivery",
             recordedAt: Date.now(),
           };
-          ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, deliveryPending);
+          await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, deliveryPending);
           try {
             delivery = serializeFulfillmentResult(await channel.onFulfill(settleResult.exchangeId));
-            ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
+            await ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
+            logger.debug("x402-server: Flow B channel onCommit succeeded", {
+              exchangeId: settleResult.exchangeId,
+              option: decoded.payload.fulfillment.option,
+            });
           } catch (e) {
             const reason = e instanceof Error ? e.message : String(e);
-            ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
+            await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
               ...deliveryPending,
               error: reason,
             });
@@ -289,12 +306,21 @@ async function handleCommitImpl(
             });
           }
         } else {
-          ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
+          await ctx.fulfillmentRecoveryStore.delete(settleResult.exchangeId);
+          logger.debug("x402-server: Flow B channel onCommit succeeded", {
+            exchangeId: settleResult.exchangeId,
+            option: decoded.payload.fulfillment.option,
+          });
         }
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
-        ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
+        await ctx.fulfillmentRecoveryStore.set(settleResult.exchangeId, {
           ...pending,
+          error: reason,
+        });
+        logger.warn("x402-server: Flow B channel onCommit failed; recovery entry retained", {
+          exchangeId: settleResult.exchangeId,
+          option: decoded.payload.fulfillment.option,
           error: reason,
         });
         warnings.push({
