@@ -5,8 +5,10 @@
 
 export {
   createFacilitatorClient,
+  IDEMPOTENCY_KEY_HEADER,
   type CreateFacilitatorClientOptions,
   type FacilitatorClient,
+  type FacilitatorRetryOptions,
   type FetchLike,
 } from "./client.js";
 export { FacilitatorHttpError, type FacilitatorHttpErrorCode } from "./errors.js";

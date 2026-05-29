@@ -1,6 +1,8 @@
-// `mountFacilitator` — Express router exposing the three facilitator
+// `mountFacilitator` — Express router exposing the facilitator
 // endpoints from docs/boson-impl-07-facilitator.md:
 //
+//   GET  /healthz         — liveness probe (matches what
+//                           `createFacilitatorClient.healthCheck()` polls)
 //   POST /verify          — validate a buyer-signed escrow payment
 //   POST /settle          — relay a commit-time meta-transaction
 //   POST /perform-action  — relay a post-commit meta-transaction
@@ -37,6 +39,14 @@ export const INVALID_REQUEST_BODY = {
  */
 export function mountFacilitator(config: FacilitatorConfig): Router {
   const router = Router();
+  // Liveness probe — body-less GET that `createFacilitatorClient`'s
+  // `healthCheck()` polls. Returns 200 unconditionally so a server
+  // pointed at this router can distinguish "facilitator process up"
+  // from "facilitator process down" without us needing to reach
+  // through the on-chain stack on every probe.
+  router.get("/healthz", (_req, res) => {
+    res.status(200).json({ ok: true });
+  });
   router.post("/verify", verifyRoute(config));
   router.post("/settle", settleRoute(config));
   router.post("/perform-action", performActionRoute(config));
