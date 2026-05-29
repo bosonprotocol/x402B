@@ -173,9 +173,9 @@ both publish flows so the npm
 - **Alpha** — every push to `main` triggers
   [`scripts/publish-alpha.mjs`](./scripts/publish-alpha.mjs). It uses
   `@changesets/get-release-plan` to find the packages affected by
-  currently-queued changesets, queries npm for any prior
-  `<currentVersion>-alpha-N` versions, and publishes
-  `<currentVersion>-alpha-<next-N>` for each affected package (transitive
+  currently-queued changesets (and the next version each will bump to),
+  queries npm for any prior `<nextVersion>-alpha-N` versions, and publishes
+  `<nextVersion>-alpha-<next-N>` for each affected package (transitive
   workspace dependents included so cross-package `workspace:*` references
   resolve to consistent alpha versions). Queued `.md` changesets are
   **not** consumed by the alpha flow.
