@@ -219,17 +219,13 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
   // but happens on every `handlers.withdrawFunds()` /
   // `handlers.getAvailableFunds()` call — caching the adapter keeps the
   // hot path allocation-free and shares one subgraph client across
-  // requests. `validated.coreSdkRead`, when supplied by the host, is
-  // already shared.
+  // requests (and the health-check probe). `validated.coreSdkRead`,
+  // when supplied by the host, is already shared.
   let cachedCoreSdkRead: CoreSdkReadAdapter | undefined;
-  const requireCoreSdkRead = (action: string): CoreSdkReadAdapter => {
+  const getOrCreateCoreSdkRead = (): CoreSdkReadAdapter | undefined => {
     if (validated.coreSdkRead !== undefined) return validated.coreSdkRead;
     if (cachedCoreSdkRead !== undefined) return cachedCoreSdkRead;
-    if (validated.subgraphUrl === undefined) {
-      throw new Error(
-        `x402-server: handlers.${action}() requires either \`coreSdkRead\` or \`subgraphUrl\` in config (subgraph read step).`,
-      );
-    }
+    if (validated.subgraphUrl === undefined) return undefined;
     cachedCoreSdkRead = asCoreSdkReadAdapter(
       new CoreSDK({
         web3Lib: createReadOnlyWeb3LibStub(),
@@ -239,6 +235,15 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
       }),
     );
     return cachedCoreSdkRead;
+  };
+  const requireCoreSdkRead = (action: string): CoreSdkReadAdapter => {
+    const client = getOrCreateCoreSdkRead();
+    if (client === undefined) {
+      throw new Error(
+        `x402-server: handlers.${action}() requires either \`coreSdkRead\` or \`subgraphUrl\` in config (subgraph read step).`,
+      );
+    }
+    return client;
   };
 
   const recovery: RecoveryApi = {
@@ -328,12 +333,11 @@ export function createX402bServer(config: X402bServerConfig): X402bServer {
 
   const healthCheck = createHealthCheck({
     facilitator,
-    // Probe an existing coreSdkRead if the host supplied one. The
-    // lazy default created from `subgraphUrl` only materialises on
-    // the first withdraw / available-funds call — health-check
-    // shouldn't pay the construction cost just to ping it; report
-    // `"n/a"` until a real read client is available.
-    coreSdkRead: () => validated.coreSdkRead ?? cachedCoreSdkRead,
+    // Materialise the lazy `subgraphUrl`-backed read client on first
+    // probe so a configured subgraph is actually checked (reporting
+    // `"ok"` / `"down"` rather than `"n/a"`). Only the
+    // "no `coreSdkRead` AND no `subgraphUrl`" case maps to `"n/a"`.
+    coreSdkRead: () => getOrCreateCoreSdkRead(),
   });
 
   return {

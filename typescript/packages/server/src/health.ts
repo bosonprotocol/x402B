@@ -13,7 +13,10 @@ import type { FacilitatorClient } from "./facilitator/client.js";
  * - `"ok"` — last probe succeeded
  * - `"down"` — last probe threw or returned a non-2xx
  * - `"n/a"` — dependency isn't configured (subgraph is optional —
- *   commit/redeem-only servers don't have one)
+ *   commit/redeem-only servers don't have one). For the subgraph
+ *   probe, `"n/a"` means **neither** `coreSdkRead` nor `subgraphUrl`
+ *   was supplied; a configured `subgraphUrl` is materialised on the
+ *   first probe so it always reports `"ok"` / `"down"`.
  */
 export type HealthState = "ok" | "down" | "n/a";
 
@@ -36,8 +39,9 @@ export function createHealthCheck(deps: {
     // try/catch so a synchronous throw (e.g. a lazy initializer that
     // can't reach its subgraph) reports "down" instead of rejecting
     // the whole health check. A factory that legitimately returns
-    // `undefined` still maps to "n/a" — the lazy default in
-    // `createX402bServer` uses that to mean "no read client yet".
+    // `undefined` maps to "n/a" — `createX402bServer`'s factory only
+    // returns `undefined` when neither `coreSdkRead` nor `subgraphUrl`
+    // is configured.
     let readClient: CoreSdkReadAdapter | undefined;
     let readClientFailed = false;
     if (typeof deps.coreSdkRead === "function") {

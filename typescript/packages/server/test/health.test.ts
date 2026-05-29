@@ -56,7 +56,11 @@ function downSubgraph(): CoreSdkReadAdapter {
   };
 }
 
-function buildServer(opts: { fetch: FetchLike; coreSdkRead?: CoreSdkReadAdapter }) {
+function buildServer(opts: {
+  fetch: FetchLike;
+  coreSdkRead?: CoreSdkReadAdapter;
+  subgraphUrl?: string;
+}) {
   // Override the global fetch for the duration of the test so the
   // facilitator client picks up our stub at construction time.
   const originalFetch = globalThis.fetch;
@@ -70,6 +74,7 @@ function buildServer(opts: { fetch: FetchLike; coreSdkRead?: CoreSdkReadAdapter 
       facilitator: { url: FACILITATOR_URL },
       channelRegistry: { channels: ["server", "facilitator", "onchain"], escrow: ESCROW },
       ...(opts.coreSdkRead !== undefined ? { coreSdkRead: opts.coreSdkRead } : {}),
+      ...(opts.subgraphUrl !== undefined ? { subgraphUrl: opts.subgraphUrl } : {}),
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -101,11 +106,25 @@ describe("server.healthCheck()", () => {
     expect(await server.healthCheck()).toEqual({ facilitator: "ok", subgraph: "down" });
   });
 
-  it("reports subgraph n/a when no coreSdkRead is configured", async () => {
+  it("reports subgraph n/a when neither coreSdkRead nor subgraphUrl is configured", async () => {
     const server = buildServer({
       fetch: healthyFacilitatorFetch(),
     });
     expect(await server.healthCheck()).toEqual({ facilitator: "ok", subgraph: "n/a" });
+  });
+
+  it("probes the lazy subgraph client when only subgraphUrl is configured", async () => {
+    // No host-supplied coreSdkRead — the server should materialise the
+    // lazy `subgraphUrl`-backed adapter on the first health check and
+    // probe it (rather than reporting `"n/a"`). The fake subgraph URL
+    // isn't reachable, so the probe fails and surfaces as `"down"` —
+    // either way the result is not `"n/a"`, which is what proves the
+    // lazy construction ran.
+    const server = buildServer({
+      fetch: healthyFacilitatorFetch(),
+      subgraphUrl: "https://subgraph.example/graphql",
+    });
+    expect(await server.healthCheck()).toEqual({ facilitator: "ok", subgraph: "down" });
   });
 
   it("reports both down when both probes throw", async () => {
