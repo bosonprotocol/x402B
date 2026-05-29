@@ -15,6 +15,9 @@ Stateless w.r.t. funds; never custodies tokens. Stateful only for in-flight tx t
 ## Endpoints
 
 ```text
+GET /healthz
+  -> 200 { ok: true }   // liveness probe; matches `createFacilitatorClient.healthCheck()`
+
 POST /verify
   body: { scheme: "escrow", network, payload, requirements }
   -> { ok: true } | { ok: false, code, reason }
