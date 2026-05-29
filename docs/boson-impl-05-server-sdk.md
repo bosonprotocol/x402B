@@ -1,6 +1,6 @@
 # 05 — Server SDK
 
-> **Status:** implemented library surface (v0.1, updated 2026-05-29). `@bosonprotocol/x402-server` exposes the 402 challenge builder, FullOffer signer, `X-PAYMENT` validator, facilitator HTTP client, on-chain state verifier, and a full handler set covering commit, commit-and-redeem, redeem, complete, the dispute family, and entity-keyed funds withdrawal / lookup. `@bosonprotocol/x402-server-express` wires the same surface into Express middleware and an eight-route convenience router.
+> **Status:** implemented library surface (v0.1, updated 2026-05-29). `@bosonprotocol/x402-server` exposes the 402 challenge builder, FullOffer signer, `X-PAYMENT` validator, facilitator HTTP client, on-chain state verifier, and a full handler set covering commit, commit-and-redeem, redeem, complete, the dispute family, and entity-keyed funds withdrawal / lookup. `@bosonprotocol/x402-server-express` wires the same surface into Express middleware and a convenience router mounting one route per handler.
 
 ## Goals
 
