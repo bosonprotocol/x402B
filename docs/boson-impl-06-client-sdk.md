@@ -64,8 +64,8 @@ Field reference:
 
 | Field | Required | Notes |
 |---|---|---|
-| `signer` | yes | `Signer` — `{ getAddress(), signTypedData(args) }`. Matches viem's `LocalAccount` shape; an external wallet needs a 4-line wrapper. |
-| `subgraphUrls` | optional | Per-chain Boson subgraph URLs keyed by EIP-155 chain id. `CoreSDK`'s base constructor requires one, even for signing-only flows. |
+| `signer` | yes | `Signer` — `{ getAddress(), signTypedData(args) }`. A viem `LocalAccount` needs a tiny inline wrapper (its `.address` is sync while `Signer.getAddress` returns `Promise<Address>`); a `@bosonprotocol/ethers-sdk` adapter can use the bundled `signerFromEthersAdapter` helper. |
+| `subgraphUrls` | optional | Per-chain Boson subgraph URLs keyed by EIP-155 chain id. Pure signing flows can omit it — the client falls back to a placeholder URL that is never read (see [`core-sdk-factory.ts`](../typescript/packages/client/src/core-sdk-factory.ts)). Required only when the buyer actually queries the subgraph, e.g. through `signWithdrawAllAvailableFunds`. |
 | `publicClients` | optional | Per-chain viem `PublicClient`s, keyed by chain id. Required for the EIP-2612 Permit strategy (fetches `nonces(owner)` before signing); other strategies don't need them. |
 | `tokenDomainResolver` | optional | Resolves the EIP-712 domain a given ERC-20 publishes for ERC-3009 / EIP-2612 signatures. Usually a small in-memory lookup keyed by `(chainId, asset)`. Permit2 doesn't use the token's domain and signs without this. |
 | `policy.redeemMode` | optional, default `"auto"` | See "402 handling" → decision tree. |
