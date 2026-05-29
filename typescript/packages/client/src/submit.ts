@@ -355,11 +355,11 @@ function parseServerResult(body: unknown): Omit<SubmitResult, "attempts" | "chan
   };
   const txHash = raw.txHash;
   const exchangeState = raw.nextActions?.exchangeState;
-  if (typeof txHash !== "string" || !isExchangeState(exchangeState)) {
+  if (!isHexHash(txHash) || !isExchangeState(exchangeState)) {
     throw new Error("server response missing txHash or nextActions.exchangeState");
   }
   const out: Omit<SubmitResult, "attempts" | "channelUsed"> = {
-    txHash: txHash as Hex,
+    txHash,
     newExchangeState: exchangeState,
     nextActions: raw.nextActions as EscrowNextActions,
   };
@@ -379,17 +379,27 @@ function parseFacilitatorResult(body: unknown): Omit<SubmitResult, "attempts" | 
     newExchangeState?: unknown;
     newDisputeState?: unknown;
   };
-  if (raw.ok !== true || typeof raw.txHash !== "string" || !isExchangeState(raw.newExchangeState)) {
+  if (raw.ok !== true || !isHexHash(raw.txHash) || !isExchangeState(raw.newExchangeState)) {
     throw new Error("facilitator response missing ok/txHash/newExchangeState");
   }
   const out: Omit<SubmitResult, "attempts" | "channelUsed"> = {
-    txHash: raw.txHash as Hex,
+    txHash: raw.txHash,
     newExchangeState: raw.newExchangeState,
   };
   if (isDisputeState(raw.newDisputeState)) {
     out.newDisputeState = raw.newDisputeState;
   }
   return out;
+}
+
+// Standard EVM tx-hash shape: `0x` + 64 hex chars (32 bytes). Validating
+// here ensures invalid hashes (e.g. test placeholders, garbled
+// payloads) don't slip through as typed-success results that break
+// downstream consumers expecting a real `Hex`.
+const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+
+function isHexHash(v: unknown): v is Hex {
+  return typeof v === "string" && TX_HASH_RE.test(v);
 }
 
 function isExchangeState(v: unknown): v is ExchangeState {

@@ -67,7 +67,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 const SERVER_OK_BODY = {
-  txHash: "0xredeemtx",
+  txHash: `0x${"ab".repeat(32)}`,
   nextActions: {
     exchangeId: EXCHANGE_ID,
     exchangeState: "REDEEMED",
@@ -77,7 +77,7 @@ const SERVER_OK_BODY = {
 
 const FACILITATOR_OK_BODY = {
   ok: true,
-  txHash: "0xredeemtx",
+  txHash: `0x${"ab".repeat(32)}`,
   newExchangeState: "REDEEMED",
 };
 
@@ -88,7 +88,7 @@ describe("submitAction", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0]?.[0]).toBe(SERVER_URL);
     expect(result.channelUsed).toBe("server");
-    expect(result.txHash).toBe("0xredeemtx");
+    expect(result.txHash).toBe(`0x${"ab".repeat(32)}`);
     expect(result.newExchangeState).toBe("REDEEMED");
     expect(result.nextActions).toBeDefined();
     expect(result.attempts).toEqual([{ channel: "server", ok: true, status: 200 }]);
@@ -102,7 +102,7 @@ describe("submitAction", () => {
     const result = await submitAction(makeArgs({ fetch: fetcher as unknown as typeof fetch }));
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(result.channelUsed).toBe("facilitator");
-    expect(result.txHash).toBe("0xredeemtx");
+    expect(result.txHash).toBe(`0x${"ab".repeat(32)}`);
     expect(result.newExchangeState).toBe("REDEEMED");
     // Facilitator route doesn't emit nextActions; result.nextActions stays unset.
     expect(result.nextActions).toBeUndefined();
@@ -214,7 +214,7 @@ describe("submitAction", () => {
 
   it("DISPUTED post-commit response surfaces newDisputeState", async () => {
     const body = {
-      txHash: "0xdispute",
+      txHash: `0x${"cd".repeat(32)}`,
       nextActions: {
         exchangeId: EXCHANGE_ID,
         exchangeState: "DISPUTED",
@@ -233,6 +233,30 @@ describe("submitAction", () => {
       if (String(input) === SERVER_URL) {
         // 200 with a JSON object that's missing txHash + nextActions.
         return jsonResponse(200, { unexpected: true });
+      }
+      return jsonResponse(200, FACILITATOR_OK_BODY);
+    });
+    const result = await submitAction(makeArgs({ fetch: fetcher as unknown as typeof fetch }));
+    expect(result.channelUsed).toBe("facilitator");
+    expect(result.attempts[0]).toMatchObject({
+      channel: "server",
+      ok: false,
+      reason: "invalid-response",
+      status: 200,
+    });
+  });
+
+  it("server 2xx with non-hex txHash → reason='invalid-response', falls back to facilitator", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo) => {
+      if (String(input) === SERVER_URL) {
+        return jsonResponse(200, {
+          txHash: "not-a-hex-hash",
+          nextActions: {
+            exchangeId: EXCHANGE_ID,
+            exchangeState: "REDEEMED",
+            next: [],
+          },
+        });
       }
       return jsonResponse(200, FACILITATOR_OK_BODY);
     });
