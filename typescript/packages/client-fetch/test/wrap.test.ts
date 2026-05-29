@@ -54,7 +54,13 @@ function makeClient(headerValue = "base64-encoded-payment"): X402bClient & {
   };
 }
 
-function escrow402Body(options: { withFacilitatorEndpoint?: boolean } = {}) {
+function escrow402Body(
+  options: {
+    withFacilitatorEndpoint?: boolean;
+    actionId?: "boson-createOfferAndCommit" | "boson-createOfferCommitAndRedeem";
+  } = {},
+) {
+  const actionId = options.actionId ?? "boson-createOfferAndCommit";
   const channels: string[] = options.withFacilitatorEndpoint
     ? ["server", "facilitator"]
     : ["server"];
@@ -80,7 +86,7 @@ function escrow402Body(options: { withFacilitatorEndpoint?: boolean } = {}) {
         },
         tokenAuthStrategies: ["erc3009"],
         actions: {
-          next: [{ id: "boson-createOfferAndCommit", channels, endpoints }],
+          next: [{ id: actionId, channels, endpoints }],
         },
       },
     ],
@@ -303,6 +309,35 @@ describe("wrapFetchWithPayment — commit fallback (opt-in)", () => {
       txHash: "0xdeadbeef",
       nextActions: { exchangeState: "COMMITTED" },
     });
+  });
+
+  it("commitFallback='auto': createOfferCommitAndRedeem fallback reports exchangeState=REDEEMED", async () => {
+    // The atomic commit-and-redeem flow lands the exchange in REDEEMED, not
+    // COMMITTED — the synthesized X-PAYMENT-RESPONSE must reflect that.
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith("https://example/resource")) {
+        if (fakeFetch.mock.calls.length === 1) {
+          return jsonResponse(
+            escrow402Body({
+              withFacilitatorEndpoint: true,
+              actionId: "boson-createOfferCommitAndRedeem",
+            }),
+            { status: 402 },
+          );
+        }
+        return new Response("boom", { status: 502 });
+      }
+      return jsonResponse(settleOkBody(), { status: 200 });
+    });
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client, { commitFallback: "auto" });
+    const res = await wrapped("https://example/resource");
+
+    const headerValue = res.headers.get("X-PAYMENT-RESPONSE")!;
+    const decoded = JSON.parse(Buffer.from(headerValue, "base64").toString("utf8"));
+    expect(decoded.nextActions).toEqual({ exchangeState: "REDEEMED" });
   });
 
   it("commitFallback='auto': network error on retry triggers fallback, marker carries network: prefix", async () => {

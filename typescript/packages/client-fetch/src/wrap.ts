@@ -61,7 +61,10 @@ import {
   type EscrowPaymentPayload,
   type NextAction,
 } from "@bosonprotocol/x402-core/schemes/escrow";
+import { ACTION_POST_STATE } from "@bosonprotocol/x402-core/state-machine";
 import type { X402bClient } from "@bosonprotocol/x402-client";
+
+type CommitActionId = "boson-createOfferAndCommit" | "boson-createOfferCommitAndRedeem";
 
 // Re-exported below so existing `@bosonprotocol/x402-client-fetch`
 // importers keep working without having to add a direct dep on
@@ -173,6 +176,7 @@ export function wrapFetchWithPayment(
     }
     return synthesizeCommitFallbackResponse({
       body: fallback,
+      actionId: fallback.actionId,
       serverErrorMarker:
         networkErrorMessage !== undefined
           ? `network:${networkErrorMessage}`
@@ -207,7 +211,9 @@ async function tryFacilitatorFallback(input: {
   headerValue: string;
   facilitatorTimeoutMs: number;
   originalFetch: typeof fetch;
-}): Promise<{ ok: true; exchangeId: string; txHash: string } | undefined> {
+}): Promise<
+  { ok: true; actionId: CommitActionId; exchangeId: string; txHash: string } | undefined
+> {
   const requirements = input.escrowEntry as {
     scheme?: unknown;
     network?: unknown;
@@ -222,7 +228,7 @@ async function tryFacilitatorFallback(input: {
   }
 
   const commitEntry = (requirements.actions.next as NextAction[]).find(
-    (e) =>
+    (e): e is NextAction & { id: CommitActionId } =>
       (e.id === "boson-createOfferAndCommit" || e.id === "boson-createOfferCommitAndRedeem") &&
       e.channels.includes("facilitator") &&
       typeof e.endpoints?.facilitator === "string",
@@ -263,7 +269,12 @@ async function tryFacilitatorFallback(input: {
   if (typeof ok.exchangeId !== "string" || typeof ok.txHash !== "string") {
     return undefined;
   }
-  return { ok: true, exchangeId: ok.exchangeId, txHash: ok.txHash };
+  return {
+    ok: true,
+    actionId: commitEntry.id,
+    exchangeId: ok.exchangeId,
+    txHash: ok.txHash,
+  };
 }
 
 /**
@@ -274,12 +285,13 @@ async function tryFacilitatorFallback(input: {
  */
 function synthesizeCommitFallbackResponse(input: {
   body: { ok: true; exchangeId: string; txHash: string };
+  actionId: CommitActionId;
   serverErrorMarker: string;
 }): Response {
   const xPaymentResponseBody = {
     exchangeId: input.body.exchangeId,
     txHash: input.body.txHash,
-    nextActions: { exchangeState: "COMMITTED" },
+    nextActions: { exchangeState: ACTION_POST_STATE[input.actionId].exchange },
   };
   const headers = new Headers();
   headers.set(X_PAYMENT_RESPONSE_HEADER, encodeBase64(JSON.stringify(xPaymentResponseBody)));
