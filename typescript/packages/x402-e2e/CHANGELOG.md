@@ -1,5 +1,15 @@
 # @bosonprotocol/x402-e2e
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [63ab3d6]
+- Updated dependencies [c81db37]
+  - @bosonprotocol/x402-client@0.3.0
+  - @bosonprotocol/x402-client-fetch@0.2.0
+  - @bosonprotocol/x402-core@0.2.1
+
 ## 0.0.1
 
 ### Patch Changes

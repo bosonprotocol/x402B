@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-paywall",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "Apache-2.0",
   "description": "Browser paywall for the Boson Protocol x402 escrow scheme — renders the FullOffer, connects a wallet via wagmi, drives the atomic commit-and-redeem flow, and returns the resource. Mirrors the upstream @x402/paywall PaywallProvider contract.",
   "repository": {
