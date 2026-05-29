@@ -75,7 +75,7 @@ export interface SubmitArgs {
   exchangeId: string;
   /** CAIP-2 (e.g. `"eip155:31337"`). Required by the facilitator route. */
   network: string;
-  /** Boson Diamond address. Required by the facilitator route. */
+  /** Escrow contract address. Required by the facilitator route. */
   escrowAddress: Address;
   /** Redeem-only — forwarded to the `server` channel body; ignored by `facilitator`. */
   fulfillment?: FulfillmentRequest;
