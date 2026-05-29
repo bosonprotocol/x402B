@@ -3,7 +3,10 @@ name: CI
 on:
   pull_request:
     branches: ["**"]
-    types: [opened, synchronize, reopened, ready_for_review]
+    # `labeled`/`unlabeled` so the changeset-coverage check re-evaluates when the
+    # `no-changeset` escape-hatch label is toggled (the build/test/e2e jobs skip
+    # those events — see their `if:` — so a label change stays cheap).
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -47,6 +50,8 @@ jobs:
   build-test-lint:
     name: build / test / lint (node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    # Skip on label-only events (they don't change code).
+    if: github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')
     strategy:
       fail-fast: false
       matrix:
@@ -87,7 +92,8 @@ jobs:
   e2e-pr:
     name: e2e (@p0 + @p1)
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.draft }}
+    # Skip drafts, and label-only events (they don't change code).
+    if: ${{ !github.event.pull_request.draft && github.event.action != 'labeled' && github.event.action != 'unlabeled' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
