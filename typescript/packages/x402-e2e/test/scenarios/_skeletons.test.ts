@@ -33,12 +33,12 @@ describe.skipIf(!ENABLED)("@p2 commit-time validations — PR 7", () => {
 });
 
 describe.skipIf(!ENABLED)("@p0/@p1 nextActions / channel routing — PR 7", () => {
-  // D1, D2 moved to `next-actions.test.ts` as runnable scenarios.
-  // D3 stays a todo: the client-side channel fallback chain
-  // (server → facilitator → onchain on 5xx / network error) isn't
-  // implemented today in `x402-client` / `x402-client-fetch`. The
-  // test will land alongside the feature work in its own PR.
-  it.todo("D3 — server/facilitator/onchain channel fallback chain (kill facilitator)");
+  // D1, D2, and D3 (server→facilitator) moved to `next-actions.test.ts`
+  // as runnable scenarios. The remaining todos extend D3's fallback
+  // chain once the matching submitters land: `onchain` needs a
+  // wallet-driven submitter wired into `client.submitAction`, and
+  // `mcp` ships with `@bosonprotocol/x402-agent`.
+  it.todo("D5 — extend D3 fallback chain to `onchain` once the wallet submitter lands");
   it.todo(
     "D4 — `mcp` channel for buyer-side action — skipped until `@bosonprotocol/x402-agent` lands",
   );
