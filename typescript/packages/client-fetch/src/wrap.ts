@@ -151,13 +151,16 @@ export function wrapFetchWithPayment(
       }
       networkErrorMessage = e instanceof Error ? e.message : String(e);
       // Synthesize a 599 sentinel so the network-error path joins the
-      // 5xx branch below (`status < 500` skips the fallback). 599 is
-      // never returned to the caller — on a successful fallback we
-      // emit a synthesized 200; on a failed fallback we surface this
-      // placeholder as the original error, which is acceptable
-      // because the real error message is preserved on the
-      // `X-X402-Boson-Server-Error` header (`network:<message>`).
-      retryResponse = new Response(null, { status: 599 });
+      // 5xx branch below (`status < 500` skips the fallback). On a
+      // successful fallback this 599 is replaced by a synthesized 200;
+      // on a failed fallback it surfaces to the caller — and stamping
+      // the original `network:<message>` on `X-X402-Boson-Server-Error`
+      // here ensures the underlying failure isn't lost behind the
+      // placeholder status.
+      retryResponse = new Response(null, {
+        status: 599,
+        headers: { [SERVER_ERROR_HEADER]: `network:${networkErrorMessage}` },
+      });
     }
 
     if (commitFallback !== "auto" || retryResponse.status < 500) {

@@ -395,6 +395,26 @@ describe("wrapFetchWithPayment — commit fallback (opt-in)", () => {
     expect(await res.text()).toBe("server down");
   });
 
+  it("commitFallback='auto': network error + facilitator also fails → 599 carries network: marker", async () => {
+    const client = makeClient(VALID_PAYLOAD_BASE64);
+    const fakeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith("https://example/resource")) {
+        if (fakeFetch.mock.calls.length === 1) {
+          return jsonResponse(escrow402Body({ withFacilitatorEndpoint: true }), { status: 402 });
+        }
+        throw new TypeError("connect ECONNREFUSED");
+      }
+      return new Response("facilitator down", { status: 503 });
+    });
+
+    const wrapped = wrapFetchWithPayment(fakeFetch, client, { commitFallback: "auto" });
+    const res = await wrapped("https://example/resource");
+
+    expect(res.status).toBe(599);
+    expect(res.headers.get("X-X402-Boson-Server-Error")).toBe("network:connect ECONNREFUSED");
+  });
+
   it("commitFallback='auto': resource-server 4xx does NOT trigger fallback (only 5xx)", async () => {
     const client = makeClient(VALID_PAYLOAD_BASE64);
     const fakeFetch = vi.fn(async (input: RequestInfo | URL) => {
