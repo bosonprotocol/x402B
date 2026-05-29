@@ -44,7 +44,7 @@ app.get(
   (req, res) => res.send(loadResource(res.locals.x402b.exchangeId)),
 );
 
-// mount the eight convenience routes under /x402B/*
+// mount the convenience routes under /x402B/*
 app.use(mountX402b(server, { resolveRequirements: (req) => requirementsFor(req) }));
 ```
 
