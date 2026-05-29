@@ -115,8 +115,10 @@ See [`action.ts`](../typescript/packages/client/src/action.ts):
 
 ### Decision tree — `policy.tokenAuthStrategy`
 
-Without an override, the token-auth dispatcher in `@bosonprotocol/x402-core` walks the server's
-advertised set by preference (`erc3009` → `permit2` → `permit`) and signs the first viable one.
+Without an override, the token-auth dispatcher in
+[`@bosonprotocol/x402-client/token-auth`](../typescript/packages/client/src/token-auth/index.ts)
+walks the server's advertised set by preference (`erc3009` → `permit2` → `permit`, the
+`STRATEGY_PREFERENCE` constant) and signs the first viable one.
 `"none"` is never auto-picked — the dispatcher's preference order skips it because the buyer must
 have already approved the Diamond off-band.
 
