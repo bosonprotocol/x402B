@@ -62,7 +62,7 @@ import {
   type NextAction,
 } from "@bosonprotocol/x402-core/schemes/escrow";
 import { ACTION_POST_STATE } from "@bosonprotocol/x402-core/state-machine";
-import type { X402bClient } from "@bosonprotocol/x402-client";
+import { decodeBase64, encodeBase64, type X402bClient } from "@bosonprotocol/x402-client";
 
 type CommitActionId = "boson-createOfferAndCommit" | "boson-createOfferCommitAndRedeem";
 
@@ -325,28 +325,4 @@ async function fetchWithTimeout(
   } finally {
     clearTimeout(timer);
   }
-}
-
-function decodeBase64(value: string): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(value, "base64").toString("utf8");
-  }
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new TextDecoder().decode(bytes);
-}
-
-function encodeBase64(value: string): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(value, "utf8").toString("base64");
-  }
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const b of bytes) {
-    binary += String.fromCharCode(b);
-  }
-  return btoa(binary);
 }

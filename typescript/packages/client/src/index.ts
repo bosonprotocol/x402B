@@ -27,6 +27,7 @@ export {
 } from "./errors.js";
 
 export { pickAction } from "./action.js";
+export { decodeBase64, encodeBase64 } from "./base64.js";
 export { resolveFulfillment, type ResolvedFulfillment } from "./fulfillment.js";
 export { parseChainId } from "./core-sdk-factory.js";
 export { parsePaymentResponse } from "./response.js";
