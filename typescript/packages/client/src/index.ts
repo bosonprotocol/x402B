@@ -27,16 +27,28 @@ export {
 } from "./errors.js";
 
 export { pickAction } from "./action.js";
+export { decodeBase64, encodeBase64 } from "./base64.js";
 export { resolveFulfillment, type ResolvedFulfillment } from "./fulfillment.js";
 export { parseChainId } from "./core-sdk-factory.js";
 export { parsePaymentResponse } from "./response.js";
-export { createX402bClient, type X402bClient } from "./client.js";
+export { createX402bClient, type SubmitActionArgs, type X402bClient } from "./client.js";
 export type {
   ResolveDisputeArgs,
   SignActionArgs,
   SignedPostCommitAction,
   SimplePostCommitArgs,
 } from "./post-commit.js";
+export {
+  AllChannelsFailedError,
+  NoCompatibleChannelError,
+  submitAction,
+  type ChannelAttempt,
+  type ChannelFailureReason,
+  type FulfillmentRequest,
+  type SubmitArgs,
+  type SubmitChannel,
+  type SubmitResult,
+} from "./submit.js";
 export type {
   SignWithdrawAllAvailableFundsArgs,
   SignWithdrawFundsArgs,

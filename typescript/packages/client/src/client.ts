@@ -28,6 +28,11 @@ import {
 } from "./post-commit.js";
 import { parsePaymentResponse } from "./response.js";
 import {
+  submitAction as submitActionInner,
+  type FulfillmentRequest,
+  type SubmitResult,
+} from "./submit.js";
+import {
   signWithdrawAllAvailableFunds,
   signWithdrawFunds,
   type SignWithdrawAllAvailableFundsArgs,
@@ -37,6 +42,29 @@ import {
 import { buildAndSignTokenAuth } from "./token-auth/index.js";
 import { MaxAmountExceededError, UnsupportedTokenAuthError } from "./errors.js";
 import type { ExchangeSummary, X402bClientConfig } from "./types.js";
+import type { EscrowNextActions } from "@bosonprotocol/x402-core/schemes/escrow";
+
+/**
+ * Args for `client.submitAction`. Layered over `SignActionArgs`: the
+ * client signs the meta-tx, then resolves the matching `NextAction`
+ * entry on `priorNextActions` and walks its `channels[]` (server →
+ * facilitator) until the first 2xx. See `submit.ts` for the channel
+ * walk semantics; see `signAction` for the signing args.
+ */
+export type SubmitActionArgs = SignActionArgs & {
+  /**
+   * The `nextActions` envelope returned by the prior server response.
+   * Used to read `channels[]` + `endpoints[channel]` for the entry
+   * matching `actionId`.
+   */
+  priorNextActions: EscrowNextActions;
+  /** Redeem-only fulfillment payload — forwarded to the `server` channel body. */
+  fulfillment?: FulfillmentRequest;
+  /** Override the default `globalThis.fetch`. Useful for tests / custom transports. */
+  fetch?: typeof globalThis.fetch;
+  /** Per-channel timeout in milliseconds. Default 10000. */
+  timeoutMs?: number;
+};
 
 export interface X402bClient {
   /**
@@ -62,6 +90,26 @@ export interface X402bClient {
    * of MVP.
    */
   signAction(args: SignActionArgs): Promise<SignedPostCommitAction>;
+
+  /**
+   * Sign a buyer post-commit action via {@link X402bClient.signAction} and
+   * submit it through the first responsive HTTP channel the seller
+   * advertised on the matching `nextActions.next[]` entry. Order is taken
+   * from `priorNextActions` (the envelope from the prior server response);
+   * the walk is intersected with `["server", "facilitator"]` — `onchain` /
+   * `mcp` / `xmtp` channels are out of scope for this method.
+   *
+   * Falls back to the next channel on **5xx / network error / timeout**.
+   * Stops and throws on **4xx** (a buyer-side payload error fallback
+   * can't fix — masking it would hide bugs). Throws
+   * `NoCompatibleChannelError` when the matching entry advertises only
+   * non-HTTP channels, and `AllChannelsFailedError` when every attempt
+   * failed.
+   *
+   * Pre-existing callers that prefer to keep submission outside the SDK
+   * can still use `signAction` + their own dispatch.
+   */
+  submitAction(args: SubmitActionArgs): Promise<SubmitResult>;
 
   /**
    * Sign a `withdrawFunds(entityId, tokenList, tokenAmounts)` meta-tx.
@@ -183,6 +231,27 @@ export function createX402bClient(config: X402bClientConfig): X402bClient {
 
     signAction(args) {
       return signPostCommitAction(args, { buildCoreSdk, getBuyerAddress });
+    },
+
+    async submitAction(args) {
+      const signed = await signPostCommitAction(args, { buildCoreSdk, getBuyerAddress });
+      const action = args.priorNextActions.next.find((entry) => entry.id === args.actionId);
+      if (action === undefined) {
+        throw new Error(
+          `x402-client/submitAction: actionId '${args.actionId}' is not present in priorNextActions.next[]`,
+        );
+      }
+      const submitArgs = {
+        action,
+        signed,
+        exchangeId: String(args.exchangeId),
+        network: args.network,
+        escrowAddress: args.escrowAddress,
+        fulfillment: args.fulfillment,
+        fetch: args.fetch,
+        timeoutMs: args.timeoutMs,
+      };
+      return submitActionInner(submitArgs);
     },
 
     signWithdrawFunds(args) {

@@ -18,6 +18,7 @@
 // envelope rides the `/x402B/redeem` response body.
 
 import { ExchangeState } from "@bosonprotocol/x402-actions";
+import type { EscrowNextActions } from "@bosonprotocol/x402-core/schemes/escrow";
 import { clientLegalActions } from "@bosonprotocol/x402-core/state-machine";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -111,5 +112,58 @@ describe.skipIf(!ENABLED)("@p0 nextActions derivation", () => {
     expect(sortedIds(redeemed.nextActionIds)).toEqual(
       sortedIds(clientLegalActions({ exchange: ExchangeState.REDEEMED })),
     );
+  });
+
+  it("D3 — submitAction falls back from server to facilitator on a dead server endpoint", async () => {
+    // Doubles as the canonical example of `client.submitAction` usage:
+    // commit, read the post-commit envelope, hand the
+    // `boson-redeem` entry back to `submitAction` for a transparent
+    // channel walk. We patch `endpoints.server` to a closed port
+    // (`http://127.0.0.1:1` → connect-refused → `ChannelFailureReason
+    // "network"`) while leaving the server-stamped
+    // `endpoints.facilitator` URL intact — so the walk fails on
+    // server, then succeeds on facilitator.
+    const commitRes = await ctx.buyer.fetch(`${ctx.resourceServerUrl}/resource`);
+    expect(commitRes.status, await commitRes.clone().text()).toBe(200);
+    const exchangeId = ((await commitRes.json()) as { x402b?: { exchangeId?: string } }).x402b
+      ?.exchangeId;
+    if (typeof exchangeId !== "string") {
+      throw new Error(
+        `Expected commit response x402b.exchangeId to be a string, got ${typeof exchangeId}`,
+      );
+    }
+
+    const decoded = readXPaymentResponse(commitRes.headers);
+    const original = decoded?.nextActions?.next?.find((entry) => entry.id === "boson-redeem");
+    expect(original, "post-COMMITTED envelope must advertise boson-redeem").toBeDefined();
+
+    const priorNextActions = {
+      ...decoded!.nextActions!,
+      next: decoded!.nextActions!.next!.map((entry) =>
+        entry.id === "boson-redeem"
+          ? {
+              ...entry,
+              endpoints: { ...(entry.endpoints ?? {}), server: "http://127.0.0.1:1" },
+            }
+          : entry,
+      ),
+    } as unknown as EscrowNextActions;
+
+    const result = await ctx.buyer.client.submitAction({
+      actionId: "boson-redeem",
+      exchangeId,
+      network: ctx.network,
+      escrowAddress: ctx.escrowAddress,
+      priorNextActions,
+    });
+
+    expect(result.channelUsed).toBe("facilitator");
+    expect(result.newExchangeState).toBe(ExchangeState.REDEEMED);
+    const firstAttempt = result.attempts[0];
+    expect(firstAttempt?.channel).toBe("server");
+    expect(firstAttempt?.ok).toBe(false);
+    if (firstAttempt !== undefined && !firstAttempt.ok) {
+      expect(firstAttempt.reason).toBe("network");
+    }
   });
 });
