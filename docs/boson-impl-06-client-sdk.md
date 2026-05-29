@@ -26,7 +26,12 @@ import { createX402bClient } from "@bosonprotocol/x402-client";
 import { wrapFetchWithPayment } from "@bosonprotocol/x402-client-fetch";
 
 const client = createX402bClient({
-  signer:                buyerWallet,           // viem LocalAccount or compatible
+  signer: {
+    // viem `LocalAccount` exposes `.address` (sync); the x402-client `Signer`
+    // interface returns `Promise<Address>` — adapt with a tiny wrapper.
+    getAddress:    async () => buyerWallet.address,
+    signTypedData: buyerWallet.signTypedData,
+  },
   subgraphUrls:          { 8453: "https://subgraph..." },
   tokenDomainResolver:   async (asset, chainId) => USDC_EIP712_DOMAINS[chainId],
   policy: {
