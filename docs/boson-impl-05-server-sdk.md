@@ -69,6 +69,8 @@ so misconfiguration fails at boot rather than inside a 402 response. Field refer
 | `exchangeFulfillmentOptionStore` | optional | Per-exchange option allowlist (Flow A). Defaults to an in-memory `Map`; multi-instance hosts plug in a shared store. |
 | `fulfillmentRecoveryStore` | optional | Per-exchange retry log for redeem-side dispatch failures. See `FulfillmentRecoveryEntry.phase` for the two retry steps. |
 | `fulfillmentChannels` | optional | Subset of `@bosonprotocol/x402-fulfillment`'s `FulfillmentChannel`. Required only if the host accepts redeem-time fulfillment updates; absent means redeem requests carrying `fulfillment` are rejected with `FULFILLMENT_CHANNELS_NOT_CONFIGURED`. |
+| `logger` | optional | Structured logger threaded through the handlers and the facilitator HTTP client (recovery-store writes, channel-`onCommit` failures, facilitator retry attempts, boot diagnostics). Defaults to a no-op. |
+| `mode` | optional | `"development"` (default) or `"production"`. In `"production"` a boot-time `superRefine` upgrades the runtime-optional fields (`exchangeReader`, one of `coreSdkRead` / `subgraphUrl`, `exchangeFulfillmentOptionStore`, `fulfillmentRecoveryStore`) into synchronous `ZodError`s, so a misconfigured deploy fails at `createX402bServer` time rather than on the first request. |
 
 ## Factory surface
 

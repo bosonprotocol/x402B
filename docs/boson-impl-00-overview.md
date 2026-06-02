@@ -13,14 +13,14 @@ The SDK is designed so that **existing x402 servers and clients can adopt it as 
 ```mermaid
 flowchart LR
     subgraph Client side
-      App[App / Agent] --> CL[("@bosonprotocol/x402-client<br/>(+axios/fetch)")]
+      App[App / Agent] --> CL[("@bosonprotocol/x402-client<br/>(+fetch/browser)")]
       CL --> DEL[("@bosonprotocol/x402-fulfillment")]
       CL --> ACT[("@bosonprotocol/x402-actions")]
-      AGT[("@bosonprotocol/x402-agent")] -.MCP.-> CL
+      AGT[("@bosonprotocol/x402-agent<br/>(planned)")] -.MCP.-> CL
     end
 
     subgraph Server side
-      Resource[Resource server] --> SR[("@bosonprotocol/x402-server<br/>(+express/hono/next)")]
+      Resource[Resource server] --> SR[("@bosonprotocol/x402-server<br/>(+express; hono/next planned)")]
       SR --> DEL2[("@bosonprotocol/x402-fulfillment")]
       SR --> ACT2[("@bosonprotocol/x402-actions")]
     end
@@ -56,12 +56,27 @@ All packages publish under `@bosonprotocol/`.
 |---|---|
 | `x402-core` | `escrow` scheme JSON schemas + TypeScript types; EIP-712 builders for FullOffer (protocol domain), the protocol meta-tx envelope, and the four BPIP-12 token-auth strategies (ERC-3009 ReceiveWithAuthorization, EIP-2612 Permit, Permit2, plain approve); exchange state machine model. |
 | `x402-evm` | EVM-specific implementation. Calldata builders for `ExchangeCommitFacet.createOfferAndCommit` (deferred) and `OrchestrationHandlerFacet2.createOfferCommitAndRedeem` (atomic on-chain redeem), plus viem `Web3LibAdapter` bridges used by facilitator/core-sdk meta-transaction submission. Wraps `@bosonprotocol/core-sdk`. |
-| `x402-server` | Framework-agnostic resource server. 402 builder, FullOffer signer wrapper, fulfillment negotiator, `nextActions` emitter, post-redeem endpoint set. Adapter sub-packages: `x402-server-express`, `x402-server-hono`, `x402-server-next`. |
-| `x402-client` | Framework-agnostic client. Interceptor that parses the 402, picks a fulfillment channel option and a token-auth strategy, signs the meta-tx + token authorization(s), retries, then drives post-redeem actions through whichever channel is preferred. Adapters: `x402-client-axios`, `x402-client-fetch`. |
+| `x402-server` | Framework-agnostic resource server. 402 builder, FullOffer signer wrapper, fulfillment negotiator, `nextActions` emitter, post-redeem endpoint set. |
+| `x402-server-express` | Express adapter for `x402-server` — middleware + mountable router wiring the 402 builder and post-redeem endpoint set into an Express app. |
+| `x402-client` | Framework-agnostic client. Interceptor that parses the 402, picks a fulfillment channel option and a token-auth strategy, signs the meta-tx + token authorization(s), retries, then drives post-redeem actions through whichever channel is preferred. |
+| `x402-client-fetch` | Native-`fetch` adapter for `x402-client` — wraps `fetch` to intercept 402 escrow-scheme responses and retry with the generated `X-PAYMENT` header. |
+| `x402-client-browser` | Browser-environment adapters for the buyer SDK — `signerFromWalletClient` (viem `WalletClient`) and `signerFromEip1193` (raw EIP-1193 provider); re-exports the full `x402-client` surface. |
+| `x402-paywall` | Browser paywall for the `escrow` scheme. `generateHtml(payload, config?)` plus an `evmEscrowPaywall: PaywallProvider`, producing a self-contained HTML 402 body with the React app bundle (wagmi + viem inlined). Mirrors upstream `@x402/paywall`'s `PaywallProvider`. |
 | `x402-facilitator` | Reference verify + settle + perform-action service for the `escrow` scheme. Submits through `coreSdk.executeMetaTransaction(...)`, which routes to the bare meta-tx entrypoint or the BPIP-12 token-transfer-authorization entrypoint based on the chosen token-auth strategy. |
-| `x402-fulfillment` | Pluggable `FulfillmentChannel` interface + atomic / email / XMTP / webhook / IPFS-pointer implementations. |
+| `x402-facilitator-express` | Express adapter for `x402-facilitator` — mountable router exposing `/verify`, `/settle`, and `/perform-action`. |
+| `x402-fulfillment` | Pluggable `FulfillmentChannel` interface + inline / email / XMTP / webhook / IPFS-pointer implementations. |
 | `x402-actions` | Exchange state machine + channel registry. Powers the `nextActions` envelope on every server response and the post-redeem endpoint set. |
-| `x402-agent` | Thin glue layer for AI-agent clients. Bridges to `bosonprotocol/agentic-commerce` MCP and lets agents pick channel (server / facilitator / on-chain / MCP) per action. |
+
+### Planned (not yet implemented)
+
+These appear in the diagram above and elsewhere in this spec, but are not yet shipped:
+
+| Package | Purpose |
+|---|---|
+| `x402-client-axios` | Planned axios adapter for `x402-client` (counterpart to `x402-client-fetch`). |
+| `x402-server-hono` | Planned Hono adapter for `x402-server`. |
+| `x402-server-next` | Planned Next.js adapter for `x402-server`. |
+| `x402-agent` | Planned thin glue layer for AI-agent clients. Bridges to `bosonprotocol/agentic-commerce` MCP and lets agents pick channel (server / facilitator / on-chain / MCP) per action. See [08](./boson-impl-08-agent-mode.md). |
 
 ## What we reuse (do not rebuild)
 

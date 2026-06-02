@@ -95,14 +95,14 @@ export interface FulfillmentChannel<TServerCfg = unknown, TBuyerData = unknown> 
   /** Stable identifier used in the wire format. */
   readonly id: string;
 
-  /** JSON Schema describing what the buyer must put in `fulfillment.data`. */
-  readonly buyerDataSchema: JSONSchema7 | null;
+  /** JSON-Schema-shaped description of what the buyer must put in `fulfillment.data`. */
+  readonly buyerDataSchema: Record<string, unknown> | null;
 
   /** Server-side config: keys, urls, etc. */
   configure(cfg: TServerCfg): void;
 
   /** Server: build the `options[]` entry for the 402 response. */
-  describe(): { id: string; schema: JSONSchema7 | null; metadata?: unknown };
+  describe(): FulfillmentOption; // { id: string; schema: Record<string, unknown> | null; metadata?: unknown }
 
   /** Server: validate the buyer's attached data. */
   validate(data: TBuyerData): { ok: true } | { ok: false; reason: string };
@@ -131,8 +131,8 @@ export type FulfillmentResult =
 | `xmtp` | Push to buyer's XMTP inbox | `{ xmtpAddress: string }` (EOA) | Useful for AI-agent buyers that already use XMTP for commerce. |
 | `webhook` | Push to buyer-controlled HTTPS endpoint | `{ url: string, authToken?: string, encryptionPubKey?: string }` | See [Webhook security](#webhook-security) below. Server signs the envelope with the key under `metadata.serverPublicKey`; client verifies signature. |
 | `ipfs-pointer` | Server uploads to IPFS, returns CID | `{ recipientPubKey?: string }` | Optional encryption to recipientPubKey. Returned on redeem. |
-| `widget` | Human buyer + physical goods (existing Boson Redemption Widget) | `null` (collected by widget) | `metadata.widgetUrl` points the human to the existing redemption widget. The widget's existing backend hook is reused unchanged. |
-| `mcp` | AI-agent buyer drives a server-exposed MCP tool | `{ mcpEndpoint?: string }` | The seller's MCP exposes a `submit_fulfillment_data(exchangeId, ...)` tool. The buyer's agent calls it post-commit. |
+| `widget` | Human buyer + physical goods (existing Boson Redemption Widget) | `null` (collected by widget) | **Planned / not yet implemented.** `metadata.widgetUrl` points the human to the existing redemption widget. The widget's existing backend hook is reused unchanged. |
+| `mcp` | AI-agent buyer drives a server-exposed MCP tool | `{ mcpEndpoint?: string }` | **Planned / not yet implemented.** The seller's MCP exposes a `submit_fulfillment_data(exchangeId, ...)` tool. The buyer's agent calls it post-commit. |
 
 The registry is open: third parties can ship additional channels as `@bosonprotocol/x402-fulfillment-<id>` packages and register them with the SDK at startup.
 
