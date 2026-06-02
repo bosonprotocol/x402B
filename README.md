@@ -24,7 +24,7 @@ All packages publish under `@bosonprotocol/`.
 | [`x402-paywall`](https://www.npmjs.com/package/@bosonprotocol/x402-paywall) | Browser paywall for the `escrow` scheme. `generateHtml(payload, config?)` plus an `evmEscrowPaywall: PaywallProvider` instance, both producing a self-contained HTML 402 body with the React app bundle (wagmi + viem inlined). Mirrors upstream `@x402/paywall`'s `PaywallProvider` contract. |
 | [`x402-facilitator`](https://www.npmjs.com/package/@bosonprotocol/x402-facilitator) | Reference verify + settle service for the `escrow` scheme. Submits via `MetaTransactionsHandlerFacet.executeMetaTransactionWithTokenTransferAuthorization`. Express adapter below. |
 | [`x402-facilitator-express`](https://www.npmjs.com/package/@bosonprotocol/x402-facilitator-express) | Express adapter for `x402-facilitator` — mountable router exposing `/verify`, `/settle`, and `/perform-action`. |
-| [`x402-fulfillment`](https://www.npmjs.com/package/@bosonprotocol/x402-fulfillment) | Pluggable `FulfillmentChannel` interface + atomic / email / XMTP / webhook / IPFS-pointer implementations. |
+| [`x402-fulfillment`](https://www.npmjs.com/package/@bosonprotocol/x402-fulfillment) | Pluggable `FulfillmentChannel` interface + inline / email / XMTP / webhook / IPFS-pointer implementations. |
 | [`x402-actions`](https://www.npmjs.com/package/@bosonprotocol/x402-actions) | Channel registry, `ChannelAdapter` contract, and the `nextActions` envelope builder. Drives off the state-machine tables in `x402-core` to advertise legal next transitions on every server response and powers the post-redeem endpoint set. |
 
 ---
@@ -58,8 +58,8 @@ This repo implements the [`x402-escrow-schema`](https://github.com/bosonprotocol
 | 02 | [boson-impl-02-flows.md](./docs/boson-impl-02-flows.md) | detailed — sequence diagrams |
 | 03 | [boson-impl-03-fulfillment-channels.md](./docs/boson-impl-03-fulfillment-channels.md) | detailed — pluggable fulfillment channels |
 | 04 | [boson-impl-04-state-machine-and-next-actions.md](./docs/boson-impl-04-state-machine-and-next-actions.md) | detailed — self-describing responses |
-| 05 | [boson-impl-05-server-sdk.md](./docs/boson-impl-05-server-sdk.md) | stub |
-| 06 | [boson-impl-06-client-sdk.md](./docs/boson-impl-06-client-sdk.md) | stub |
+| 05 | [boson-impl-05-server-sdk.md](./docs/boson-impl-05-server-sdk.md) | detailed — implemented server SDK surface |
+| 06 | [boson-impl-06-client-sdk.md](./docs/boson-impl-06-client-sdk.md) | detailed — implemented client SDK surface |
 | 07 | [boson-impl-07-facilitator.md](./docs/boson-impl-07-facilitator.md) | detailed — facilitator service contract |
 | 08 | [boson-impl-08-agent-mode.md](./docs/boson-impl-08-agent-mode.md) | stub |
 | 09 | [boson-impl-09-seller-metadata.md](./docs/boson-impl-09-seller-metadata.md) | stub |
