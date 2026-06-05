@@ -36,6 +36,6 @@
     "@types/node": "^20.17.10",
     "playwright": "^1.49.0",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.0"
   }
 }
