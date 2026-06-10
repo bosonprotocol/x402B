@@ -1,6 +1,6 @@
 {
   "name": "@bosonprotocol/x402-evm",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "Apache-2.0",
   "description": "Boson Protocol EVM calldata + adapter glue for the x402 escrow scheme — inner-action ABI encoding for the commit step and viem ↔ Web3LibAdapter bridges. Wraps @bosonprotocol/core-sdk for everything else.",
   "repository": {

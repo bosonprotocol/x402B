@@ -1,5 +1,22 @@
 # @bosonprotocol/x402-server
 
+## 0.3.1
+
+### Patch Changes
+
+- bedee60: Bump `@bosonprotocol/core-sdk` (1.48.0-alpha.6 → 1.48.0) and
+  `@bosonprotocol/common` (1.33.0-alpha.7 → 1.33.0) off the pre-release lines to
+  their stable releases, so consumers of `@bosonprotocol/x402-*` resolve the
+  matching stable peer chain (PR #113).
+
+  This changeset is added retroactively: PR #113 merged without one, leaving the
+  _latest_ release flow with nothing to consume.
+
+- Updated dependencies [bedee60]
+  - @bosonprotocol/x402-core@0.2.2
+  - @bosonprotocol/x402-evm@0.2.1
+  - @bosonprotocol/x402-facilitator@1.0.1
+
 ## 0.3.0
 
 ### Minor Changes
