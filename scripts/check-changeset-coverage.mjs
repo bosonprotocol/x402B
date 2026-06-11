@@ -11,6 +11,14 @@
 //
 // Escape hatch: set the `no-changeset` label on the PR (the workflow forwards
 // it as HAS_OVERRIDE_LABEL=true) for a change that intentionally ships nothing.
+//
+// Two callers, both driven by CHANGESET_BASE:
+//   - PR CI (base = origin/<target>): does this PR cover what it changed?
+//   - Release (base = last release commit, RELEASE_COVERAGE=true): does every
+//     publishable package changed since the last release have a queued
+//     changeset? Catches the gap a per-PR `no-changeset` label can leave behind
+//     (e.g. PR #113). The label bypass is disabled here — there is no PR to
+//     label, and a release must never silently skip a package that changed.
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, sep } from "node:path";
@@ -67,7 +75,11 @@ function declaredPackages(dir) {
 }
 
 function main() {
-  if (process.env.HAS_OVERRIDE_LABEL === "true") {
+  // The `no-changeset` PR label is a per-PR escape hatch only; the release-time
+  // invocation ignores it (there is no PR to label).
+  const releaseMode = process.env.RELEASE_COVERAGE === "true";
+
+  if (!releaseMode && process.env.HAS_OVERRIDE_LABEL === "true") {
     console.log("`no-changeset` label present — skipping changeset coverage check.");
     return;
   }
@@ -106,11 +118,16 @@ function main() {
   }
 
   if (missing.length) {
+    const hint = releaseMode
+      ? `\n\nThese changed since the last release but were never queued for a\n` +
+        `version bump. Add a changeset for each (\`pnpm changeset\`), merge it,\n` +
+        `then re-run the release.`
+      : `\n\nRun \`pnpm changeset\` and select them. If this change intentionally\n` +
+        `ships no release, add the \`no-changeset\` label to the PR instead.`;
     console.error(
       `\n❌ These changed publishable packages have no changeset entry:\n` +
         missing.map((n) => `   - ${n}`).join("\n") +
-        `\n\nRun \`pnpm changeset\` and select them. If this change intentionally\n` +
-        `ships no release, add the \`no-changeset\` label to the PR instead.`,
+        hint,
     );
     process.exit(1);
   }
