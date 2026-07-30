@@ -290,28 +290,31 @@ async function main() {
       `Offer accepts token-auth [${offer.tokenAuthStrategies.join(", ")}], not ${TOKEN_AUTH}.`,
     );
 
-  const amount = Number(offer.amount) / 1e6;
+  // Guard the price and compare in atomic units — the schema already rejects negative and
+  // non-numeric amounts, but "0" is a valid decimal uint, and float USDC would round.
+  const amountAtomic = BigInt(offer.amount);
+  if (amountAtomic === 0n) throw new Error("Offer carried no price. Refusing.");
+  const amount = Number(amountAtomic) / 1e6; // display only
   console.log(`2 · checkout ${checkout.id} — ${amount} USDC into escrow ${offer.escrowAddress}`);
-  if (amount > MAX_USDC) throw new Error(`Price ${amount} USDC exceeds MAX_USDC (${MAX_USDC}).`);
+  if (amountAtomic > BigInt(Math.round(MAX_USDC * 1e6)))
+    throw new Error(`Price ${amount} USDC exceeds MAX_USDC (${MAX_USDC}).`);
 
   // 3 · Sign the spend authorization locally (ERC-3009). Nothing is broadcast yet.
   const xPayment = await x402b.handle402(requirements);
-  const balance =
-    Number(
-      await publicClient.readContract({
-        address: USDC,
-        abi: erc20Abi,
-        functionName: "balanceOf",
-        args: [account.address],
-      }),
-    ) / 1e6;
+  const balanceAtomic = await publicClient.readContract({
+    address: USDC,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [account.address],
+  });
+  const balance = Number(balanceAtomic) / 1e6; // display only
   console.log(`3 · authorized ${amount} USDC · wallet balance ${balance} USDC`);
 
   if (!SETTLE) {
     console.log("\nDry run — nothing moved. Re-run with SETTLE=1 to buy for real.");
     return;
   }
-  if (balance < amount)
+  if (balanceAtomic < amountAtomic)
     throw new Error(`Insufficient USDC: need ${amount}, have ${balance}. Fund ${account.address}.`);
 
   // 4 · Commit (signed). The store relays the payment into escrow on-chain — gasless for the
