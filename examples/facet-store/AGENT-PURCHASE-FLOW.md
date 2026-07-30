@@ -4,7 +4,7 @@
 
 This guide explains how a software **agent** — an autonomous buyer, or any app acting on a shopper's behalf — can complete a **full purchase** on a Facet-powered store: browse the catalog, choose a product, pay, and take delivery, with the money held safely in **escrow** until the order is fulfilled.
 
-Payment settles through **Boson Protocol escrow** using the **x402B** scheme: the buyer authorizes a stablecoin (USDC) payment that is locked in an on-chain escrow contract. The seller is paid only after the buyer's voucher is *redeemed* (on fulfillment); until then the buyer is protected. The store never takes custody of the funds, and the on-chain transactions are **gasless for the buyer** (the store's facilitator pays the gas).
+Payment settles through **Boson Protocol escrow** using the **x402B** scheme: the buyer authorizes a stablecoin (USDC) payment that is locked in an on-chain escrow contract. The seller is paid once the buyer's voucher is *redeemed* (on fulfillment) or the dispute window expires — until then the buyer is protected, and a dispute can be raised and settled by a registered dispute resolver. The store never takes custody of the funds, and the on-chain transactions are **gasless for the buyer** (the store's facilitator pays the gas).
 
 The companion script **[`src/purchase.ts`](src/purchase.ts)** is a complete, self-contained working example of everything below. This document is the *why and what*; the code is the *how*.
 
@@ -96,7 +96,7 @@ Each step lists **what happens**, **what it requires**, and **where it is in the
 1. **Generate an ES256 key** and **publish a UCP profile** with its public half (once).
 2. **Implement RFC 9421 request signing** for the three checkout calls — sign `@method`, `@authority`, `@path`, the `UCP-Agent` header, an idempotency key, and the body digest. (See `signedHeaders()` in the script — one short function, no library.)
 3. **Obtain a KYA token** for catalog reads (store-specific).
-4. **Sign the payments** — the ERC-3009 authorization and the Boson commit/redeem meta-transactions. Don't hand-roll these; use `@bosonprotocol/x402-client` (`handle402`, `signAction`).
+4. **Sign the payments** — don't hand-roll these; use `@bosonprotocol/x402-client`. `handle402` produces the local ERC-3009 spend authorization, which the store relays on-chain as part of the `complete` request; `signAction` signs the Boson redeem meta-transaction.
 5. **Fund a wallet** with USDC on the store's network.
 6. **Call the three checkout endpoints** in order: create → complete → redeem.
 
