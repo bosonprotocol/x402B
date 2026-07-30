@@ -54,6 +54,8 @@ const TERMINAL = (process.env.TERMINAL ?? "https://my-boson-shop-2.sandbox.facet
 const CHAIN: Chain = baseSepolia; // eip155:84532
 const RPC = process.env.RPC ?? "https://sepolia.base.org";
 const USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as Address; // Base Sepolia USDC
+const NETWORK = `eip155:${CHAIN.id}`; // CAIP-2 form of CHAIN — the offer must match it
+const TOKEN_AUTH = "erc3009" as const; // the spend-authorization strategy this script signs
 const AID = process.env.AID ?? "agent:my-tester"; // agent id for the sandbox KYA mint
 const MAX_USDC = Number(process.env.MAX_USDC ?? "20"); // spend cap (safety)
 const SETTLE = process.env.SETTLE === "1"; // unset = dry run (moves nothing)
@@ -193,7 +195,7 @@ const x402b = createX402bClient({
   },
   subgraphUrls: { [CHAIN.id]: "https://subgraph.invalid/x" }, // not queried in this flow
   tokenDomainResolver: (asset, chainId) => fetchTokenDomain(publicClient, asset, chainId),
-  policy: { tokenAuthStrategy: "erc3009", redeemMode: "commit-only" },
+  policy: { tokenAuthStrategy: TOKEN_AUTH, redeemMode: "commit-only" },
 });
 
 // The slices of the Facet checkout responses this example reads. `offer` stays `unknown`:
@@ -265,6 +267,20 @@ async function main() {
   const requirements = checkout.payment_handlers?.["llc.facet.boson_escrow"]?.[0]?.config?.offer;
   if (!requirements) throw new Error("Store did not offer Boson escrow for this item.");
   const offer = parseEscrowPaymentRequirements(requirements); // validates the seller-signed offer
+
+  // The chain, USDC address and token-auth strategy above are hardcoded, so refuse any offer that
+  // disagrees with them. Without this the script would happily sign a spend authorization for a
+  // different network or asset (say real USDC on Base mainnet) while reading the balance of — and
+  // reporting — the hardcoded one.
+  if (offer.network !== NETWORK)
+    throw new Error(`Offer network is ${offer.network}, expected ${NETWORK} (${CHAIN.name}).`);
+  if (offer.asset.toLowerCase() !== USDC.toLowerCase())
+    throw new Error(`Offer asset is ${offer.asset}, expected ${USDC}.`);
+  if (!offer.tokenAuthStrategies.includes(TOKEN_AUTH))
+    throw new Error(
+      `Offer accepts token-auth [${offer.tokenAuthStrategies.join(", ")}], not ${TOKEN_AUTH}.`,
+    );
+
   const amount = Number(offer.amount) / 1e6;
   console.log(`2 · checkout ${checkout.id} — ${amount} USDC into escrow ${offer.escrowAddress}`);
   if (amount > MAX_USDC) throw new Error(`Price ${amount} USDC exceeds MAX_USDC (${MAX_USDC}).`);
