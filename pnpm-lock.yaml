@@ -39,6 +39,37 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.7.5)(jsdom@25.0.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))
 
+  examples/facet-store:
+    dependencies:
+      '@bosonprotocol/x402-client':
+        specifier: workspace:^
+        version: link:../../typescript/packages/client
+      '@bosonprotocol/x402-core':
+        specifier: workspace:^
+        version: link:../../typescript/packages/core
+      '@facet-llc/client':
+        specifier: ^0.3.0
+        version: 0.3.0
+      '@facet-llc/sdk-node':
+        specifier: ^0.1.4
+        version: 0.1.4
+      tsx:
+        specifier: ^4.19.2
+        version: 4.22.0
+      viem:
+        specifier: ^2.39.3
+        version: 2.48.11(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.10
+        version: 20.19.40
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.40)(jsdom@25.0.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+
   examples/facilitator-http:
     dependencies:
       '@bosonprotocol/x402-facilitator':
@@ -1457,6 +1488,21 @@ packages:
 
   '@ethersproject/web@5.8.0':
     resolution: {integrity: sha512-j7+Ksi/9KfGviws6Qtf9Q7KCqRhpwrYKQPs+JBA/rKVFF/yaWLHJEH3zfVP2plVu+eys0d2DlFmhoQJayFewcw==}
+
+  '@facet-llc/client@0.2.5':
+    resolution: {integrity: sha512-DJncBLvN6Ojvy6lHFvLG6GxjDLDQgcIKcYQIoX9EJSqIk9WXS8PiNkjXG8nq7d46AWfosOhXA8bup78VgQDMHA==}
+    engines: {node: '>=20.0.0'}
+
+  '@facet-llc/client@0.3.0':
+    resolution: {integrity: sha512-LC7IMujaCuDcx286Dwu+FOpJlA5JEQSKFWzXBgJzYMpziXYijO1xKIgp1bGt18OUQID/4G5M+13N7Esfwc/pNA==}
+    engines: {node: '>=20.0.0'}
+
+  '@facet-llc/protocol@0.3.3':
+    resolution: {integrity: sha512-H4QOfw/IKCqzx31GGLWXtj9ma9H0wFzQ8NsJnjY1YuQrNIkpHbx7GgokPuGkzGdDtjM+odFZqh6/JAE76uEEFg==}
+
+  '@facet-llc/sdk-node@0.1.4':
+    resolution: {integrity: sha512-6LEmyW5Z2Es1eqaTyTPIHEsGWnRa9LdIzjiHRYHsNF7r0uRslIXrSFixaT3I9L49fhB4JC8EnQseAojzG4cAlQ==}
+    engines: {node: '>=20.0.0'}
 
   '@gemini-wallet/core@0.3.2':
     resolution: {integrity: sha512-Z4aHi3ECFf5oWYWM3F1rW83GJfB9OvhBYPTmb5q+VyK3uvzvS48lwo+jwh2eOoCRWEuT/crpb9Vwp2QaS5JqgQ==}
@@ -3982,8 +4028,14 @@ packages:
   openapi-fetch@0.13.8:
     resolution: {integrity: sha512-yJ4QKRyNxE44baQ9mY5+r/kAzZ8yXMemtNAOFwOzRXJscdjSxxzWSNlyBAr+o5JjkUw9Lc3W7OIoca0cY3PYnQ==}
 
+  openapi-fetch@0.17.0:
+    resolution: {integrity: sha512-PsbZR1wAPcG91eEthKhN+Zn92FMHxv+/faECIwjXdxfTODGSGegYv0sc1Olz+HYPvKOuoXfp+0pA2XVt2cI0Ig==}
+
   openapi-typescript-helpers@0.0.15:
     resolution: {integrity: sha512-opyTPaunsklCBpTK8JGef6mfPhLSnyy5a0IN9vKtx3+4aExf+KxEqYwIy3hqkedXIB97u357uLMJsOnm3GVjsw==}
+
+  openapi-typescript-helpers@0.1.0:
+    resolution: {integrity: sha512-OKTGPthhivLw/fHz6c3OPtg72vi86qaMlqbJuVJ23qOvQ+53uw1n7HdmkJFibloF7QEjDrDkzJiOJuockM/ljw==}
 
   opensea-js@7.4.0:
     resolution: {integrity: sha512-jHg84OO6Rt1OEOQjQk0b+KoDktWtTsZIpi6p09xRzKupWlAlCO8D3qMqKjNDYQaIbstJNi6z1DQAqx+wzxvfIw==}
@@ -5974,6 +6026,22 @@ snapshots:
       '@ethersproject/properties': 5.8.0
       '@ethersproject/strings': 5.8.0
 
+  '@facet-llc/client@0.2.5':
+    dependencies:
+      '@facet-llc/protocol': 0.3.3
+
+  '@facet-llc/client@0.3.0':
+    dependencies:
+      '@facet-llc/protocol': 0.3.3
+
+  '@facet-llc/protocol@0.3.3': {}
+
+  '@facet-llc/sdk-node@0.1.4':
+    dependencies:
+      '@facet-llc/client': 0.2.5
+      '@facet-llc/protocol': 0.3.3
+      openapi-fetch: 0.17.0
+
   '@gemini-wallet/core@0.3.2(viem@2.48.11(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))':
     dependencies:
       '@metamask/rpc-errors': 7.0.2
@@ -6741,7 +6809,7 @@ snapshots:
 
   '@scure/bip32@1.7.0':
     dependencies:
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 
@@ -9454,7 +9522,13 @@ snapshots:
     dependencies:
       openapi-typescript-helpers: 0.0.15
 
+  openapi-fetch@0.17.0:
+    dependencies:
+      openapi-typescript-helpers: 0.1.0
+
   openapi-typescript-helpers@0.0.15: {}
+
+  openapi-typescript-helpers@0.1.0: {}
 
   opensea-js@7.4.0(bufferutil@4.1.0)(utf-8-validate@5.0.10):
     dependencies:
@@ -9523,7 +9597,7 @@ snapshots:
   ox@0.6.7(typescript@5.9.3)(zod@4.4.3):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
@@ -9537,7 +9611,7 @@ snapshots:
   ox@0.6.9(typescript@5.9.3)(zod@4.4.3):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
