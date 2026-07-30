@@ -39,7 +39,8 @@
  *   (my-boson-shop-2.facet.llc / base / eip155:8453, REAL USDC).
  *
  * ── Setup ─────────────────────────────────────────────────────────────────────
- *   1. BUYER_PRIVATE_KEY=<hex> pnpm buy:ucp --init
+ *   1. cp .env.example .env, set BUYER_PRIVATE_KEY in it, then:  pnpm buy:ucp --init
+ *        (.env is git-ignored — keeps the key out of your shell history and the process list.)
  *        Generates your ES256 signing key and writes:
  *          .facet-agent-key.json   PRIVATE (your signing key). git-ignored. Never share it.
  *          ucp-profile.json        PUBLIC  (your public key only). Publish this.
@@ -287,7 +288,7 @@ if (process.argv.includes("--init")) {
 
 if (PROFILE_URL === "") {
   console.error(
-    "Set UCP_PROFILE_URL to your published ucp-profile.json URL (in .env or the environment).\nFirst time? Run:  BUYER_PRIVATE_KEY=<hex> pnpm buy:ucp --init",
+    "Set UCP_PROFILE_URL to your published ucp-profile.json URL (in .env or the environment).\nFirst time? Run:  pnpm buy:ucp --init",
   );
   process.exit(1);
 }
@@ -297,7 +298,7 @@ let keyFile: { kid: string; privateJwk: JsonWebKey };
 try {
   keyFile = JSON.parse(readFileSync(KEY_FILE, "utf-8"));
 } catch {
-  console.error("No .facet-agent-key.json — run:  BUYER_PRIVATE_KEY=<hex> pnpm buy:ucp --init");
+  console.error("No .facet-agent-key.json — run:  pnpm buy:ucp --init");
   process.exit(1);
 }
 const privateKey = await wc.subtle.importKey("jwk", keyFile.privateJwk, ECDSA, false, ["sign"]);

@@ -173,10 +173,14 @@ if (!PROFILE_URL) {
   process.exit(1);
 }
 
-const { kid, privateJwk } = JSON.parse(readFileSync(KEY_FILE, "utf-8")) as {
-  kid: string;
-  privateJwk: JsonWebKey;
-};
+let keyFile: { kid: string; privateJwk: JsonWebKey };
+try {
+  keyFile = JSON.parse(readFileSync(KEY_FILE, "utf-8"));
+} catch {
+  console.error("No .facet-agent-key.json — run:  pnpm buy --init");
+  process.exit(1);
+}
+const { kid, privateJwk } = keyFile;
 const signKey = await wc.subtle.importKey("jwk", privateJwk, ECDSA, false, ["sign"]);
 const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC) });
 
