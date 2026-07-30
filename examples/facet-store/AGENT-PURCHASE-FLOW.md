@@ -62,26 +62,31 @@ The profile is just this:
 Each step lists **what happens**, **what it requires**, and **where it is in the script**.
 
 ### 1 · Browse the catalog and choose a product
+
 - **What happens:** the agent lists the store's products and selects one. This example picks the cheapest.
 - **Requires:** a **KYA token** (catalog reads are authenticated).
 - **In `src/purchase.ts`:** `client.search(...)` via `FacetClient` (which attaches a freshly-minted KYA token), then a `reduce` to pick the lowest price.
 
 ### 2 · Create a checkout session
+
 - **What happens:** the agent asks the store to reserve and **price** the item (goods + shipping + tax) for a shipping address. The store returns a **seller-signed escrow offer** — the network, the USDC amount, and the escrow contract address.
 - **Requires:** your **RFC 9421 signature** (this is a checkout endpoint).
 - **In `src/purchase.ts`:** `POST /ucp/v1/checkout-sessions` via the `post()` helper; the offer is read from `payment_handlers["llc.facet.boson_escrow"][0].config.offer`.
 
 ### 3 · Authorize the payment locally
+
 - **What happens:** the agent's wallet signs a **spend authorization** (an ERC-3009 "transfer with authorization") for the exact amount. Nothing is broadcast — **no money moves yet**.
 - **Requires:** the **buyer wallet key** (handled by the x402B client library).
 - **In `src/purchase.ts`:** `x402b.handle402(requirements)` returns the signed authorization (the "X‑PAYMENT"). The same seller-signed payload is echoed back in the commit body, so it is passed through verbatim; `parseEscrowPaymentRequirements` gives a validated, typed view of it for the amount / escrow / network reads.
 
 ### 4 · Commit — fund the escrow
+
 - **What happens:** the agent submits the signed authorization; the store's facilitator relays it **on-chain**, locking the USDC in the Boson escrow. The response returns the committed **exchange id** and state `COMMITTED`. Gasless for the buyer.
 - **Requires:** your **RFC 9421 signature**, and enough **USDC** in the wallet.
 - **In `src/purchase.ts`:** `POST /ucp/v1/checkout-sessions/{id}/complete` with the `boson_commit_authorization` credential — gated behind `SETTLE=1` and a spend cap (`MAX_USDC`).
 
 ### 5 · Redeem — release on fulfillment
+
 - **What happens:** the agent signs a **redeem** for the exchange and hands it to the store. The store **stores** it and submits it on-chain once the order is fulfilled — that's what releases the escrowed funds to the seller. (Deferred redeem: the buyer stays protected until fulfillment.)
 - **Requires:** your **RFC 9421 signature**, and the **exchange id** from step 4.
 - **In `src/purchase.ts`:** `x402b.signAction({ actionId: "boson-redeem", … })`, then `POST /ucp/v1/checkout-sessions/redeem` with `{ exchange_id, signed_payload }`.
