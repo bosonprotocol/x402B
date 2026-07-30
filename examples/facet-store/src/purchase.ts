@@ -145,7 +145,8 @@ if (process.argv.includes("--init")) {
   const pair = (await wc.subtle.generateKey(ECDSA, true, ["sign", "verify"])) as CryptoKeyPair;
   const priv = await wc.subtle.exportKey("jwk", pair.privateKey);
   const pub = await wc.subtle.exportKey("jwk", pair.publicKey);
-  writeFileSync(KEY_FILE, JSON.stringify({ kid, privateJwk: priv }, null, 2));
+  // 0o600 — owner-only. Applies when the file is created; it does not relax an existing mode.
+  writeFileSync(KEY_FILE, JSON.stringify({ kid, privateJwk: priv }, null, 2), { mode: 0o600 });
   writeFileSync(
     PROFILE_FILE,
     JSON.stringify(

@@ -250,7 +250,10 @@ if (process.argv.includes("--init")) {
   const privateJwk = await wc.subtle.exportKey("jwk", pair.privateKey);
   const publicJwk = await wc.subtle.exportKey("jwk", pair.publicKey);
 
-  writeFileSync(KEY_FILE, JSON.stringify({ kid, privateJwk, publicJwk }, null, 2));
+  // 0o600 — owner-only. Applies when the file is created; it does not relax an existing mode.
+  writeFileSync(KEY_FILE, JSON.stringify({ kid, privateJwk, publicJwk }, null, 2), {
+    mode: 0o600,
+  });
   const profile = {
     ucp_version: "1.0",
     name: "Agent buyer",
