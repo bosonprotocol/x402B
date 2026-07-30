@@ -5,10 +5,10 @@
  * (RFC 9421 request signatures, ES256) instead of the seller-only dispatch path.
  *
  * WHY THIS EXISTS
- *   purchase.ts is the minimal, readable version of this same flow (see HOWTO.md); this one is
- *   the instrumented sibling — it prints every request and response, exposes the product,
- *   ship-to and network as env vars, and waits for the relayed commit to confirm on-chain
- *   before redeeming. Reach for it when something needs debugging.
+ *   purchase.ts is the minimal, readable version of this same flow (see
+ *   AGENT-PURCHASE-FLOW.md); this one is the instrumented sibling — it prints every request and
+ *   response, exposes the product, ship-to and network as env vars, and waits for the relayed
+ *   commit to confirm on-chain before redeeming. Reach for it when something needs debugging.
  *
  *   Note on the path NOT taken: `POST /v1/payments/dispatch` is the SELLER-relayed path,
  *   permanently gated to a site-admin merchant session — a buyer agent always gets 401 there.

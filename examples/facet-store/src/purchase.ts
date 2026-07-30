@@ -2,13 +2,13 @@
  * purchase.ts — a minimal, self-contained example: a buyer AGENT buys an item from a
  * Facet store over UCP, paying into Boson Protocol escrow with the x402B scheme.
  *
- * See HOWTO.md for the full walkthrough. In short, the agent:
+ * See AGENT-PURCHASE-FLOW.md for the full walkthrough. In short, the agent:
  *   1. browses the store catalog and picks an item (here: the cheapest),
  *   2. creates a checkout session and signs a spend authorization locally,
  *   3. commits the payment into escrow on-chain (gasless for the buyer),
  *   4. stores a signed "redeem" the store submits once the order is fulfilled.
  *
- * Two credentials are involved (see HOWTO.md → Requirements):
+ * Two credentials are involved (see AGENT-PURCHASE-FLOW.md → Requirements):
  *   • a KYA bearer token — to read the catalog (store-issued; the sandbox mints a test one),
  *   • your own ES256 key + a published UCP profile — to sign the checkout requests.
  *
@@ -174,7 +174,7 @@ const signKey = await wc.subtle.importKey("jwk", privateJwk, ECDSA, false, ["sig
 const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC) });
 
 // KYA bearer token for catalog reads. The sandbox exposes a test-helper mint; a live store
-// issues KYA through its own issuer (see HOWTO.md → Requirements).
+// issues KYA through its own issuer (see AGENT-PURCHASE-FLOW.md → Requirements).
 const mintKya = async (): Promise<string> => {
   const r = await fetch(`${TERMINAL}/v1/test_helpers/mint_kya`, {
     method: "POST",
