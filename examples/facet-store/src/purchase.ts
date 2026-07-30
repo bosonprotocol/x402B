@@ -324,10 +324,10 @@ async function main() {
     },
   });
   const exchangeId = done.escrow_state?.exchange_id;
+  if (!exchangeId) throw new Error("Commit succeeded but no exchange id was returned.");
   console.log(
     `4 · committed · order ${done.order?.id} · exchange ${exchangeId} (${done.escrow_state?.exchange_state})`,
   );
-  if (!exchangeId) throw new Error("Commit succeeded but no exchange id was returned.");
 
   // 5 · Redeem (signed). Sign the Boson redeem and hand it to the store, which submits it
   //     on-chain once the order is fulfilled (deferred — releases the escrow to the seller).
