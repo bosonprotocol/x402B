@@ -13,16 +13,20 @@
  *   • your own ES256 key + a published UCP profile — to sign the checkout requests.
  *
  * Setup (once):
- *   BUYER_PRIVATE_KEY=0x… pnpm buy --init
+ *   cp .env.example .env  → then set BUYER_PRIVATE_KEY in it. Keep the key in .env (git-ignored)
+ *                           rather than on the command line, where it would land in your shell
+ *                           history and the process list.
+ *   pnpm buy --init
  *     → writes .facet-agent-key.json (PRIVATE) and ucp-profile.json (PUBLIC)
  *     → publish ucp-profile.json at any public HTTPS URL (a GitHub Gist raw URL works)
+ *     → put that URL in .env as UCP_PROFILE_URL
  *     → fund the printed wallet address with USDC on the store's network
  * Run:
- *   UCP_PROFILE_URL="https://…/ucp-profile.json" BUYER_PRIVATE_KEY=0x… pnpm buy
+ *   pnpm buy
  *     → dry run: prices + signs everything locally, moves nothing
- *   SETTLE=1 …  pnpm buy
+ *   SETTLE=1 pnpm buy
  *     → real: commits USDC into escrow, then stores the redeem
- * (Env vars can also live in a .env file in the package root, next to package.json.)
+ * (.env lives in the package root, next to package.json; real env vars override it.)
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

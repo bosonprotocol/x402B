@@ -52,8 +52,12 @@ Node 22+ (the monorepo's `engines` floor), `pnpm install` at the repo root, and 
 
 ### One-time setup — generate and publish your identity
 
+Put your wallet key in `.env` first — it is git-ignored, so the key stays out of your shell
+history and out of the process list:
+
 ```bash
-BUYER_PRIVATE_KEY=0xYOUR_KEY pnpm buy --init
+cp .env.example .env   # then set BUYER_PRIVATE_KEY in it
+pnpm buy --init
 ```
 
 This writes `.facet-agent-key.json` (**private**, git-ignored) and `ucp-profile.json` (public)
@@ -64,7 +68,7 @@ in this directory, and prints your wallet address. Then:
   redirect). It does *not* go on the store's site, and no `/.well-known` route is needed.
 - **Fund the printed address** with USDC on the target network (Base Sepolia test USDC for the
   sandbox).
-- Put `UCP_PROFILE_URL` and `BUYER_PRIVATE_KEY` in `.env`.
+- Add `UCP_PROFILE_URL` to `.env` (`BUYER_PRIVATE_KEY` is already in there).
 
 ## Run the purchase
 

@@ -103,29 +103,35 @@ Prerequisites: Node 22+, then `pnpm install` at the repo root. Run the commands 
 `examples/facet-store` (or prefix them with
 `pnpm --filter @bosonprotocol/x402-example-facet-store`).
 
-**1 · One-time setup** — generate your key + profile:
+**1 · One-time setup** — generate your key + profile. Put the wallet key in `.env` rather than on
+the command line: `.env` is git-ignored, so the key stays out of your shell history and out of the
+process list.
 
 ```bash
-BUYER_PRIVATE_KEY=0xYOUR_KEY pnpm buy --init
+cp .env.example .env   # then set BUYER_PRIVATE_KEY in it
+pnpm buy --init
 ```
 
 This writes `.facet-agent-key.json` (**private — keep it secret**) and `ucp-profile.json` (public) in the package root. Then:
 - Publish `ucp-profile.json` at a public HTTPS URL (e.g. create a GitHub Gist, open **Raw**, copy that URL).
 - Fund the printed wallet address with USDC on the store's network (Base Sepolia **test** USDC for the sandbox — no ETH needed).
+- Add `UCP_PROFILE_URL` to `.env` — the public URL you just published the profile at.
 
 **2 · Dry run** — prices and signs everything, moves nothing:
 
 ```bash
-UCP_PROFILE_URL="https://…/ucp-profile.json" BUYER_PRIVATE_KEY=0xYOUR_KEY pnpm buy
+pnpm buy
 ```
 
 **3 · Buy for real:**
 
 ```bash
-SETTLE=1 UCP_PROFILE_URL="https://…/ucp-profile.json" BUYER_PRIVATE_KEY=0xYOUR_KEY pnpm buy
+SETTLE=1 pnpm buy
 ```
 
-The variables can also live in a `.env` file in the package root (next to `package.json`).
+`.env` lives in the package root (next to `package.json`); real environment variables override it.
+Keep secrets — `BUYER_PRIVATE_KEY` above all — in `.env` or a secret manager, never inline in a
+command.
 
 | Variable | Meaning |
 |----------|---------|
