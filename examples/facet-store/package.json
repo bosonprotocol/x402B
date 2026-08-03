@@ -1,0 +1,30 @@
+{
+  "name": "@bosonprotocol/x402-example-facet-store",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Buyer-agent CLI example. Browses a Facet store's catalog and completes a purchase over the UCP checkout-session endpoints, paying USDC into Boson escrow with @bosonprotocol/x402-client.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "start": "tsx src/agent.ts",
+    "buy": "tsx src/purchase.ts",
+    "buy:ucp": "tsx src/purchase-ucp.ts",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src --max-warnings 0",
+    "clean": "rm -rf .turbo"
+  },
+  "dependencies": {
+    "@bosonprotocol/x402-client": "workspace:^",
+    "@bosonprotocol/x402-core": "workspace:^",
+    "@facet-llc/client": "^0.3.0",
+    "@facet-llc/sdk-node": "^0.1.4",
+    "tsx": "^4.19.2",
+    "viem": "^2.39.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
