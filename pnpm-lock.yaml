@@ -215,11 +215,11 @@ importers:
   typescript/packages/client:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0
-        version: 1.33.0
+        specifier: 1.35.0
+        version: 1.35.0
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0
-        version: 1.48.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+        specifier: 1.48.2
+        version: 1.48.2(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../core
@@ -293,11 +293,11 @@ importers:
   typescript/packages/core:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0
-        version: 1.33.0
+        specifier: 1.35.0
+        version: 1.35.0
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0
-        version: 1.48.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+        specifier: 1.48.2
+        version: 1.48.2(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@x402/evm':
         specifier: ^2.11.0
         version: 2.11.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
@@ -333,11 +333,11 @@ importers:
   typescript/packages/evm:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0
-        version: 1.33.0
+        specifier: 1.35.0
+        version: 1.35.0
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0
-        version: 1.48.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+        specifier: 1.48.2
+        version: 1.48.2(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@bosonprotocol/x402-core':
         specifier: workspace:^
         version: link:../core
@@ -361,11 +361,11 @@ importers:
   typescript/packages/facilitator:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0
-        version: 1.33.0
+        specifier: 1.35.0
+        version: 1.35.0
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0
-        version: 1.48.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+        specifier: 1.48.2
+        version: 1.48.2(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@bosonprotocol/x402-actions':
         specifier: workspace:^
         version: link:../actions
@@ -515,11 +515,11 @@ importers:
   typescript/packages/server:
     dependencies:
       '@bosonprotocol/common':
-        specifier: 1.33.0
-        version: 1.33.0
+        specifier: 1.35.0
+        version: 1.35.0
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0
-        version: 1.48.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+        specifier: 1.48.2
+        version: 1.48.2(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@bosonprotocol/x402-actions':
         specifier: workspace:^
         version: link:../actions
@@ -598,8 +598,8 @@ importers:
   typescript/packages/x402-e2e:
     dependencies:
       '@bosonprotocol/core-sdk':
-        specifier: 1.48.0
-        version: 1.48.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+        specifier: 1.48.2
+        version: 1.48.2(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@bosonprotocol/x402-actions':
         specifier: workspace:^
         version: link:../actions
@@ -665,11 +665,11 @@ packages:
   '@base-org/account@2.4.0':
     resolution: {integrity: sha512-A4Umpi8B9/pqR78D1Yoze4xHyQaujioVRqqO3d6xuDFw9VRtjg6tK3bPlwE0aW+nVH/ntllCpPa2PbI8Rnjcug==}
 
-  '@bosonprotocol/common@1.33.0':
-    resolution: {integrity: sha512-WT9VITjzcK9eAcA9xp78Wk46Q8qObyOuNLJch9slPymodSMUTfnz9pwhrhAdVknLVupuimglLgD/MLDMzezdeA==}
+  '@bosonprotocol/common@1.35.0':
+    resolution: {integrity: sha512-bh6+hRjKUs+18t39mQx18q2trnxM/BWKvTSvOfEMmrMy6qk1xcb2wBshZwmMNIdGLHWxXtGRUefCfgEgW+qvmA==}
 
-  '@bosonprotocol/core-sdk@1.48.0':
-    resolution: {integrity: sha512-j6ycT4I8Y017X6pJj9BOh/n+2G9XqRJsw117AX5zxAT5rVBuUYZOoyGr6TR860WrUU3xeDm4ytsmXXjJlCFZxg==}
+  '@bosonprotocol/core-sdk@1.48.2':
+    resolution: {integrity: sha512-f7a1ILU80CfFNUa18nE/BkRCpoBAIADnBRxCPjkm47q//BrUwskB73zumfU12gTRjdaG878NJSw6O1RCZGoNmg==}
 
   '@bosonprotocol/metadata-storage@1.0.1':
     resolution: {integrity: sha512-f2W2SQAvY5IKD6L9JwaiNye7gGRIIPd/HOB0i+otWLzMPBlwQtbN4JeWSuKeJvuaqu8tyMy7CHzN8EkhrJDB+A==}
@@ -3082,6 +3082,7 @@ packages:
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   cssstyle@4.6.0:
     resolution: {integrity: sha512-2z+rWdzbbSZv6/rhtvzvqeZQHrBaqgogqt85sqFNbabZOuFbCVFb8kPeEtZjiKkbrm395irpNKiYeFeLiQnFPg==}
@@ -5266,7 +5267,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@bosonprotocol/common@1.33.0':
+  '@bosonprotocol/common@1.35.0':
     dependencies:
       '@bosonprotocol/metadata': 1.16.3
       '@ethersproject/abi': 5.8.0
@@ -5275,9 +5276,9 @@ snapshots:
       '@ethersproject/constants': 5.8.0
       '@ethersproject/units': 5.8.0
 
-  '@bosonprotocol/core-sdk@1.48.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)':
+  '@bosonprotocol/core-sdk@1.48.2(bufferutil@4.1.0)(utf-8-validate@5.0.10)':
     dependencies:
-      '@bosonprotocol/common': 1.33.0
+      '@bosonprotocol/common': 1.35.0
       '@ethersproject/abi': 5.8.0
       '@ethersproject/address': 5.8.0
       '@ethersproject/bignumber': 5.8.0
